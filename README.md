@@ -1,3 +1,13 @@
 # Poulpe board firmware using Embassy-rs
 
-- rustup target add thumbv7em-none-eabihf
+## Installation
+
+- `rustup default nightly`
+- `rustup update`
+- `rustup target add thumbv7em-none-eabihf`
+- `cargo install probe-rs --features cli`
+
+
+## Build
+
+- `cargo build`
