@@ -6,7 +6,7 @@
 - `rustup update`
 - `rustup target add thumbv7em-none-eabihf`
 - `cargo install probe-rs --features cli`
-
+- https://probe.rs/docs/getting-started/probe-setup/
 
 ## Build
 

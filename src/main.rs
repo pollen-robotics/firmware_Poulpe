@@ -50,7 +50,8 @@ async fn main(spawner: Spawner) -> ! {
     let p = embassy_stm32::init(Default::default());
 
     // let mut dir = Output::new(p.PD9, Level::High, Speed::High);
-    let config = Config::default();
+    let mut config = Config::default();
+    config.baudrate = 1_000_000;
     let usart = Uart::new(
         p.USART1, p.PB15, p.PB14, Irqs, p.DMA1_CH0, p.DMA1_CH1, config,
     );
@@ -65,7 +66,7 @@ async fn main(spawner: Spawner) -> ! {
     loop {
         let buf = RX_CHANNEL.receive().await;
         let mut pp = [0xff, 0xff, 0x2A, 0x02, 0x01, 0xff];
-        let crc = 0x2A + 0x02 + 0x01;
+        let crc: u8 = 0x2A + 0x02 + 0x01;
         pp[5] = !crc;
 
         /////////TODO
@@ -75,11 +76,13 @@ async fn main(spawner: Spawner) -> ! {
         if pp == buf {
             info!("Answering to ping");
             let mut sp = [0xff, 0xff, 0x2A, 0x02, 0x00, 0xff];
-            let crc_s = 0x2A + 0x02;
+            let crc_s: u8 = 0x2A + 0x02;
             sp[5] = !crc_s;
             // TX_CHANNEL.send(buf).await;
             TX_CHANNEL.send(sp).await;
             // unwrap!(tx.write(&buf).await);
+        } else {
+            info!("Received: {:?}", buf);
         }
     }
 }
