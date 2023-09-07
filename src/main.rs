@@ -64,9 +64,7 @@ async fn main(spawner: Spawner) -> ! {
 
     loop {
         let buf = RX_CHANNEL.receive().await;
-        let mut pp = [0xff, 0xff, 0x2A, 0x02, 0x01, 0xff];
-        let crc: u8 = 0x2A + 0x02 + 0x01;
-        pp[5] = !crc;
+        let mut pp = [0xff, 0xff, 0x01, 0x02, 0x01, 0xfb];
 
         /////////TODO
         // let bytes = vec![0x00];
@@ -74,9 +72,8 @@ async fn main(spawner: Spawner) -> ! {
 
         if pp == buf {
             info!("Answering to ping");
-            let mut sp = [0xff, 0xff, 0x2A, 0x02, 0x00, 0xff];
-            let crc_s: u8 = 0x2A + 0x02;
-            sp[5] = !crc_s;
+            let mut sp = [0xff, 0xff, 0x01, 0x02, 0x00, 0xfc];
+
             // TX_CHANNEL.send(buf).await;
             TX_CHANNEL.send(sp).await;
             // unwrap!(tx.write(&buf).await);
