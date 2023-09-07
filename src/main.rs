@@ -25,7 +25,7 @@ bind_interrupts!(struct Irqs {
 
 #[embassy_executor::task]
 async fn writer(mut usart: UartTx<'static, USART1, DMA1_CH0>, dir_pin: AnyPin) {
-    let mut dir = Output::new(dir_pin, Level::High, Speed::High);
+    let mut dir = Output::new(dir_pin, Level::Low, Speed::High);
 
     loop {
         let buf = TX_CHANNEL.receive().await;
@@ -49,7 +49,6 @@ async fn reader(mut rx: UartRx<'static, USART1, DMA1_CH1>) {
 async fn main(spawner: Spawner) -> ! {
     let p = embassy_stm32::init(Default::default());
 
-    // let mut dir = Output::new(p.PD9, Level::High, Speed::High);
     let mut config = Config::default();
     config.baudrate = 1_000_000;
     let usart = Uart::new(
