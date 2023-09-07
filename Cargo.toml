@@ -5,7 +5,7 @@ version = "0.1.0"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-
+# rustypot = "0.4.2"
 # stm32h742vg
 embassy-stm32 = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy", rev="ce662766", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x", "unstable-pac", "unstable-traits"] }
 embassy-sync = { version = "0.2.0", git = "https://github.com/embassy-rs/embassy", rev="ce662766", features = ["defmt"] }
