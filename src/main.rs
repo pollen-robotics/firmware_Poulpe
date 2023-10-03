@@ -31,18 +31,22 @@ async fn main(_spawner: Spawner) {
         let p = embassy_stm32::init(config);
 
     info!("----------------- LEDs config -----------------");
-//    let mut led_green = Output::new(p.PC9, Level::High, Speed::Low);
+    let mut led_green = Output::new(p.PC9, Level::High, Speed::Low);
     
     info!("----------------- SPI config -----------------");
     let mut lan9252_spi_config = spi::Config::default();
     lan9252_spi_config.frequency = khz(50);
+    lan9252_spi_config.frequency = mhz(5);
     lan9252_spi_config.mode = spi::MODE_0;
+    // LAN9252 on SPI3 (corrected from QSPI)
+    let mut lan9252_spi = spi::Spi::new(p.SPI3, p.PC10, p.PB2, p.PC11, NoDma, NoDma, lan9252_spi_config);
+    let mut lan9252_spi_cs = Output::new(p.PD0, Level::High, Speed::Low);
     // Debug SPI on J2
 //    let mut lan9252_spi = spi::Spi::new(p.SPI1, p.PA5, p.PA7, p.PA6, NoDma, NoDma, lan9252_spi_config);
 //    let mut lan9252_spi_cs = Output::new(p.PA4, Level::High, Speed::Low);
     // Debug SPI on J4
-    let mut lan9252_spi = spi::Spi::new(p.SPI6, p.PB3, p.PB5, p.PB4, NoDma, NoDma, lan9252_spi_config);
-    let mut lan9252_spi_cs = Output::new(p.PA15, Level::High, Speed::Low);
+//    let mut lan9252_spi = spi::Spi::new(p.SPI6, p.PB3, p.PB5, p.PB4, NoDma, NoDma, lan9252_spi_config);
+//    let mut lan9252_spi_cs = Output::new(p.PA15, Level::High, Speed::Low);
     lan9252_spi_cs.set_high();
 
 
@@ -124,14 +128,14 @@ async fn main(_spawner: Spawner) {
 
     info!("----------------- Main Loop -----------------");
     loop {
-//        led_green.set_high();
-//        Timer::after(Duration::from_millis(500)).await;
-//        led_green.set_low();
+        led_green.set_high();
+        Timer::after(Duration::from_millis(500)).await;
+        led_green.set_low();
 
         // SPI
         lan9252_spi_cs.set_low();
-//        let mut data_write = [0x03u8, 0x00u8, 0x50u8]; // 03: read, x050: chip & ID
-        let mut data_write = [0x03u8, 0x00u8, 0x74u8]; // 03: read, x064: Byte order (0x87654321)
+        let mut data_write = [0x03u8, 0x00u8, 0x50u8]; // 03: read, x050: chip & ID
+//        let mut data_write = [0x03u8, 0x00u8, 0x74u8]; // 03: read, x064: Byte order (0x87654321)
 //        data_write[0] = 0x03u8; // Sent first
 //        data_write[1] = 0x00u8; 
 //        data_write[2] = 0x64u8; // Sent last
