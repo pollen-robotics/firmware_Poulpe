@@ -2,84 +2,80 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
+use core::default;
+use core::str::from_utf8;
+
 use defmt::*;
 use embassy_executor::Spawner;
-// use embassy_stm32::dma::NoDma;
-use embassy_stm32::gpio::{AnyPin, Level, Output, Speed};
-use embassy_stm32::peripherals::{DMA1_CH0, DMA1_CH1, USART1};
-use embassy_stm32::usart::{Config, Uart, UartRx, UartTx};
-use embassy_stm32::{bind_interrupts, peripherals, usart};
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use embassy_sync::channel::Channel;
-// use embassy_time::{Duration, Timer};
-// use rustypot::protocol::V1; //unfortunately, we are not ready for that yet ;(
-
+use embassy_stm32::gpio::{Level, Output, Speed};
+use embassy_stm32::spi::Word;
+use embassy_time::{Duration, Timer};
+use embassy_stm32::dma::NoDma;
+use embassy_stm32::time::{mhz, khz};
+use embassy_stm32::{spi, Config};
 use {defmt_rtt as _, panic_probe as _};
 
-static RX_CHANNEL: Channel<ThreadModeRawMutex, [u8; 6], 1> = Channel::new();
-static TX_CHANNEL: Channel<ThreadModeRawMutex, [u8; 6], 1> = Channel::new();
-
-bind_interrupts!(struct Irqs {
-    USART1 => usart::InterruptHandler<peripherals::USART1>;
-});
-
-#[embassy_executor::task]
-async fn writer(mut usart: UartTx<'static, USART1, DMA1_CH0>, dir_pin: AnyPin) {
-    let mut dir = Output::new(dir_pin, Level::High, Speed::High);
-
-    loop {
-        let buf = TX_CHANNEL.receive().await;
-        dir.set_high(); //TODO: high or low?
-        usart.write(&buf).await.ok();
-        dir.set_low();
-    }
-}
-
-#[embassy_executor::task]
-async fn reader(mut rx: UartRx<'static, USART1, DMA1_CH1>) {
-    let mut buf = [0; 6];
-    loop {
-        info!("reading...");
-        unwrap!(rx.read(&mut buf).await);
-        RX_CHANNEL.send(buf).await;
-    }
-}
-
 #[embassy_executor::main]
-async fn main(spawner: Spawner) -> ! {
-    let p = embassy_stm32::init(Default::default());
+async fn main(_spawner: Spawner) {
+    info!("Hello World!");
 
-    // let mut dir = Output::new(p.PD9, Level::High, Speed::High);
-    let config = Config::default();
-    let usart = Uart::new(
-        p.USART1, p.PB15, p.PB14, Irqs, p.DMA1_CH0, p.DMA1_CH1, config,
-    );
+    info!("----------------- Clock config -----------------");
+    let mut config = embassy_stm32::Config::default();
+    config.rcc.sys_ck = Some(mhz(400));
+    config.rcc.hclk = Some(mhz(200));
+    let p = embassy_stm32::init(config);
 
-    // unwrap!(usart.blocking_write(b"Type 8 chars to echo!\r\n"));
+    info!("----------------- LEDs config -----------------");
+    let mut led_green = Output::new(p.PC9, Level::High, Speed::Low);
+    
+    info!("----------------- SPI config -----------------");
+    let mut sensor_ring_spi_config = spi::Config::default();
+    sensor_ring_spi_config.frequency = mhz(1); // 10 MHz max clk
+    sensor_ring_spi_config.mode = spi::MODE_1;
+    // Carte Ticket (Ring sensor) is 3V3-powered and runs on SPI6 (J4)
+    let mut sensor_ring_spi = spi::Spi::new(p.SPI6, p.PB3, p.PB5, p.PB4, NoDma, NoDma, sensor_ring_spi_config);
+    let mut sensor_ring_spi_cs = Output::new(p.PA15, Level::High, Speed::Low);
+    sensor_ring_spi_cs.set_high();
+    // Command: 16-bit frame with bit 15 as even parity, bit 14 as read(1)/write(0), [13-0] as data
+    // Answer:  16-bit frame with bit 15 as even parity, bit 14 as error(1)/no_error(0), [13-0] as data
+    //---- AD5047 commands ------------------------------------------------------------------------------
+    // addr   type     default   comment
+    // 0x0000 NOP      0x0000    No operation
+    // 0x0001 ERRFL    0x0000    Error register
+    // 0x0003 PROG     0x0000    Programming register
+    // 0x3FFC DIAAGC   0x0180    Diagnostic and AGC
+    // 0x3FFD MAG      0x0000    CORDIC magnitude
+    // 0x3FFE ANGLEUNC 0x0000    Measured angle without dynamic angle error compensation
+    // 0x3FFF ANGLECOM 0x0000    Measured angle    
 
-    let (tx, rx) = usart.split();
-
-    unwrap!(spawner.spawn(reader(rx)));
-    unwrap!(spawner.spawn(writer(tx, p.PD9.into())));
-
+    info!("----------------- Main Loop -----------------");
     loop {
-        let buf = RX_CHANNEL.receive().await;
-        let mut pp = [0xff, 0xff, 0x2A, 0x02, 0x01, 0xff];
-        let crc = 0x2A + 0x02 + 0x01;
-        pp[5] = !crc;
+        // Blinking
+        led_green.set_high();
+        Timer::after(Duration::from_millis(500)).await;
+        led_green.set_low();
 
-        /////////TODO
-        // let bytes = vec![0x00];
-        // let sp = StatusPacketV1::from_bytes(&bytes, 42);
-
-        if pp == buf {
-            info!("Answering to ping");
-            let mut sp = [0xff, 0xff, 0x2A, 0x02, 0x00, 0xff];
-            let crc_s = 0x2A + 0x02;
-            sp[5] = !crc_s;
-            // TX_CHANNEL.send(buf).await;
-            TX_CHANNEL.send(sp).await;
-            // unwrap!(tx.write(&buf).await);
+        // SPI
+        sensor_ring_spi_cs.set_low();
+//        let data_write = [0b11000000u8, 0b00000000u8]; // read nop
+//        let data_write = [0xffu8, 0xfcu8]; // read diag
+        let data_write = [0x7fu8, 0xfeu8]; // read angle
+        let result = sensor_ring_spi.blocking_write(&data_write);
+        if let Err(_) = result {
+            defmt::panic!("crap write");
         }
+        sensor_ring_spi_cs.set_high();
+        Timer::after(Duration::from_millis(1)).await;
+        sensor_ring_spi_cs.set_low();
+        let mut data_read = [0x00u8, 0x00u8];
+        let result = sensor_ring_spi.blocking_read(&mut data_read);
+        if let Err(_) = result {
+            defmt::panic!("crap read");
+        }
+        sensor_ring_spi_cs.set_high();
+        info!("read via spi: {:#02x} {:#02x}.", &data_read[0], &data_read[1]);
+//        info!("read via spi: {:#010b} {:#010b}.", &data_read[0], &data_read[1]);
+
+        Timer::after(Duration::from_millis(1000)).await;
     }
 }
