@@ -65,7 +65,7 @@ async fn main(_spawner: Spawner) {
             defmt::panic!("crap write");
         }
         sensor_ring_spi_cs.set_high();
-        Timer::after(Duration::from_millis(1)).await;
+        Timer::after(Duration::from_micros(1)).await; // actually > 350 ns
         sensor_ring_spi_cs.set_low();
         let mut data_read = [0x00u8, 0x00u8];
         let result = sensor_ring_spi.blocking_read(&mut data_read);
@@ -73,8 +73,15 @@ async fn main(_spawner: Spawner) {
             defmt::panic!("crap read");
         }
         sensor_ring_spi_cs.set_high();
-        info!("read via spi: {:#02x} {:#02x}.", &data_read[0], &data_read[1]);
+//        info!("read via spi: {:#02x} {:#02x}.", &data_read[0], &data_read[1]);
 //        info!("read via spi: {:#010b} {:#010b}.", &data_read[0], &data_read[1]);
+
+        // Combine the two u8 values into a 16-bit integer
+        let mut combined_value: u16 = ((data_read[0] as u16) << 8) | (data_read[1] as u16);
+        combined_value &= 0x3FFF;
+        let angle_range = 360.0;
+        let angle = (combined_value as f64 / 16383.0) * angle_range;
+        info!("Angle: {} degrees", angle);
 
         Timer::after(Duration::from_millis(1000)).await;
     }
