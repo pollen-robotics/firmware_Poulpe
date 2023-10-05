@@ -48,7 +48,7 @@ async fn reader(mut rx: UartRx<'static, USART1, DMA1_CH1>) {
 #[embassy_executor::main]
 async fn main(spawner: Spawner) -> ! {
     let p = embassy_stm32::init(Default::default());
-
+    let id: u8 = 42;
     let mut config = Config::default();
     config.baudrate = 1_000_000;
     let usart = Uart::new(
@@ -64,7 +64,10 @@ async fn main(spawner: Spawner) -> ! {
 
     loop {
         let buf = RX_CHANNEL.receive().await;
-        let mut pp = [0xff, 0xff, 0x01, 0x02, 0x01, 0xfb];
+        // let mut pp = [0xff, 0xff, 0x01, 0x02, 0x01, 0xfb];
+        let crc: u8 = !(id + 0x02 + 0x01);
+
+        let mut pp = [0xff, 0xff, id, 0x02, 0x01, crc];
 
         /////////TODO
         // let bytes = vec![0x00];
@@ -72,7 +75,9 @@ async fn main(spawner: Spawner) -> ! {
 
         if pp == buf {
             info!("Answering to ping");
-            let mut sp = [0xff, 0xff, 0x01, 0x02, 0x00, 0xfc];
+            let rescrc: u8 = !(id + 0x02);
+
+            let mut sp = [0xff, 0xff, id, 0x02, 0x00, rescrc];
 
             // TX_CHANNEL.send(buf).await;
             TX_CHANNEL.send(sp).await;
