@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+use crate::registers;
 use defmt::*;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -46,6 +47,9 @@ pub enum RWAction<'a> {
     Ignore,
     Ok,
 }
+fn crc(data: &[u8]) -> u8 {
+    !data.iter().sum::<u8>()
+}
 
 impl DxlCom {
     pub fn new(id: u8) -> Self {
@@ -58,22 +62,18 @@ impl DxlCom {
         }
     }
 
-    fn crc(&mut self, data: &[u8]) -> u8 {
-        !data.iter().sum::<u8>()
-    }
-
-    pub fn parse(&mut self, bytes: &[u8]) -> Result<RWAction, Error> {
+    pub async fn parse(&mut self, bytes: &[u8]) -> Result<RWAction, Error> {
         if bytes.len() < 6 {
             //Minimum packet size
             debug!("packet size is {:?} <6", bytes.len());
             Err(Error::BadPacket)
-        } else if bytes[0] == 0xff && bytes[1] == 0xff {
+        } else if bytes[0] == 0xff && bytes[1] == 0xff && bytes.len() == (bytes[3] + 4).into() {
             //Header is detected
             debug!("header ok",);
             if bytes[2] == self.id {
                 debug!("id is {:?}", bytes[2]);
                 // Dynamixel id is ok
-                if self.crc(&bytes[2..bytes.len() - 1]) != bytes[bytes.len() - 1] {
+                if crc(&bytes[2..bytes.len() - 1]) != bytes[bytes.len() - 1] {
                     // debug!(
                     //     "bad crc, seen: {:?} computed {:?}",
                     //     bytes[bytes.len() - 1],
@@ -83,7 +83,7 @@ impl DxlCom {
                 } else {
                     debug!("Packet is ok");
                     //Packet seems ok
-                    Ok(self.handle_instruction(bytes))
+                    Ok(self.handle_instruction(bytes).await)
 
                     // Ok(RWAction::Ok) //TODO
                 }
@@ -97,7 +97,7 @@ impl DxlCom {
         }
     }
 
-    fn handle_instruction(&mut self, data: &[u8]) -> RWAction {
+    async fn handle_instruction(&mut self, data: &[u8]) -> RWAction {
         match MessageType::from_u8(data[4]) {
             MessageType::PingMessage => {
                 //answer to the ping
@@ -109,7 +109,22 @@ impl DxlCom {
             }
             MessageType::ReadMessage => {
                 //return the read value from register
-                RWAction::Tx(&[0]) //TODO
+                let addr: usize = data[5].into();
+                let size: usize = data[6].into();
+                self.tx_buffer[0] = 0xff;
+                self.tx_buffer[1] = 0xff;
+                self.tx_buffer[2] = self.id;
+                self.tx_buffer[3] = size as u8 + 2;
+                self.tx_buffer[4] = 0; //Error byte
+
+                {
+                    let mut registers = registers::REGISTERS.lock().await;
+                    self.tx_buffer[5..5 + size as usize]
+                        .clone_from_slice(&registers.buffer[addr..addr + size]);
+                }
+                self.tx_buffer[size as usize + 5] = crc(&self.tx_buffer[2..4 + size]);
+
+                RWAction::Tx(&self.tx_buffer[0..size as usize + 6])
             }
             MessageType::WriteMessage => {
                 //write the value to the register

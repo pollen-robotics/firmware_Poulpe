@@ -9,14 +9,14 @@ use embassy_stm32::gpio::{AnyPin, Level, Output, Speed};
 use embassy_stm32::peripherals::{DMA1_CH0, DMA1_CH1, USART1};
 use embassy_stm32::usart::{BufferedUart, Config, Error, Uart, UartRx, UartTx};
 use embassy_stm32::{bind_interrupts, peripherals, usart};
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use embassy_sync::channel::Channel;
+// use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+// use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Timer};
-// use embassy_time::{Duration, Timer};
+
 // use rustypot::protocol::V1; //unfortunately, we are not ready for that yet ;(
 
 mod dynamixel;
-
+mod registers;
 use {defmt_rtt as _, panic_probe as _};
 
 // static RX_CHANNEL: Channel<ThreadModeRawMutex, [u8; 6], 1> = Channel::new();
@@ -27,6 +27,18 @@ static DXL_ID: u8 = 42;
 bind_interrupts!(struct Irqs {
     USART1 => usart::InterruptHandler<peripherals::USART1>;
 });
+
+#[embassy_executor::task]
+async fn test_reg() {
+    loop {
+        {
+            let mut registers = registers::REGISTERS.lock().await;
+            registers.buffer[0] += 1;
+        }
+
+        Timer::after(Duration::from_millis(1000)).await;
+    }
+}
 
 #[embassy_executor::task]
 async fn DxlSerial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pin: AnyPin) {
@@ -43,7 +55,7 @@ async fn DxlSerial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pin
         match res {
             Ok(nb) => {
                 debug!("read {:?} bytes: {:?}", nb, buf[0..nb]);
-                let action = dxlcom.parse(&buf[0..nb]);
+                let action = dxlcom.parse(&buf[0..nb]).await;
                 match action {
                     Ok(dynamixel::RWAction::Ignore) => {
                         debug!("Ignoring");
@@ -92,6 +104,8 @@ async fn main(spawner: Spawner) -> ! {
     );
 
     unwrap!(spawner.spawn(DxlSerial(usart, p.PD9.into())));
+
+    unwrap!(spawner.spawn(test_reg()));
 
     let mut led = Output::new(p.PC9, Level::High, Speed::Low);
 
