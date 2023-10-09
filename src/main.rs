@@ -7,83 +7,99 @@ use embassy_executor::Spawner;
 // use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{AnyPin, Level, Output, Speed};
 use embassy_stm32::peripherals::{DMA1_CH0, DMA1_CH1, USART1};
-use embassy_stm32::usart::{Config, Uart, UartRx, UartTx};
+use embassy_stm32::usart::{BufferedUart, Config, Error, Uart, UartRx, UartTx};
 use embassy_stm32::{bind_interrupts, peripherals, usart};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::channel::Channel;
+use embassy_time::{Duration, Timer};
 // use embassy_time::{Duration, Timer};
 // use rustypot::protocol::V1; //unfortunately, we are not ready for that yet ;(
 
+mod dynamixel;
+
 use {defmt_rtt as _, panic_probe as _};
 
-static RX_CHANNEL: Channel<ThreadModeRawMutex, [u8; 6], 1> = Channel::new();
-static TX_CHANNEL: Channel<ThreadModeRawMutex, [u8; 6], 1> = Channel::new();
+// static RX_CHANNEL: Channel<ThreadModeRawMutex, [u8; 6], 1> = Channel::new();
+// static TX_CHANNEL: Channel<ThreadModeRawMutex, [u8; 6], 1> = Channel::new();
+
+static DXL_ID: u8 = 42;
 
 bind_interrupts!(struct Irqs {
     USART1 => usart::InterruptHandler<peripherals::USART1>;
 });
 
 #[embassy_executor::task]
-async fn writer(mut usart: UartTx<'static, USART1, DMA1_CH0>, dir_pin: AnyPin) {
+async fn DxlSerial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pin: AnyPin) {
+    let mut dxlcom = dynamixel::DxlCom::new(DXL_ID);
     let mut dir = Output::new(dir_pin, Level::Low, Speed::High);
 
+    let mut buf: [u8; 255] = [0; 255];
+
+    dir.set_low(); //reading
+
     loop {
-        let buf = TX_CHANNEL.receive().await;
-        dir.set_high(); //TODO: high or low?
-        usart.write(&buf).await.ok();
-        dir.set_low();
+        let res = usart.read_until_idle(&mut buf).await;
+
+        match res {
+            Ok(nb) => {
+                debug!("read {:?} bytes: {:?}", nb, buf[0..nb]);
+                let action = dxlcom.parse(&buf[0..nb]);
+                match action {
+                    Ok(dynamixel::RWAction::Ignore) => {
+                        debug!("Ignoring");
+                    }
+                    Ok(dynamixel::RWAction::Ok) => {
+                        debug!("Done");
+                    }
+                    Ok(dynamixel::RWAction::Tx(data)) => {
+                        debug!("Sending response: {:?}", data);
+                        dir.set_high();
+                        // Timer::after(Duration::from_micros(500)).await;
+                        // let _ = usart.blocking_write(data); //this doesn't work
+                        match usart.write(data).await //this works
+			{
+			    Ok(())=>{
+				//good
+			    }
+			    Err(_) =>{error!("Error sending response");}
+			}
+                        dir.set_low(); //reading
+                    }
+
+                    Err(err) => {
+                        error!("Error"); //TODO
+                    }
+                }
+            }
+            Err(err) => {
+                error!("ERROR {:?}", err);
+            }
+        }
     }
 }
 
-#[embassy_executor::task]
-async fn reader(mut rx: UartRx<'static, USART1, DMA1_CH1>) {
-    let mut buf = [0; 6];
-    loop {
-        info!("reading...");
-        unwrap!(rx.read(&mut buf).await);
-        RX_CHANNEL.send(buf).await;
-    }
-}
+// static EXECUTOR: StaticCell<Executor> = StaticCell::new();
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) -> ! {
     let p = embassy_stm32::init(Default::default());
-    let id: u8 = 42;
+
     let mut config = Config::default();
     config.baudrate = 1_000_000;
+    config.detect_previous_overrun = false;
     let usart = Uart::new(
         p.USART1, p.PB15, p.PB14, Irqs, p.DMA1_CH0, p.DMA1_CH1, config,
     );
 
-    // unwrap!(usart.blocking_write(b"Type 8 chars to echo!\r\n"));
+    unwrap!(spawner.spawn(DxlSerial(usart, p.PD9.into())));
 
-    let (tx, rx) = usart.split();
-
-    unwrap!(spawner.spawn(reader(rx)));
-    unwrap!(spawner.spawn(writer(tx, p.PD9.into())));
+    let mut led = Output::new(p.PC9, Level::High, Speed::Low);
 
     loop {
-        let buf = RX_CHANNEL.receive().await;
-        // let mut pp = [0xff, 0xff, 0x01, 0x02, 0x01, 0xfb];
-        let crc: u8 = !(id + 0x02 + 0x01);
+        led.set_high();
+        Timer::after(Duration::from_millis(500)).await;
 
-        let mut pp = [0xff, 0xff, id, 0x02, 0x01, crc];
-
-        /////////TODO
-        // let bytes = vec![0x00];
-        // let sp = StatusPacketV1::from_bytes(&bytes, 42);
-
-        if pp == buf {
-            info!("Answering to ping");
-            let rescrc: u8 = !(id + 0x02);
-
-            let mut sp = [0xff, 0xff, id, 0x02, 0x00, rescrc];
-
-            // TX_CHANNEL.send(buf).await;
-            TX_CHANNEL.send(sp).await;
-            // unwrap!(tx.write(&buf).await);
-        } else {
-            info!("Received: {:?}", buf);
-        }
+        led.set_low();
+        Timer::after(Duration::from_millis(500)).await;
     }
 }
