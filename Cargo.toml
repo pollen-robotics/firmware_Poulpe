@@ -33,6 +33,7 @@ micromath = "2.0.0"
 stm32-fmc = "0.2.4"
 embedded-storage = "0.3.0"
 static_cell = { version = "1.1", features = ["nightly"]}
+paste = "1.0.14"
 
 
 

@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
-use crate::registers;
+
+use crate::config;
+
 use defmt::*;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -117,11 +119,18 @@ impl DxlCom {
                 self.tx_buffer[3] = size as u8 + 2;
                 self.tx_buffer[4] = 0; //Error byte
 
-                {
-                    let mut registers = registers::REGISTERS.lock().await;
-                    self.tx_buffer[5..5 + size as usize]
-                        .clone_from_slice(&registers.buffer[addr..addr + size]);
-                }
+                // {
+                //     let mut registers = registers::REGISTERS.lock().await;
+                //     self.tx_buffer[5..5 + size as usize]
+                //         .clone_from_slice(&registers.buffer[addr..addr + size]);
+                // }
+
+                let mut buffer = [0u8; 255]; // Ensure buffer is of appropriate size
+                crate::config::dxl_registers_read_by_address(addr, size, &mut buffer)
+                    .await
+                    .expect("Read failed"); //TODO
+                self.tx_buffer[5..5 + size as usize].clone_from_slice(&buffer[0..size]);
+
                 self.tx_buffer[size as usize + 5] = crc(&self.tx_buffer[2..4 + size]);
 
                 RWAction::Tx(&self.tx_buffer[0..size as usize + 6])

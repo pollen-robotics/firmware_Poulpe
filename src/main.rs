@@ -11,12 +11,17 @@ use embassy_stm32::usart::{BufferedUart, Config, Error, Uart, UartRx, UartTx};
 use embassy_stm32::{bind_interrupts, peripherals, usart};
 // use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 // use embassy_sync::channel::Channel;
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
 
-// use rustypot::protocol::V1; //unfortunately, we are not ready for that yet ;(
-
+// declare the modules
+mod config;
 mod dynamixel;
 mod registers;
+
+use paste::paste;
+
 use {defmt_rtt as _, panic_probe as _};
 
 // static RX_CHANNEL: Channel<ThreadModeRawMutex, [u8; 6], 1> = Channel::new();
@@ -30,12 +35,17 @@ bind_interrupts!(struct Irqs {
 
 #[embassy_executor::task]
 async fn test_reg() {
+    let mut i: u8 = 0;
+    let mut j: u8 = 1;
+
     loop {
         {
-            let mut registers = registers::REGISTERS.lock().await;
-            registers.buffer[0] += 1;
+            // let mut registers = registers::REGISTERS.lock().await;
+            // registers.buffer[0] += 1;
+            let _ = crate::config::dxl_registers_write_by_address(0, 2, &[i, j]).await;
         }
-
+        i += 1;
+        j += 1;
         Timer::after(Duration::from_millis(1000)).await;
     }
 }
@@ -54,7 +64,7 @@ async fn DxlSerial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pin
 
         match res {
             Ok(nb) => {
-                debug!("read {:?} bytes: {:?}", nb, buf[0..nb]);
+                debug!("received {:?} bytes: {:?}", nb, buf[0..nb]);
                 let action = dxlcom.parse(&buf[0..nb]).await;
                 match action {
                     Ok(dynamixel::RWAction::Ignore) => {
