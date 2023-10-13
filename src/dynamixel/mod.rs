@@ -1,10 +1,27 @@
-#![no_std]
-#![no_main]
-
-use crate::config;
+// use crate::config;
+// use core::sync::atomic::AtomicU8;
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_sync::mutex::Mutex;
 
 use defmt::*;
 use {defmt_rtt as _, panic_probe as _};
+
+use modular_bitfield::prelude::*;
+
+#[bitfield(bits = 8)]
+pub struct DxlStatusError {
+    input_voltage_error: bool,
+    angle_limit_error: bool,
+    overheating_error: bool,
+    range_error: bool,
+    checksum_error: bool,
+    overload_error: bool,
+    instruction_error: bool,
+    unused: B1,
+}
+
+static DXL_STATUS_ERROR: Mutex<ThreadModeRawMutex, DxlStatusError> =
+    Mutex::new(DxlStatusError::new());
 
 #[repr(u8)]
 enum MessageType {
@@ -26,13 +43,14 @@ impl MessageType {
 }
 
 const MAX_DATA_LENGTH: u8 = 128;
+pub const MAX_BUFFER_LENGTH: usize = 256;
 
 pub struct DxlCom {
     id: u8,
-    rx_buffer: [u8; 256],
-    tx_buffer: [u8; 256],
-    rx_buffer_index: usize,
-    rx_packet_length: u8,
+    // rx_buffer: [u8; MAX_BUFFER_LENGTH],
+    tx_buffer: [u8; MAX_BUFFER_LENGTH],
+    // rx_buffer_index: usize,
+    // rx_packet_length: u8,
 }
 
 #[non_exhaustive]
@@ -57,10 +75,10 @@ impl DxlCom {
     pub fn new(id: u8) -> Self {
         Self {
             id,
-            rx_buffer: [0; 256],
-            tx_buffer: [0; 256],
-            rx_buffer_index: 0,
-            rx_packet_length: 0,
+            // rx_buffer: [0; 256],
+            tx_buffer: [0; MAX_BUFFER_LENGTH],
+            // rx_buffer_index: 0,
+            // rx_packet_length: 0,
         }
     }
 
@@ -81,6 +99,7 @@ impl DxlCom {
                     //     bytes[bytes.len() - 1],
                     //     self.crc(&bytes[2..bytes.len() - 2])
                     // );
+                    DXL_STATUS_ERROR.lock().await.set_checksum_error(true);
                     return Err(Error::BadCRC);
                 } else {
                     debug!("Packet is ok");
@@ -95,6 +114,7 @@ impl DxlCom {
             }
         } else {
             //Ill formed packet?
+            DXL_STATUS_ERROR.lock().await.set_instruction_error(true);
             Err(Error::BadPacket)
         }
     }
@@ -104,20 +124,25 @@ impl DxlCom {
             MessageType::PingMessage => {
                 //answer to the ping
                 info!("PONG!");
-                let rescrc: u8 = !(self.id + 0x02);
-                let sp = [0xff, 0xff, self.id, 0x02, 0x00, rescrc];
+
+                let errbyte = DXL_STATUS_ERROR.lock().await.bytes[0];
+
+                let rescrc: u8 = !(self.id + errbyte + 0x02);
+
+                let sp = [0xff, 0xff, self.id, 0x02, errbyte, rescrc];
                 self.tx_buffer[..6].copy_from_slice(&sp);
                 return RWAction::Tx(&self.tx_buffer[..6]);
             }
             MessageType::ReadMessage => {
                 //return the read value from register
                 let addr: usize = data[5].into();
-                let size: usize = data[6].into();
+                let size: usize = data[6].into(); //TODO check that size is <MAX_DATA_LENGTH?
+                debug!("Packet is READ addr: {:?} size: {:?}", addr, size);
                 self.tx_buffer[0] = 0xff;
                 self.tx_buffer[1] = 0xff;
                 self.tx_buffer[2] = self.id;
                 self.tx_buffer[3] = size as u8 + 2;
-                self.tx_buffer[4] = 0; //Error byte
+                self.tx_buffer[4] = DXL_STATUS_ERROR.lock().await.bytes[0]; //Error byte
 
                 // {
                 //     let mut registers = registers::REGISTERS.lock().await;
@@ -125,22 +150,79 @@ impl DxlCom {
                 //         .clone_from_slice(&registers.buffer[addr..addr + size]);
                 // }
 
-                let mut buffer = [0u8; 255]; // Ensure buffer is of appropriate size
-                crate::config::dxl_registers_read_by_address(addr, size, &mut buffer)
-                    .await
-                    .expect("Read failed"); //TODO
-                self.tx_buffer[5..5 + size as usize].clone_from_slice(&buffer[0..size]);
+                let mut buffer = [0u8; MAX_BUFFER_LENGTH]; // Ensure buffer is of appropriate size
 
-                self.tx_buffer[size as usize + 5] = crc(&self.tx_buffer[2..4 + size]);
+                match crate::config::dxl_registers_read_by_address(addr, size, &mut buffer).await {
+                    Ok(()) => {
+                        self.tx_buffer[5..5 + size].clone_from_slice(&buffer[0..size]);
+                        self.tx_buffer[size + 5] = crc(&self.tx_buffer[2..4 + size]);
+                        RWAction::Tx(&self.tx_buffer[0..size + 6])
+                    }
+                    Err(()) => {
+                        // RWAction::Ok //TODO Status error?
 
-                RWAction::Tx(&self.tx_buffer[0..size as usize + 6])
+                        DXL_STATUS_ERROR.lock().await.set_instruction_error(true);
+                        //status packet
+                        self.tx_buffer[0] = 0xff;
+                        self.tx_buffer[1] = 0xff;
+                        self.tx_buffer[2] = self.id;
+                        self.tx_buffer[3] = 2;
+                        self.tx_buffer[4] = DXL_STATUS_ERROR.lock().await.bytes[0]; //Error byte
+                        self.tx_buffer[5] = crc(&self.tx_buffer[2..5]);
+
+                        //FIXME: Here we immedatly clear this error
+                        DXL_STATUS_ERROR.lock().await.set_instruction_error(false);
+
+                        // RWAction::Ok
+                        RWAction::Tx(&self.tx_buffer[0..6])
+                    }
+                }
             }
             MessageType::WriteMessage => {
                 //write the value to the register
-                RWAction::Ok
+                //return status packet
+                let addr: usize = data[5].into();
+                let size: usize = <u8 as Into<usize>>::into(data[3]) - (3_usize);
+                debug!("Packet is WRITE addr: {:?} size: {:?}", addr, size);
+                let mut buffer = [0u8; MAX_BUFFER_LENGTH]; // Ensure buffer is of appropriate size
+                buffer[0..size].clone_from_slice(&data[6..6 + size]);
+
+                match crate::config::dxl_registers_write_by_address(addr, size, &buffer[0..size])
+                    .await
+                {
+                    Ok(()) => {
+                        //status packet
+                        self.tx_buffer[0] = 0xff;
+                        self.tx_buffer[1] = 0xff;
+                        self.tx_buffer[2] = self.id;
+                        self.tx_buffer[3] = 2;
+                        self.tx_buffer[4] = DXL_STATUS_ERROR.lock().await.bytes[0]; //Error byte
+                        self.tx_buffer[5] = crc(&self.tx_buffer[2..5]);
+
+                        // RWAction::Ok
+                        RWAction::Tx(&self.tx_buffer[0..6])
+                    }
+                    Err(()) => {
+                        DXL_STATUS_ERROR.lock().await.set_instruction_error(true);
+                        //status packet
+                        self.tx_buffer[0] = 0xff;
+                        self.tx_buffer[1] = 0xff;
+                        self.tx_buffer[2] = self.id;
+                        self.tx_buffer[3] = 2;
+                        self.tx_buffer[4] = DXL_STATUS_ERROR.lock().await.bytes[0]; //Error byte
+                        self.tx_buffer[5] = crc(&self.tx_buffer[2..5]);
+
+                        //FIXME: Here we immedatly clear this error
+                        DXL_STATUS_ERROR.lock().await.set_instruction_error(false);
+
+                        // RWAction::Ok
+                        RWAction::Tx(&self.tx_buffer[0..6])
+                    }
+                }
             }
             MessageType::Unknown => {
-                //nothing
+                debug!("Packet is UNKNOWN");
+                //nothing, it should not happen...
                 RWAction::Ignore
             }
         }

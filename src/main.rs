@@ -7,12 +7,12 @@ use embassy_executor::Spawner;
 // use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{AnyPin, Level, Output, Speed};
 use embassy_stm32::peripherals::{DMA1_CH0, DMA1_CH1, USART1};
-use embassy_stm32::usart::{BufferedUart, Config, Error, Uart, UartRx, UartTx};
+use embassy_stm32::usart::{Config, Uart};
 use embassy_stm32::{bind_interrupts, peripherals, usart};
 // use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 // use embassy_sync::channel::Channel;
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use embassy_sync::mutex::Mutex;
+// use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+// use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
 
 // declare the modules
@@ -24,10 +24,20 @@ use paste::paste;
 
 use {defmt_rtt as _, panic_probe as _};
 
+// same panicking *behavior* as `panic-probe` but doesn't print a panic message
+// this prevents the panic message being printed *twice* when `defmt::panic` is invoked
+#[defmt::panic_handler]
+fn panic() -> ! {
+    cortex_m::asm::udf()
+}
+pub fn exit() -> ! {
+    loop {
+        cortex_m::asm::bkpt();
+    }
+}
+
 // static RX_CHANNEL: Channel<ThreadModeRawMutex, [u8; 6], 1> = Channel::new();
 // static TX_CHANNEL: Channel<ThreadModeRawMutex, [u8; 6], 1> = Channel::new();
-
-static DXL_ID: u8 = 42;
 
 bind_interrupts!(struct Irqs {
     USART1 => usart::InterruptHandler<peripherals::USART1>;
@@ -35,8 +45,8 @@ bind_interrupts!(struct Irqs {
 
 #[embassy_executor::task]
 async fn test_reg() {
-    let mut i: u8 = 0;
-    let mut j: u8 = 1;
+    let i: u8 = 0;
+    let j: u8 = 1;
 
     loop {
         {
@@ -44,18 +54,18 @@ async fn test_reg() {
             // registers.buffer[0] += 1;
             let _ = crate::config::dxl_registers_write_by_address(0, 2, &[i, j]).await;
         }
-        i += 1;
-        j += 1;
+        let _ = i.wrapping_add(1);
+        let _ = j.wrapping_add(1);
         Timer::after(Duration::from_millis(1000)).await;
     }
 }
 
 #[embassy_executor::task]
-async fn DxlSerial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pin: AnyPin) {
-    let mut dxlcom = dynamixel::DxlCom::new(DXL_ID);
+async fn dxl_serial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pin: AnyPin) {
+    let mut dxlcom = dynamixel::DxlCom::new(config::DXL_ID); //TODO read/write ID from flash
     let mut dir = Output::new(dir_pin, Level::Low, Speed::High);
 
-    let mut buf: [u8; 255] = [0; 255];
+    let mut buf: [u8; dynamixel::MAX_BUFFER_LENGTH] = [0; dynamixel::MAX_BUFFER_LENGTH];
 
     dir.set_low(); //reading
 
@@ -75,20 +85,20 @@ async fn DxlSerial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pin
                     }
                     Ok(dynamixel::RWAction::Tx(data)) => {
                         debug!("Sending response: {:?}", data);
-                        dir.set_high();
-                        // Timer::after(Duration::from_micros(500)).await;
-                        // let _ = usart.blocking_write(data); //this doesn't work
-                        match usart.write(data).await //this works
-			{
-			    Ok(())=>{
-				//good
-			    }
-			    Err(_) =>{error!("Error sending response");}
-			}
-                        dir.set_low(); //reading
+                        dir.set_high(); //writing mode
+                                        // Timer::after(Duration::from_micros(500)).await;
+                        match usart.write(data).await {
+                            Ok(()) => {
+                                //good
+                            }
+                            Err(_) => {
+                                error!("Error sending response");
+                            }
+                        }
+                        dir.set_low(); //reading mode
                     }
 
-                    Err(err) => {
+                    Err(_err) => {
                         error!("Error"); //TODO
                     }
                 }
@@ -113,7 +123,7 @@ async fn main(spawner: Spawner) -> ! {
         p.USART1, p.PB15, p.PB14, Irqs, p.DMA1_CH0, p.DMA1_CH1, config,
     );
 
-    unwrap!(spawner.spawn(DxlSerial(usart, p.PD9.into())));
+    unwrap!(spawner.spawn(dxl_serial(usart, p.PD9.into())));
 
     unwrap!(spawner.spawn(test_reg()));
 
@@ -127,3 +137,26 @@ async fn main(spawner: Spawner) -> ! {
         Timer::after(Duration::from_millis(500)).await;
     }
 }
+
+/*
+#[cfg(test)]
+#[defmt_test::tests]
+mod tests {
+    use super::*;
+    // #[init]
+    // fn init() {}
+
+    use defmt::{assert, assert_eq};
+
+    #[test]
+    fn test_it_works() {
+        info!("TEST");
+        assert!(true)
+    }
+    #[test]
+    fn test_42() {
+        let a: u8 = 42;
+        assert_eq!(a, 42)
+    }
+}
+*/
