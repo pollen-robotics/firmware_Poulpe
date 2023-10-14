@@ -6,10 +6,8 @@ use {defmt_rtt as _, panic_probe as _};
 use embassy_stm32::peripherals as p;
 use embassy_stm32::dma::NoDma;
 use embassy_stm32::spi::{Config, Spi};
-use embassy_stm32::gpio::{Level, Output, Speed};
+use embassy_stm32::gpio::{Level, Output, Speed, Input, Pull};
 use embassy_time::*; // TODO : to be remove (delays for testing purposes only)
-
-use crate::tmc4671;
 
 pub enum Tmc4671Registers {
     CHIPINFO_DATA = 0x00,
@@ -82,6 +80,7 @@ pub enum Tmc4671Registers {
     PID_VELOCITY_TARGET = 0x66,
     PID_VELOCITY_OFFSET = 0x67,
     PID_POSITION_TARGET = 0x68,
+    PID_TORQUE_FLUX_ACTUAL = 0x69,
     PID_VELOCITY_ACTUAL = 0x6A,
     PID_POSITION_ACTUAL = 0x6B,
     PID_ERROR_ADDR = 0x6D,
@@ -116,10 +115,13 @@ pub enum MotionMode { // From register MODE_RAMP_MODE_MOTION
     PmwIPosition = 15
 }
 
-pub struct Ventouse {
+pub struct Ventouse { // Now that is for J5 (middle FCC) - Motor "B"
     spi: Spi<'static, p::SPI4, NoDma, NoDma>,
-    cs_foc:    Output<'static, p::PE3>,
-    cs_driver: Output<'static, p::PC15>
+    cs_foc:       Output<'static, p::PE3>,
+    cs_driver:    Output<'static, p::PC15>,
+    foc_enable:   Output<'static, p::PE0>,
+    foc_status:   Input<'static,  p::PC13>,
+    driver_fault: Input<'static,  p::PC14>,
 }
 
 impl Ventouse {
@@ -132,39 +134,99 @@ impl Ventouse {
         spi: p::SPI4,
         dma_rx: NoDma,
         dma_tx: NoDma,
+        foc_enable_p: p::PE0,
+        foc_status_p: p::PC13,
+        driver_fault_p: p::PC14
     ) -> Self {
+        // SPI
         let cs_foc    = Output::new(cs_foc_p,    Level::High, Speed::Medium);
         let cs_driver = Output::new(cs_driver_p, Level::High, Speed::Medium);
         let mut cfg = Config::default();
         cfg.mode = embassy_stm32::spi::MODE_3;
         let spi = Spi::new(spi, sck_p, mosi_p, miso_p, dma_tx, dma_rx, cfg);
+        // IOs
+        let foc_enable = Output::new(foc_enable_p, Level::Low, Speed::Low);
+        let foc_status = Input::new(foc_status_p, Pull::None);
+        let driver_fault = Input::new(driver_fault_p, Pull::None);
 
-        Self { cs_foc, cs_driver, spi }
+        Self { cs_foc, cs_driver, spi, foc_enable, foc_status, driver_fault }
+    }
+
+    pub fn tmc4671_enable(&mut self) {
+        self.foc_enable.set_high();
+    }
+
+    pub fn tmc4671_disable(&mut self) {
+        self.foc_enable.set_low();
     }
 
     pub fn tmc4671_set_mode(&mut self, mode: MotionMode) {
         let mut data = 0x00000000u32;
-        self.tmc4671_transmit_raw_data(false, Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, &mut data).unwrap();
+        // read current state first
+        self.tmc4671_transmit_raw_data(false, Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data).unwrap();
         data &= 0xFFFFFF00u32;
         data |= mode as u32;
         self.tmc4671_write_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data);
     }
 
-    pub fn tmc4671_set_target_velocity(&mut self, velocity_target: i32) {
-        self.tmc4671_write_register(Tmc4671Registers::PID_VELOCITY_TARGET as u8, velocity_target as u32);
+    pub fn tmc4671_get_u32(&mut self, reg: u8) -> Result<u32, embassy_stm32::spi::Error> {
+        if let Ok(res) = self.tmc4671_read_register(reg) {
+            return Ok(res);
+        } else {
+            return Err(embassy_stm32::spi::Error::Framing);
+        }
     }
 
     pub fn tmc4671_get_i32(&mut self, reg: u8) -> Result<i32, embassy_stm32::spi::Error> {
         if let Ok(res) = self.tmc4671_read_register(reg) {
-            let mut val = 0i32;
-            val +=  res[0] as i32 ;
-            val += (res[1] as i32) <<  8;
-            val += (res[2] as i32) << 16;
-            val += (res[3] as i32) << 24;
-            return Ok(val);
+            return Ok(res as i32);
         } else {
             return Err(embassy_stm32::spi::Error::Framing);
         }
+    }
+
+    fn tmc4671_get_lower_i16(&mut self, reg: u8) -> Result<i16, embassy_stm32::spi::Error> {
+        if let Ok(res) = self.tmc4671_read_register(reg) {
+            return Ok(((res & 0x0000FFFFu32) >> 16) as i16);
+        } else {
+            return Err(embassy_stm32::spi::Error::Framing);
+        }
+    }
+
+    fn tmc4671_get_upper_i16(&mut self, reg: u8) -> Result<i16, embassy_stm32::spi::Error> {
+        if let Ok(res) = self.tmc4671_read_register(reg) {
+            return Ok(((res & 0xFFFF0000u32) >> 16) as i16);
+        } else {
+            return Err(embassy_stm32::spi::Error::Framing);
+        }
+    }
+
+    pub fn tmc4671_get_torque_actual(&mut self) -> Result<i16, embassy_stm32::spi::Error> {
+        self.tmc4671_get_upper_i16(Tmc4671Registers::PID_TORQUE_FLUX_ACTUAL as u8)
+    }
+
+    pub fn tmc4671_get_flux_actual(&mut self) -> Result<i16, embassy_stm32::spi::Error> {
+        self.tmc4671_get_lower_i16(Tmc4671Registers::PID_TORQUE_FLUX_ACTUAL as u8)
+    }
+
+    pub fn tmc4671_set_torque_target(&mut self, torque_target: i16) {
+        // read current state first -> bits 15-0 is flux_target and should be kept.
+        let mut torque_and_flux = self.tmc4671_read_register(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8).unwrap();
+        torque_and_flux &= 0x0000FFFFu32; // clear actual torque
+        torque_and_flux |= (torque_target as u32) << 16;
+        self.tmc4671_write_register(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8, torque_and_flux);
+    }
+
+    pub fn tmc4671_set_flux_target(&mut self, flux_target: i16) {
+        // read current state first -> bits 31-16 is torque_target and should be kept.
+        let mut torque_and_flux = self.tmc4671_read_register(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8).unwrap();
+        torque_and_flux &= 0xFFFF0000u32; // clear actual flux
+        torque_and_flux |= flux_target as u32;
+        self.tmc4671_write_register(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8, torque_and_flux);
+    }
+
+    pub fn tmc4671_set_target_velocity(&mut self, velocity_target: i32) {
+        self.tmc4671_write_register(Tmc4671Registers::PID_VELOCITY_TARGET as u8, velocity_target as u32);
     }
 
     pub fn tmc4671_get_target_velocity(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
@@ -173,6 +235,22 @@ impl Ventouse {
 
     pub fn tmc4671_get_actual_velocity(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
         self.tmc4671_get_i32(Tmc4671Registers::PID_VELOCITY_ACTUAL as u8)
+    }
+
+    pub fn tmc4671_get_actual_position(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
+        self.tmc4671_get_i32(Tmc4671Registers::PID_POSITION_ACTUAL as u8)
+    }
+
+    pub fn tmc4671_get_encoder_count(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
+        self.tmc4671_get_i32(Tmc4671Registers::ABN_DECODER_COUNT as u8)
+    }
+
+    pub fn tmc4671_get_encoder_ppr(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
+        self.tmc4671_get_i32(Tmc4671Registers::ABN_DECODER_PPR as u8)
+    }
+
+    pub fn tmc4671_set_encoder_ppr(&mut self, ppr: i32) {
+        self.tmc4671_write_register(Tmc4671Registers::PID_VELOCITY_TARGET as u8, ppr as u32);
     }
 
     pub fn tmc4671_init(&mut self)// -> Result<>
@@ -264,46 +342,47 @@ impl Ventouse {
         &mut self,
         reg: u8,
         data_w: u32
-    ) -> Result<[u8; 4], embassy_stm32::spi::Error> {
+    ) -> Result<u32, embassy_stm32::spi::Error> {
         let mut data_m = data_w;
-        let res = self.tmc4671_transmit_raw_data(true, reg, &mut data_m);
-        let _ = Timer::after(Duration::from_millis(1)); ///////////////////////////////////// Warning!!! Testing only
+        let res = self.tmc4671_transmit_raw_data(true, reg, data_m);
+let _ = Timer::after(Duration::from_micros(1)); ///////////////////////////////////////////////////////// Warning!!! Testing only
         return res;
     }
 
     pub fn tmc4671_read_register(
         &mut self,
         reg: u8,
-    ) -> Result<[u8; 4], embassy_stm32::spi::Error> {
+    ) -> Result<u32, embassy_stm32::spi::Error> {
         let mut data_m = 0x00000000u32;
-        return self.tmc4671_transmit_raw_data(false, reg, &mut data_m);
+        return self.tmc4671_transmit_raw_data(false, reg, data_m);
     }
 
     pub fn tmc4671_transmit_raw_data(
         &mut self,
         write_bit: bool,
         addr: u8,
-        data: &mut u32,
-    ) -> Result<[u8; 4], embassy_stm32::spi::Error> {
-        // Building array
+        data: u32,
+    ) -> Result<u32, embassy_stm32::spi::Error> {
+        // Building the array
         let mut msb_data = addr;
+        let mut data_u8_array = data.to_le_bytes();
         if write_bit == true {
             msb_data = addr | 0b10000000;
+        } else {
+            data_u8_array = [0x00u8 ; 4];
         }
-        let data_u8_array = data.to_le_bytes();
-        let mut transfer_data = [msb_data, data_u8_array[0], data_u8_array[1], data_u8_array[2], data_u8_array[3]];
-    
+        let mut transfer_data = [msb_data, data_u8_array[3], data_u8_array[2], data_u8_array[1], data_u8_array[0]];
+
         // Sending data
         &mut self.cs_foc.set_low();
-        let _result = &mut self.spi.blocking_transfer_in_place(&mut transfer_data); // Todo: the error is not treated.
+        let _result = &mut self.spi.blocking_transfer_in_place(&mut transfer_data);
         &mut self.cs_foc.set_high();
     
-        let mut read_data = [0x00u8; 4];
-        read_data[0] = transfer_data[1];
-        read_data[1] = transfer_data[2];
-        read_data[2] = transfer_data[3];
-        read_data[3] = transfer_data[4];
-    
+        let mut read_data = transfer_data[4] as u32;
+        read_data += (transfer_data[3] as u32) <<  8;
+        read_data += (transfer_data[2] as u32) << 16;
+        read_data += (transfer_data[1] as u32) << 24;
+            
         Ok(read_data)
     }
 
@@ -312,25 +391,24 @@ impl Ventouse {
         write_bit: bool,
         addr: u8,
         data: &mut u32,
-    ) -> Result<[u8; 4], embassy_stm32::spi::Error> {
+    ) -> Result<u32, embassy_stm32::spi::Error> {
         // Building array
         let mut msb_data = addr;
         if write_bit == true {
             msb_data = addr | 0b10000000;
         }
         let data_u8_array = data.to_le_bytes();
-        let mut transfer_data = [msb_data, data_u8_array[0], data_u8_array[1], data_u8_array[2], data_u8_array[3]];
+        let mut transfer_data = [msb_data, data_u8_array[3], data_u8_array[2], data_u8_array[1], data_u8_array[0]];
     
         // Sending data
         &mut self.cs_driver.set_low();
         let _result = &mut self.spi.blocking_transfer_in_place(&mut transfer_data); // Todo: the error is not treated.
         &mut self.cs_driver.set_high();
     
-        let mut read_data = [0x00u8; 4];
-        read_data[0] = transfer_data[1];
-        read_data[1] = transfer_data[2];
-        read_data[2] = transfer_data[3];
-        read_data[3] = transfer_data[4];
+        let mut read_data = transfer_data[4] as u32;
+        read_data = (transfer_data[3] as u32) <<  8;
+        read_data = (transfer_data[2] as u32) << 16;
+        read_data = (transfer_data[1] as u32) << 24;
     
         Ok(read_data)
     }

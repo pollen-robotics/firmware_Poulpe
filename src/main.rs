@@ -10,8 +10,6 @@ use embassy_time::{Duration, Timer};
 use embassy_stm32::{spi, Config};
 use {defmt_rtt as _, panic_probe as _};
 
-mod tmc6200;
-mod tmc4671;
 mod ventouse;
 
 #[embassy_executor::main]
@@ -26,46 +24,52 @@ async fn main(_spawner: Spawner) {
     led_error.set_low();
     led_hello.set_low();
 
-    let mut ventouse = ventouse::Ventouse::new(p.PE3, p.PC15, p.PE12, p.PE5, p.PE6, p.SPI4, NoDma, NoDma);
+    let mut ventouse = ventouse::Ventouse::new(
+        p.PE3,
+        p.PC15,
+        p.PE12,
+        p.PE5,
+        p.PE6,
+        p.SPI4,
+        NoDma,
+        NoDma,
+        p.PE0,
+        p.PC13,
+        p.PC14
+    );
 
-    // TMC6200 init
-    let mut write_b = true;
-    let mut reg_addr = 0x00u8;
+    // TMC6200 init ("Single-line mode" aka 6-PWM)
+    let write_b = true;
+    let reg_addr = 0x00u8;
     let mut data = 0x00000000u32;
     let res = ventouse.tmc6200_transmit_raw_data(write_b, reg_addr, &mut data);
     if let Err(_) = res {
         defmt::panic!("crap_from_fn!");
     }
-    info!("write[{:#04x}]: {:#04x}", reg_addr, res.unwrap());
-    Timer::after(Duration::from_millis(1000)).await;
+    info!("Drive_mode: {:#x}", ventouse.tmc6200_transmit_raw_data(false, reg_addr, &mut data).unwrap());
+    Timer::after(Duration::from_millis(10)).await;
 
     // TMC4671 init
-    /*write_b = true;
-    reg_addr = 0x00u8;
-    data = 0x00000000u32;
-    ventouse.tmc4671_transmit_raw_data(write_b, reg_addr, &mut data).unwrap();
-    Timer::after(Duration::from_millis(10)).await;*/
     ventouse.tmc4671_init();
-    ventouse.tmc4671_set_mode(ventouse::MotionMode::Velocity);
-    ventouse.tmc4671_set_target_velocity(2000);
-    info!("Velocity_target: {:?}", ventouse.tmc4671_get_target_velocity().unwrap());
+    ventouse.tmc4671_set_mode(ventouse::MotionMode::Stopped);
+    ventouse.tmc4671_enable();
+    ventouse.tmc4671_set_mode(ventouse::MotionMode::Torque);
+    ventouse.tmc4671_set_torque_target(0);
+    ventouse.tmc4671_set_flux_target(0);
+//    ventouse.tmc4671_set_target_velocity(20);
+//    info!("Velocity_target: {:?}", ventouse.tmc4671_get_target_velocity().unwrap());
 
     loop {
         led_hello.set_high();
         Timer::after(Duration::from_millis(500)).await;
 
-        /*write_b = false;
-        //reg_addr = ventouse::Tmc4671Registers::CHIPINFO_DATA as u8;
-        //reg_addr = ventouse::Tmc4671Registers::ABN_DECODER_PPR as u8;
-        //reg_addr = ventouse::Tmc4671Registers::ABN_DECODER_COUNT as u8;
-        reg_addr = ventouse::Tmc4671Registers::MOTOR_TYPE_N_POLE_PAIRS as u8;
-        let res = ventouse.tmc4671_transmit_raw_data(write_b, reg_addr, &mut data);
-        if let Err(_) = res {
-            defmt::panic!("crap_from_fn!");
-        }
-        info!("read[{:#04x}]: {:#04x}", reg_addr, res.unwrap());*/
+//        info!("Velocity_actual: {:?}", ventouse.tmc4671_get_actual_velocity().unwrap());
+//        info!("Position_actual: {:?}", ventouse.tmc4671_get_actual_position().unwrap());
+//        ventouse.tmc4671_set_encoder_ppr(4096);
+//        info!("encoder_ppr: {:?}", ventouse.tmc4671_get_encoder_ppr().unwrap());
+//        info!("encoder_actual: {:?}", ventouse.tmc4671_get_encoder_count().unwrap());
+        info!("Actual flux/torque: {:?} {:?}", ventouse.tmc4671_get_flux_actual().unwrap(), ventouse.tmc4671_get_torque_actual().unwrap());
 
-        info!("Velocity_actual: {:?}", ventouse.tmc4671_get_actual_velocity().unwrap());
 
         led_hello.set_low();
         Timer::after(Duration::from_millis(500)).await;
