@@ -96,6 +96,7 @@ pub enum Tmc4671Registers {
     STATUS_MASK = 0x7D
     }
 
+//#[derive(Format)] // For defmt printing
 pub enum MotionMode { // From register MODE_RAMP_MODE_MOTION
     Stopped = 0,
     Torque = 1,
@@ -114,6 +115,52 @@ pub enum MotionMode { // From register MODE_RAMP_MODE_MOTION
     PmwIVelocity = 14,
     PmwIPosition = 15
 }
+
+impl MotionMode {
+    fn motion_from_u8(value: u8) -> Option<MotionMode> {
+        match value {
+            0 => Some(MotionMode::Stopped),
+            1 => Some(MotionMode::Torque),
+            2 => Some(MotionMode::Velocity),
+            3 => Some(MotionMode::Position),
+            4 => Some(MotionMode::PrbsFlux),
+            5 => Some(MotionMode::PrbsTorque),
+            6 => Some(MotionMode::PrbsVelocity),
+            7 => Some(MotionMode::PrbsPosition),
+            8 => Some(MotionMode::RqUdExt),
+            9 => Some(MotionMode::Reserved),
+           10 => Some(MotionMode::AgpiATorque),
+           11 => Some(MotionMode::AgpiAVelocity),
+           12 => Some(MotionMode::AgpiAPosition),
+           13 => Some(MotionMode::PmwITorque),
+           14 => Some(MotionMode::PmwIVelocity),
+           15 => Some(MotionMode::PmwIPosition),
+            _ => None, // Handle invalid values, if needed
+        }
+    }
+    fn motion_to_u8(value: MotionMode) -> Option<u8> {
+        match value {
+            MotionMode::Stopped => Some(0),
+            MotionMode::Torque => Some(1),
+            MotionMode::Velocity => Some(2),
+            MotionMode::Position => Some(3),
+            MotionMode::PrbsFlux => Some(4),
+            MotionMode::PrbsTorque => Some(5),
+            MotionMode::PrbsVelocity => Some(6),
+            MotionMode::PrbsPosition => Some(7),
+            MotionMode::RqUdExt => Some(8),
+            MotionMode::Reserved => Some(9),
+            MotionMode::AgpiATorque => Some(10),
+            MotionMode::AgpiAVelocity => Some(11), 
+            MotionMode::AgpiAPosition => Some(12),
+            MotionMode::PmwITorque => Some(13),
+            MotionMode::PmwIVelocity => Some(14),
+            MotionMode::PmwIPosition => Some(15),
+            _ => None, // Handle invalid values, if needed
+        }
+    }
+}
+
 
 pub struct Ventouse { // Now that is for J5 (middle FCC) - Motor "B"
     spi: Spi<'static, p::SPI4, NoDma, NoDma>,
@@ -169,6 +216,19 @@ impl Ventouse {
         self.tmc4671_write_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data);
     }
 
+    pub fn tmc4671_get_mode(&mut self) -> Result<u8, embassy_stm32::spi::Error> { // TODO: it should return a MotionMode but display of enum with defmt is unstable
+        if let Ok(read) = self.tmc4671_read_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8) {
+            return Ok((read & 0x000000FFu32) as u8);
+            /*let data = match MotionMode::motion_from_u8(res as u8) {
+                Some(d) => d,
+                None => return Err(embassy_stm32::spi::Error::Framing)
+            };
+            return Ok(data);*/
+        } else {
+            return Err(embassy_stm32::spi::Error::Framing);
+        }
+    }
+
     pub fn tmc4671_get_u32(&mut self, reg: u8) -> Result<u32, embassy_stm32::spi::Error> {
         if let Ok(res) = self.tmc4671_read_register(reg) {
             return Ok(res);
@@ -187,7 +247,7 @@ impl Ventouse {
 
     fn tmc4671_get_lower_i16(&mut self, reg: u8) -> Result<i16, embassy_stm32::spi::Error> {
         if let Ok(res) = self.tmc4671_read_register(reg) {
-            return Ok(((res & 0x0000FFFFu32) >> 16) as i16);
+            return Ok((res & 0x0000FFFFu32) as i16);
         } else {
             return Err(embassy_stm32::spi::Error::Framing);
         }
@@ -207,6 +267,14 @@ impl Ventouse {
 
     pub fn tmc4671_get_flux_actual(&mut self) -> Result<i16, embassy_stm32::spi::Error> {
         self.tmc4671_get_lower_i16(Tmc4671Registers::PID_TORQUE_FLUX_ACTUAL as u8)
+    }
+
+    pub fn tmc4671_get_torque_target(&mut self) -> Result<i16, embassy_stm32::spi::Error> {
+        self.tmc4671_get_upper_i16(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8)
+    }
+
+    pub fn tmc4671_get_flux_target(&mut self) -> Result<i16, embassy_stm32::spi::Error> {
+        self.tmc4671_get_lower_i16(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8)
     }
 
     pub fn tmc4671_set_torque_target(&mut self, torque_target: i16) {

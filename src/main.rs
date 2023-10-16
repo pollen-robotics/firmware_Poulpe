@@ -54,8 +54,8 @@ async fn main(_spawner: Spawner) {
     ventouse.tmc4671_set_mode(ventouse::MotionMode::Stopped);
     ventouse.tmc4671_enable();
     ventouse.tmc4671_set_mode(ventouse::MotionMode::Torque);
-    ventouse.tmc4671_set_torque_target(0);
-    ventouse.tmc4671_set_flux_target(0);
+    ventouse.tmc4671_set_torque_target(1000);
+    ventouse.tmc4671_set_flux_target(1001);
 //    ventouse.tmc4671_set_target_velocity(20);
 //    info!("Velocity_target: {:?}", ventouse.tmc4671_get_target_velocity().unwrap());
 
@@ -68,7 +68,14 @@ async fn main(_spawner: Spawner) {
 //        ventouse.tmc4671_set_encoder_ppr(4096);
 //        info!("encoder_ppr: {:?}", ventouse.tmc4671_get_encoder_ppr().unwrap());
 //        info!("encoder_actual: {:?}", ventouse.tmc4671_get_encoder_count().unwrap());
-        info!("Actual flux/torque: {:?} {:?}", ventouse.tmc4671_get_flux_actual().unwrap(), ventouse.tmc4671_get_torque_actual().unwrap());
+        info!("Target/Actual: {:?}/{:?} Flux, {:?}/{:?} Torque - mode: {:#04x}", 
+            ventouse.tmc4671_get_flux_target().unwrap(), 
+            ventouse.tmc4671_get_flux_actual().unwrap(), 
+            ventouse.tmc4671_get_torque_target().unwrap(), 
+            ventouse.tmc4671_get_torque_actual().unwrap(),
+            ventouse.tmc4671_get_mode().unwrap()
+        );
+//        info!("torque_flux_reg: {:#x}", ventouse.tmc4671_transmit_raw_data(false, 0x64u8, 0x00000000u32));
 
 
         led_hello.set_low();
