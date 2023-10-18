@@ -24,6 +24,10 @@ use paste::paste;
 
 use {defmt_rtt as _, panic_probe as _};
 
+bind_interrupts!(struct Irqs {
+    USART1 => usart::InterruptHandler<peripherals::USART1>;
+});
+
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message
 // this prevents the panic message being printed *twice* when `defmt::panic` is invoked
 #[defmt::panic_handler]
@@ -39,29 +43,34 @@ pub fn exit() -> ! {
 // static RX_CHANNEL: Channel<ThreadModeRawMutex, [u8; 6], 1> = Channel::new();
 // static TX_CHANNEL: Channel<ThreadModeRawMutex, [u8; 6], 1> = Channel::new();
 
-bind_interrupts!(struct Irqs {
-    USART1 => usart::InterruptHandler<peripherals::USART1>;
-});
-
 #[embassy_executor::task]
 async fn test_reg() {
     let i: u8 = 0;
     let j: u8 = 1;
+    let k: u8 = 0;
 
     loop {
         {
             // let mut registers = registers::REGISTERS.lock().await;
             // registers.buffer[0] += 1;
             let _ = crate::config::dxl_registers_write_by_address(0, 2, &[i, j]).await;
+            let _ = crate::config::dxl_registers_write_by_name(
+                config::DxlRegistersEnum::SensorCenterPresentPosition,
+                &[0, 0, 0, k],
+            )
+            .await;
         }
         let _ = i.wrapping_add(1);
         let _ = j.wrapping_add(1);
+        let _ = k.wrapping_add(1);
+
         Timer::after(Duration::from_millis(1000)).await;
     }
 }
 
 #[embassy_executor::task]
 async fn dxl_serial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pin: AnyPin) {
+    //How can I avoid passing this specific type?
     let mut dxlcom = dynamixel::DxlCom::new(config::DXL_ID); //TODO read/write ID from flash
     let mut dir = Output::new(dir_pin, Level::Low, Speed::High);
 
@@ -122,6 +131,10 @@ async fn main(spawner: Spawner) -> ! {
     let usart = Uart::new(
         p.USART1, p.PB15, p.PB14, Irqs, p.DMA1_CH0, p.DMA1_CH1, config,
     );
+
+    // let usart1 = Uart::new(
+    //     p.USART1, p.PB15, p.PB14, Irqs, p.DMA1_CH0, p.DMA1_CH1, config,
+    // );
 
     unwrap!(spawner.spawn(dxl_serial(usart, p.PD9.into())));
 
