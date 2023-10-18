@@ -192,7 +192,8 @@ impl Ventouse {
         cfg.mode = embassy_stm32::spi::MODE_3;
         let spi = Spi::new(spi, sck_p, mosi_p, miso_p, dma_tx, dma_rx, cfg);
         // IOs
-        let foc_enable = Output::new(foc_enable_p, Level::Low, Speed::Low);
+        let mut foc_enable = Output::new(foc_enable_p, Level::Low, Speed::Low);
+        foc_enable.set_low();
         let foc_status = Input::new(foc_status_p, Pull::None);
         let driver_fault = Input::new(driver_fault_p, Pull::None);
 
@@ -254,10 +255,9 @@ impl Ventouse {
     }
 
     fn tmc4671_get_upper_i16(&mut self, reg: u8) -> Result<i16, embassy_stm32::spi::Error> {
-        if let Ok(res) = self.tmc4671_read_register(reg) {
-            return Ok(((res & 0xFFFF0000u32) >> 16) as i16);
-        } else {
-            return Err(embassy_stm32::spi::Error::Framing);
+        match self.tmc4671_read_register(reg) {
+            Ok(res) => { Ok(((res & 0xFFFF0000u32) >> 16) as i16) }
+            Err(e) => { Err(e) }
         }
     }
 
@@ -321,89 +321,177 @@ impl Ventouse {
         self.tmc4671_write_register(Tmc4671Registers::PID_VELOCITY_TARGET as u8, ppr as u32);
     }
 
-    pub fn tmc4671_init(&mut self)// -> Result<>
+    pub async fn tmc4671_init(&mut self) -> Result<(), embassy_stm32::spi::Error> {
+        // /!\ Please note that the TMC6200 must be in Single-line mode (aka 6-PMW)
+
+        // Motor type & PWM configuration
+        self.tmc4671_checked_write(Tmc4671Registers::MOTOR_TYPE_N_POLE_PAIRS as u8, 0x00030007)?;
+        self.tmc4671_checked_write(Tmc4671Registers::PWM_POLARITIES as u8, 0x00000000)?;
+        self.tmc4671_checked_write(Tmc4671Registers::PWM_MAXCNT as u8, 0x00000F9F)?;
+        self.tmc4671_checked_write(Tmc4671Registers::PWM_BBM_H_BBM_L as u8, 0x00001919)?;
+        self.tmc4671_checked_write(Tmc4671Registers::PWM_SV_CHOP as u8, 0x00000107)?;
+
+        // ADC configuration
+        self.tmc4671_checked_write(Tmc4671Registers::ADC_I_SELECT as u8, 0x24000100)?;
+        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MCFG_B_MCFG_A as u8, 0x00100010)?;
+        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MCLK_A as u8, 0x20000000)?;
+        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MCLK_B as u8, 0x00000000)?;
+        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MDEC_B_MDEC_A as u8, 0x014E014E)?;
+        self.tmc4671_checked_write(Tmc4671Registers::ADC_I1_SCALE_OFFSET as u8, 0xFF0083CF)?;
+        self.tmc4671_checked_write(Tmc4671Registers::ADC_I0_SCALE_OFFSET as u8, 0xFF00822E)?;
+
+        // ABN encoder settings
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_MODE as u8, 0x00000000)?;
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_PPR as u8, 0x00001000)?;
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_PHI_E_PHI_M_OFFSET as u8, 0x00000000)?;
+
+        // Limits
+        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, 0x00007D00)?; // 32000
+//        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, 0x00001000)?;
+
+        // PI settings
+        self.tmc4671_checked_write(Tmc4671Registers::PID_FLUX_P_FLUX_I as u8, 0x01DC0000)?;
+        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_P_TORQUE_I as u8, 0x01DC0000)?;
+
+
+        // ===== ABN encoder test drive =====
+        info!("===== ABN encoder test drive =====");
+
+        // Init encoder
+        self.tmc4671_checked_write(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, 0x00000008)?; // Open loop mode
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_PHI_E_PHI_M_OFFSET as u8, 0x00000000)?;
+        self.tmc4671_checked_write(Tmc4671Registers::PHI_E_SELECTION as u8, 0x00000001)?; // Phi_e_external
+        self.tmc4671_checked_write(Tmc4671Registers::PHI_E_EXT as u8, 0x00000000)?;
+//        self.tmc4671_checked_write(Tmc4671Registers::UQ_UD_EXT as u8, 0x000007D0)?; // 2000, ud_ext only
+        self.tmc4671_checked_write(Tmc4671Registers::UQ_UD_EXT as u8, 0x000007D0)?;
+        let _ = Timer::after(Duration::from_millis(1000)).await;
+
+        // Clear abn_decoder_count
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_COUNT as u8, 0x00000000)?;
+        
+        // Feedback selection
+        self.tmc4671_checked_write(Tmc4671Registers::PHI_E_SELECTION as u8, 0x00000003)?; // Phi_e_ABN
+        self.tmc4671_checked_write(Tmc4671Registers::VELOCITY_SELECTION as u8, 0x00000009)?;
+
+        // Switch to torque mode
+        self.tmc4671_checked_write(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, 0x00000001)?; // Torque mode
+            
+
+        // Rotate right
+        info!("Rotate right...");
+        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8, 0x03E80000)?;
+        let _ = Timer::after(Duration::from_millis(3000)).await;
+    
+        // Rotate left
+        info!("Rotate left...");
+        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8, 0xFC180000)?;
+        let _ = Timer::after(Duration::from_millis(3000)).await;
+    
+        // Stop
+        info!("Stop...");
+        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8, 0x00000000)?;
+
+        Ok(())
+    }
+
+    /*pub fn tmc4671_init(&mut self)// -> Result<>
     {
-        self.tmc4671_write_register(Tmc4671Registers::CHIPINFO_ADDR as u8, 0x00000001).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::ADC_RAW_ADDR as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::dsADC_MCFG_B_MCFG_A as u8, 0x00100010).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::dsADC_MCLK_A as u8, 0x20000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::dsADC_MCLK_B as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::dsADC_MDEC_B_MDEC_A as u8, 0x014E014E).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::ADC_I1_SCALE_OFFSET as u8, 0xFF0083CF).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::ADC_I0_SCALE_OFFSET as u8, 0xFF00822E).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::ADC_I_SELECT as u8, 0x24000100).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::ADC_I1_I0_EXT as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::DS_ANALOG_INPUT_STAGE_CFG as u8, 0x00044400).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::AENC_0_SCALE_OFFSET as u8, 0x01000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::AENC_1_SCALE_OFFSET as u8, 0x01000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::AENC_2_SCALE_OFFSET as u8, 0x01000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::AENC_SELECT as u8, 0x03020100).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PWM_POLARITIES as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PWM_MAXCNT as u8, 0x00000F9F).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PWM_BBM_H_BBM_L as u8, 0x00001919).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PWM_SV_CHOP as u8, 0x00000007).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::MOTOR_TYPE_N_POLE_PAIRS as u8, 0x00030007).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PHI_E_EXT as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::OPENLOOP_MODE as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::OPENLOOP_ACCELERATION as u8, 0x0000003C).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::OPENLOOP_VELOCITY_TARGET as u8, 0xFFFFFFFB).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::OPENLOOP_VELOCITY_ACTUAL as u8, 0xFFFFFFFB).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::OPENLOOP_PHI as u8, 0x00003BDC).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::UQ_UD_EXT as u8, 0x00000483).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::ABN_DECODER_MODE as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::ABN_DECODER_PPR as u8, 0x00001000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::ABN_DECODER_COUNT as u8, 0x000006D4).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::ABN_DECODER_COUNT_N as u8, 0x000006D4).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::ABN_DECODER_PHI_E_PHI_M_OFFSET as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::ABN_2_DECODER_MODE as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::ABN_2_DECODER_PPR as u8, 0x00010000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::ABN_2_DECODER_COUNT as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::ABN_2_DECODER_COUNT_N as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::ABN_2_DECODER_PHI_M_OFFSET as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::HALL_MODE as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::HALL_POSITION_060_000 as u8, 0x2AAA0000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::HALL_POSITION_180_120 as u8, 0x80005555).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::HALL_POSITION_300_240 as u8, 0xD555AAAA).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::HALL_PHI_E_PHI_M_OFFSET as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::HALL_DPHI_MAX as u8, 0x00002AAA).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::AENC_DECODER_MODE as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::AENC_DECODER_N_THRESHOLD as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::AENC_DECODER_PHI_A_OFFSET as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::AENC_DECODER_PPR as u8, 0x00000001).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::AENC_DECODER_COUNT_N as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::AENC_DECODER_PHI_E_PHI_M_OFFSET as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::CONFIG_DATA as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::CONFIG_ADDR as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::VELOCITY_SELECTION as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::POSITION_SELECTION as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PHI_E_SELECTION as u8, 0x00000003).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PID_FLUX_P_FLUX_I as u8, 0x01DC0000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PID_TORQUE_P_TORQUE_I as u8, 0x01DC0000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PID_VELOCITY_P_VELOCITY_I as u8, 0x032006D6).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PID_POSITION_P_POSITION_I as u8, 0x00FA0000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PIDOUT_UQ_UD_LIMITS as u8, 0x00005A81).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, 0x00007D00).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PID_VELOCITY_LIMIT as u8, 0x003D0900).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PID_POSITION_LIMIT_LOW as u8, 0x80000001).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PID_POSITION_LIMIT_HIGH as u8, 0x7FFFFFFF).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, 0x00000001).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PID_TORQUE_FLUX_OFFSET as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PID_VELOCITY_TARGET as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PID_VELOCITY_OFFSET as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PID_POSITION_TARGET as u8, 0xFFFFFF90).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PID_POSITION_ACTUAL as u8, 0xFFFFFF90).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::PID_ERROR_ADDR as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::INTERIM_DATA as u8, 0xFF92003C).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::INTERIM_ADDR as u8, 0x00000011).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::WATCHDOG_CFG as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::ADC_VM_LIMITS as u8, 0xFFFFFFFF).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::STEP_WIDTH as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::UART_BPS as u8, 0x00009600).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::UART_ADDRS as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::GPIO_dsADCI_CONFIG as u8, 0x00000000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::STATUS_FLAGS as u8, 0xF0780000).unwrap();
-        self.tmc4671_write_register(Tmc4671Registers::STATUS_MASK as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::CHIPINFO_ADDR as u8, 0x00000001).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::ADC_RAW_ADDR as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MCFG_B_MCFG_A as u8, 0x00100010).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MCLK_A as u8, 0x20000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MCLK_B as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MDEC_B_MDEC_A as u8, 0x014E014E).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::ADC_I1_SCALE_OFFSET as u8, 0xFF0083CF).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::ADC_I0_SCALE_OFFSET as u8, 0xFF00822E).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::ADC_I_SELECT as u8, 0x24000100).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::ADC_I1_I0_EXT as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::DS_ANALOG_INPUT_STAGE_CFG as u8, 0x00044400).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::AENC_0_SCALE_OFFSET as u8, 0x01000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::AENC_1_SCALE_OFFSET as u8, 0x01000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::AENC_2_SCALE_OFFSET as u8, 0x01000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::AENC_SELECT as u8, 0x03020100).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PWM_POLARITIES as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PWM_MAXCNT as u8, 0x00000F9F).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PWM_BBM_H_BBM_L as u8, 0x00001919).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PWM_SV_CHOP as u8, 0x00000007).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::MOTOR_TYPE_N_POLE_PAIRS as u8, 0x00030007).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PHI_E_EXT as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::OPENLOOP_MODE as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::OPENLOOP_ACCELERATION as u8, 0x0000003C).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::OPENLOOP_VELOCITY_TARGET as u8, 0xFFFFFFFB).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::OPENLOOP_VELOCITY_ACTUAL as u8, 0xFFFFFFFB).unwrap();
+//        self.tmc4671_checked_write(Tmc4671Registers::OPENLOOP_PHI as u8, 0x00003BDC).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::UQ_UD_EXT as u8, 0x00000483).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_MODE as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_PPR as u8, 0x00001000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_COUNT as u8, 0x000006D4).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_COUNT_N as u8, 0x000006D4).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_PHI_E_PHI_M_OFFSET as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_2_DECODER_MODE as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_2_DECODER_PPR as u8, 0x00010000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_2_DECODER_COUNT as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_2_DECODER_COUNT_N as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_2_DECODER_PHI_M_OFFSET as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::HALL_MODE as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::HALL_POSITION_060_000 as u8, 0x2AAA0000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::HALL_POSITION_180_120 as u8, 0x80005555).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::HALL_POSITION_300_240 as u8, 0xD555AAAA).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::HALL_PHI_E_PHI_M_OFFSET as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::HALL_DPHI_MAX as u8, 0x00002AAA).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::AENC_DECODER_MODE as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::AENC_DECODER_N_THRESHOLD as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::AENC_DECODER_PHI_A_OFFSET as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::AENC_DECODER_PPR as u8, 0x00000001).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::AENC_DECODER_COUNT_N as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::AENC_DECODER_PHI_E_PHI_M_OFFSET as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::CONFIG_DATA as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::CONFIG_ADDR as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::VELOCITY_SELECTION as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::POSITION_SELECTION as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PHI_E_SELECTION as u8, 0x00000003).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PID_FLUX_P_FLUX_I as u8, 0x01DC0000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_P_TORQUE_I as u8, 0x01DC0000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PID_VELOCITY_P_VELOCITY_I as u8, 0x032006D6).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PID_POSITION_P_POSITION_I as u8, 0x00FA0000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PIDOUT_UQ_UD_LIMITS as u8, 0x00005A81).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, 0x00007D00).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PID_VELOCITY_LIMIT as u8, 0x003D0900).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PID_POSITION_LIMIT_LOW as u8, 0x80000001).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PID_POSITION_LIMIT_HIGH as u8, 0x7FFFFFFF).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, 0x00000001).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_OFFSET as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PID_VELOCITY_TARGET as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PID_VELOCITY_OFFSET as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PID_POSITION_TARGET as u8, 0xFFFFFF90).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PID_POSITION_ACTUAL as u8, 0xFFFFFF90).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::PID_ERROR_ADDR as u8, 0x00000000).unwrap();
+//        self.tmc4671_checked_write(Tmc4671Registers::INTERIM_DATA as u8, 0xFF92003C).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::INTERIM_ADDR as u8, 0x00000011).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::WATCHDOG_CFG as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::ADC_VM_LIMITS as u8, 0xFFFFFFFF).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::STEP_WIDTH as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::UART_BPS as u8, 0x00009600).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::UART_ADDRS as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::GPIO_dsADCI_CONFIG as u8, 0x00000000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::STATUS_FLAGS as u8, 0xF0780000).unwrap();
+        self.tmc4671_checked_write(Tmc4671Registers::STATUS_MASK as u8, 0x00000000).unwrap();
+    }*/
+
+    pub fn tmc4671_checked_write(
+        &mut self,
+        reg: u8,
+        data_w: u32
+    ) -> Result<(), embassy_stm32::spi::Error> {
+        self.tmc4671_write_register(reg, data_w)?;
+        let data_r = self.tmc4671_read_register(reg)?;
+        if data_r == data_w {
+            Ok(())
+        } else {
+            info!("!!! Error INIT {:#x}_r / {:#x}_w !!!", data_r, data_w);
+            Err(embassy_stm32::spi::Error::Framing)
+        }
     }
 
     pub fn tmc4671_write_register(
@@ -413,7 +501,6 @@ impl Ventouse {
     ) -> Result<u32, embassy_stm32::spi::Error> {
         let mut data_m = data_w;
         let res = self.tmc4671_transmit_raw_data(true, reg, data_m);
-let _ = Timer::after(Duration::from_micros(1)); ///////////////////////////////////////////////////////// Warning!!! Testing only
         return res;
     }
 
@@ -454,6 +541,39 @@ let _ = Timer::after(Duration::from_micros(1)); ////////////////////////////////
         Ok(read_data)
     }
 
+    pub fn tmc6200_checked_write(
+        &mut self,
+        reg: u8,
+        data_w: u32
+    ) -> Result<(), embassy_stm32::spi::Error> {
+        self.tmc6200_write_register(reg, data_w)?;
+        let data_r = self.tmc6200_read_register(reg)?;
+        if data_r == data_w {
+            Ok(())
+        } else {
+            info!("!!! Error INIT {:#x}_r / {:#x}_w !!!", data_r, data_w);
+            Err(embassy_stm32::spi::Error::Framing)
+        }
+    }
+
+    pub fn tmc6200_write_register(
+        &mut self,
+        reg: u8,
+        data_w: u32
+    ) -> Result<u32, embassy_stm32::spi::Error> {
+        let mut data_m = data_w;
+        let res = self.tmc6200_transmit_raw_data(true, reg, &mut data_m);
+        return res;
+    }
+
+    pub fn tmc6200_read_register(
+        &mut self,
+        reg: u8,
+    ) -> Result<u32, embassy_stm32::spi::Error> {
+        let mut data_m = 0x00000000u32;
+        return self.tmc6200_transmit_raw_data(false, reg, &mut data_m);
+    }
+
     pub fn tmc6200_transmit_raw_data(
         &mut self,
         write_bit: bool,
@@ -474,9 +594,9 @@ let _ = Timer::after(Duration::from_micros(1)); ////////////////////////////////
         &mut self.cs_driver.set_high();
     
         let mut read_data = transfer_data[4] as u32;
-        read_data = (transfer_data[3] as u32) <<  8;
-        read_data = (transfer_data[2] as u32) << 16;
-        read_data = (transfer_data[1] as u32) << 24;
+        read_data += (transfer_data[3] as u32) <<  8;
+        read_data += (transfer_data[2] as u32) << 16;
+        read_data += (transfer_data[1] as u32) << 24;
     
         Ok(read_data)
     }
