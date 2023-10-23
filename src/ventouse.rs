@@ -9,6 +9,37 @@ use embassy_stm32::spi::{Config, Spi};
 use embassy_stm32::gpio::{Level, Output, Speed, Input, Pull};
 use embassy_time::*; // TODO : to be remove (delays for testing purposes only)
 
+// Motor type & PWM configuration
+const MOTOR_TYPE_N_POLE_PAIRS: u32 = 0x00030007; // BLDC, 7 pole-pairs
+const PWM_POLARITIES:u32 = 0x00000000;
+const PWM_MAXCNT:u32 = 0x00000F9F; // PWM-freq
+const PWM_BBM_H_BBM_L:u32 = 0x00001919; // Break-Before-Make
+const PWM_SV_CHOP:u32 = 0x00000107;
+// ADC configuration
+const ADC_I_SELECT:u32 = 0x24000100;
+const dsADC_MCFG_B_MCFG_A:u32 = 0x00100010;
+const dsADC_MCLK_A:u32 = 0x20000000;
+const dsADC_MCLK_B:u32 = 0x00000000;
+const dsADC_MDEC_B_MDEC_A:u32 = 0x014E014E;
+const ADC_I0_SCALE_OFFSET:u32 = 0x002B822E; // gain is 43 and offset is centered on 2^32 (-> millis Amps)
+const ADC_I1_SCALE_OFFSET:u32 = 0x002B83CF; // gain is 43 and offset is centered on 2^32
+// ABN encoder settings
+const ABN_DECODER_MODE:u32 = 0x00000000;
+const ABN_DECODER_PPR:u32 = 0x00001000;
+const ABN_DECODER_PHI_E_PHI_M_OFFSET:u32 = 0x00000000;
+// Limits
+const PID_TORQUE_FLUX_LIMITS:u32 = 0x00001000; // 4000
+// PI settings
+const PID_FLUX_P_FLUX_I:u32 = 0x03200000;
+const PID_TORQUE_P_TORQUE_I:u32 = 0x03200000;
+const PID_VELOCITY_P_VELOCITY_I:u32 = 0x01F401C2;
+const PID_POSITION_P_POSITION_I:u32 = 0x00500000;
+
+// Motor alignment
+const OPENLOOP_ACCELERATION:u32 = 0x0000003c; // Wizard default
+const UQ_UD_EXT:u32 = 0x000007D0; // Openloop "torque_target"
+
+
 pub enum Tmc4671Registers {
     CHIPINFO_DATA = 0x00,
     CHIPINFO_ADDR = 0x01,
@@ -322,35 +353,35 @@ impl Ventouse {
 
     pub async fn tmc4671_init_registers (&mut self) -> Result<(), embassy_stm32::spi::Error> {
         // Motor type & PWM configuration
-        self.tmc4671_checked_write(Tmc4671Registers::MOTOR_TYPE_N_POLE_PAIRS as u8, 0x00030007)?;
-        self.tmc4671_checked_write(Tmc4671Registers::PWM_POLARITIES as u8, 0x00000000)?;
-        self.tmc4671_checked_write(Tmc4671Registers::PWM_MAXCNT as u8, 0x00000F9F)?;
-        self.tmc4671_checked_write(Tmc4671Registers::PWM_BBM_H_BBM_L as u8, 0x00001919)?;
-        self.tmc4671_checked_write(Tmc4671Registers::PWM_SV_CHOP as u8, 0x00000107)?;
+        self.tmc4671_checked_write(Tmc4671Registers::MOTOR_TYPE_N_POLE_PAIRS as u8, MOTOR_TYPE_N_POLE_PAIRS)?;
+        self.tmc4671_checked_write(Tmc4671Registers::PWM_POLARITIES as u8, PWM_POLARITIES)?;
+        self.tmc4671_checked_write(Tmc4671Registers::PWM_MAXCNT as u8, PWM_MAXCNT)?;
+        self.tmc4671_checked_write(Tmc4671Registers::PWM_BBM_H_BBM_L as u8, PWM_BBM_H_BBM_L)?;
+        self.tmc4671_checked_write(Tmc4671Registers::PWM_SV_CHOP as u8, PWM_SV_CHOP)?;
 
         // ADC configuration
-        self.tmc4671_checked_write(Tmc4671Registers::ADC_I_SELECT as u8, 0x24000100)?;
-        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MCFG_B_MCFG_A as u8, 0x00100010)?;
-        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MCLK_A as u8, 0x20000000)?;
-        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MCLK_B as u8, 0x00000000)?;
-        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MDEC_B_MDEC_A as u8, 0x014E014E)?;
-        self.tmc4671_checked_write(Tmc4671Registers::ADC_I1_SCALE_OFFSET as u8, 0x002B83CF)?; // gain = 43
-        self.tmc4671_checked_write(Tmc4671Registers::ADC_I0_SCALE_OFFSET as u8, 0x002B822E)?; // gain = 43
+        self.tmc4671_checked_write(Tmc4671Registers::ADC_I_SELECT as u8, ADC_I_SELECT)?;
+        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MCFG_B_MCFG_A as u8, dsADC_MCFG_B_MCFG_A)?;
+        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MCLK_A as u8, dsADC_MCLK_A)?;
+        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MCLK_B as u8, dsADC_MCLK_B)?;
+        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MDEC_B_MDEC_A as u8, dsADC_MDEC_B_MDEC_A)?;
+        self.tmc4671_checked_write(Tmc4671Registers::ADC_I1_SCALE_OFFSET as u8, ADC_I0_SCALE_OFFSET)?; // gain = 43
+        self.tmc4671_checked_write(Tmc4671Registers::ADC_I0_SCALE_OFFSET as u8, ADC_I1_SCALE_OFFSET)?; // gain = 43
 
         // ABN encoder settings
-        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_MODE as u8, 0x00000000)?;
-        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_PPR as u8, 0x00001000)?;
-        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_PHI_E_PHI_M_OFFSET as u8, 0x00000000)?;
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_MODE as u8, ABN_DECODER_MODE)?;
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_PPR as u8, ABN_DECODER_PPR)?;
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_PHI_E_PHI_M_OFFSET as u8, ABN_DECODER_PHI_E_PHI_M_OFFSET)?;
 
         // Limits
 //        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, 0x00007D00)?; // 32000
-        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, 0x00001000)?; // ~4000
+        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, PID_TORQUE_FLUX_LIMITS)?; // ~4000
 
         // PI settings
-        self.tmc4671_checked_write(Tmc4671Registers::PID_FLUX_P_FLUX_I as u8, 0x03200000)?;
-        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_P_TORQUE_I as u8, 0x03200000)?;
-        self.tmc4671_checked_write(Tmc4671Registers::PID_VELOCITY_P_VELOCITY_I as u8, 0x01F401C2)?;
-        self.tmc4671_checked_write(Tmc4671Registers::PID_POSITION_P_POSITION_I as u8, 0x00500000)?;
+        self.tmc4671_checked_write(Tmc4671Registers::PID_FLUX_P_FLUX_I as u8, PID_FLUX_P_FLUX_I)?;
+        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_P_TORQUE_I as u8, PID_TORQUE_P_TORQUE_I)?;
+        self.tmc4671_checked_write(Tmc4671Registers::PID_VELOCITY_P_VELOCITY_I as u8, PID_VELOCITY_P_VELOCITY_I)?;
+        self.tmc4671_checked_write(Tmc4671Registers::PID_POSITION_P_POSITION_I as u8, PID_POSITION_P_POSITION_I)?;
 
         Ok(())
     }
@@ -361,12 +392,12 @@ impl Ventouse {
 
         // Set openloop mode
         self.tmc4671_checked_write(Tmc4671Registers::OPENLOOP_MODE as u8, 0x00000000)?; // Positive Openloop phi e (OPENLOOP_MODE)
-        self.tmc4671_checked_write(Tmc4671Registers::OPENLOOP_ACCELERATION as u8, 0x0000003c)?; // Default acceleration
+        self.tmc4671_checked_write(Tmc4671Registers::OPENLOOP_ACCELERATION as u8, OPENLOOP_ACCELERATION)?; // Default acceleration
         self.tmc4671_checked_write(Tmc4671Registers::OPENLOOP_VELOCITY_TARGET as u8, 0x00000000)?; // Motor is stopped
         self.tmc4671_checked_write(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, 0x00000008)?; // Open loop mode
         self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_PHI_E_PHI_M_OFFSET as u8, 0x00000000)?;
         self.tmc4671_checked_write(Tmc4671Registers::PHI_E_SELECTION as u8, 0x00000002)?; // Phi_e_openloop
-        self.tmc4671_checked_write(Tmc4671Registers::UQ_UD_EXT as u8, 0x000007D0)?; // 2000, ud_ext only
+        self.tmc4671_checked_write(Tmc4671Registers::UQ_UD_EXT as u8, UQ_UD_EXT)?; // 2000, ud_ext only
         self.tmc4671_enable(); // Start moving
         let _ = Timer::after(Duration::from_millis(1000)).await;
         // Now the motor is aligned with a phase.
