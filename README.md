@@ -6,9 +6,15 @@
 - `rustup update`
 - `rustup target add thumbv7em-none-eabihf`
 - `cargo install probe-rs --features cli`
+<<<<<<< HEAD
 - `cargo install probe-run`
 
 
+||||||| f4e04bb
+
+=======
+- https://probe.rs/docs/getting-started/probe-setup/
+>>>>>>> test_dynamixel
 
 ## Build
 
