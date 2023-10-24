@@ -13,8 +13,8 @@ use embassy_stm32::{bind_interrupts, peripherals, usart};
 // use embassy_sync::channel::Channel;
 // use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 // use embassy_sync::mutex::Mutex;
+use embassy_stm32::Config as stm32_config;
 use embassy_time::{Duration, Timer};
-
 // declare the modules
 mod config;
 mod dynamixel;
@@ -126,7 +126,10 @@ async fn dxl_serial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pi
 async fn main(spawner: Spawner) {
     info!("Hello World!");
 
-    let p = embassy_stm32::init(Default::default());
+    let stm32_conf = stm32_config::default();
+    //here config the clock, stm32_conf.rcc.truc=
+
+    let p = embassy_stm32::init(stm32_conf);
 
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
     let mut led_error = Output::new(p.PC8, Level::High, Speed::Low);
@@ -150,8 +153,12 @@ async fn main(spawner: Spawner) {
     // ventouse.tmc4671_enable();
     // let _ = ventouse.tmc6200_checked_write(0x00u8, 0x00000000u32);
     ventouse.tmc4671_init_registers().await.unwrap();
+    info!("TMC4671 init done");
     ventouse.tmc4671_align_motor().await.unwrap();
+    info!("Motor align done");
 
+    // ventouse.tmc4671_set_mode(ventouse::MotionMode::Velocity);
+    // ventouse.tmc4671_set_target_velocity(2000);
     // unwrap!(spawner.spawn(test_reg()));
 
     // let mut led = Output::new(p.PC9, Level::High, Speed::Low);
