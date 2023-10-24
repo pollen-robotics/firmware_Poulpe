@@ -68,7 +68,16 @@ pub enum RWAction<'a> {
     Ok,
 }
 fn crc(data: &[u8]) -> u8 {
-    !data.iter().sum::<u8>()
+    // !data.iter().sum::<u8>() //error does not wrap
+    let mut crc: u8 = 0;
+    for b in data {
+        if *b < 255 {
+            //Craaaaaazy
+            crc = crc.wrapping_add(*b);
+        }
+    }
+    // debug!("CRC: {:?} {:?}", crc, !crc);
+    !crc
 }
 
 impl DxlCom {
@@ -91,8 +100,14 @@ impl DxlCom {
             //Header is detected
             debug!("header ok",);
             if bytes[2] == self.id {
-                debug!("id is {:?}", bytes[2]);
-                // Dynamixel id is ok
+                /*
+                        debug!("id is {:?}", bytes[2]);
+                        debug!("len is {:?}", bytes[3]);
+                        debug!("instr is {:?}", bytes[4]);
+                        debug!("data: {:?}", bytes[2..bytes.len() - 1]);
+                        // Dynamixel id is ok
+                        debug!("crc is {:?}", crc(&bytes[2..bytes.len() - 1]));
+                */
                 if crc(&bytes[2..bytes.len() - 1]) != bytes[bytes.len() - 1] {
                     // debug!(
                     //     "bad crc, seen: {:?} computed {:?}",
@@ -127,7 +142,8 @@ impl DxlCom {
 
                 let errbyte = DXL_STATUS_ERROR.lock().await.bytes[0];
 
-                let rescrc: u8 = !(self.id + errbyte + 0x02);
+                // let rescrc: u8 = !(self.id + errbyte + 0x02);
+                let rescrc: u8 = crc(&[self.id, errbyte, 0x02]);
 
                 let sp = [0xff, 0xff, self.id, 0x02, errbyte, rescrc];
                 self.tx_buffer[..6].copy_from_slice(&sp);

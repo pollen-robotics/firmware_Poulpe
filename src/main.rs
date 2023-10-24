@@ -96,10 +96,11 @@ async fn dxl_serial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pi
                     Ok(dynamixel::RWAction::Tx(data)) => {
                         debug!("Sending response: {:?}", data);
                         dir.set_high(); //writing mode
-                                        // Timer::after(Duration::from_micros(500)).await;
+                        Timer::after(Duration::from_micros(100)).await;
                         match usart.write(data).await {
                             Ok(()) => {
                                 //good
+                                debug!("Sent: {:?}", data);
                             }
                             Err(_) => {
                                 error!("Error sending response");
@@ -109,7 +110,18 @@ async fn dxl_serial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pi
                     }
 
                     Err(_err) => {
-                        error!("Error"); //TODO
+                        match _err {
+                            dynamixel::Error::BadCRC => {
+                                error!("Error bad crc received");
+                            }
+                            dynamixel::Error::BadInstruction => {
+                                error!("Error bad instruction received");
+                            }
+                            dynamixel::Error::BadPacket => {
+                                error!("Error bad packet received");
+                            }
+                        }
+                        // error!("Action Error??"); //TODO
                     }
                 }
             }
@@ -128,7 +140,7 @@ async fn main(spawner: Spawner) {
 
     let mut stm32_conf = stm32_config::default();
     //32MHz config with HSI48 active
-    /*
+
     {
         use embassy_stm32::rcc::*;
 
@@ -146,8 +158,9 @@ async fn main(spawner: Spawner) {
         stm32_conf.rcc.apb4_pre = APBPrescaler::DIV1;
         stm32_conf.rcc.voltage_scale = VoltageScale::Scale3;
     }
-     */
+
     //400MHz config with HSI48 active
+    /*
     {
         use embassy_stm32::rcc::*;
 
@@ -181,7 +194,7 @@ async fn main(spawner: Spawner) {
         stm32_conf.rcc.apb4_pre = APBPrescaler::DIV2;
         stm32_conf.rcc.voltage_scale = VoltageScale::Scale1;
     }
-
+     */
     let p = embassy_stm32::init(stm32_conf);
 
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
@@ -225,11 +238,39 @@ async fn main(spawner: Spawner) {
     let curpos = ventouse.tmc4671_get_actual_position().unwrap();
     info!("Current position: {:?}", curpos);
      */
+
+    ventouse.tmc4671_set_mode(ventouse::MotionMode::Position);
+    ventouse.tmc4671_set_target_position(curpos);
+    Timer::after(Duration::from_millis(1000)).await;
     loop {
-        led_hello.set_high();
-        Timer::after(Duration::from_millis(500)).await;
-        led_hello.set_low();
-        Timer::after(Duration::from_millis(500)).await;
+        /*
+            led_hello.set_high();
+            Timer::after(Duration::from_millis(500)).await;
+            led_hello.set_low();
+            Timer::after(Duration::from_millis(500)).await;
+        */
+
+        //TEST DXL COM
+        //Get register value
+
+        let mut gpos: &mut [u8; 4] = &mut [0, 0, 0, 0];
+        let _ = crate::config::dxl_registers_read_by_name(
+            config::DxlRegistersEnum::MotorAGoalPosition,
+            gpos,
+        )
+        .await;
+
+        let gposf: i32 = i32::from_le_bytes(*gpos);
+        ventouse.tmc4671_set_target_position(curpos + gposf);
+        let curpos = ventouse.tmc4671_get_actual_position().unwrap();
+        let _ = crate::config::dxl_registers_write_by_name(
+            config::DxlRegistersEnum::MotorAPresentPosition,
+            &curpos.to_le_bytes(),
+        )
+        .await;
+        // info!("goal pos: {:?} actual pos: {:?}", gposf, curpos);
+
+        Timer::after(Duration::from_millis(1)).await;
     }
 }
 

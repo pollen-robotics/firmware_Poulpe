@@ -46,6 +46,13 @@ define_register_map!(
     SensorRingPresentPosition, 67, 4, AccessType::ReadOnly,
     SensorCenterPresentPosition, 71, 4, AccessType::ReadOnly,
 
+    MotorAGoalPosition, 75, 4, AccessType::ReadWrite,
+    MotorBGoalPosition, 79, 4, AccessType::ReadWrite,
+    MotorAPresentPosition, 83, 4, AccessType::ReadWrite,
+    MotorBPresentPosition, 87, 4, AccessType::ReadWrite,
+
+
+
 );
 
 /*
