@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+use crate::config::MotorConfig;
+
 use defmt::*;
 use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
@@ -8,9 +10,8 @@ use embassy_stm32::peripherals as p;
 use embassy_stm32::spi::{Config, Spi};
 use embassy_time::*;
 use {defmt_rtt as _, panic_probe as _}; // TODO : to be remove (delays for testing purposes only)
-
-// Motor type & PWM configuration
-// const MOTOR_TYPE_N_POLE_PAIRS: u32 = 0x00030007; // BLDC, 7 pole-pairs EC45
+                                        // Motor type & PWM configuration
+                                        // const MOTOR_TYPE_N_POLE_PAIRS: u32 = 0x00030007; // BLDC, 7 pole-pairs EC45
 const MOTOR_TYPE_N_POLE_PAIRS: u32 = 0x00030004; // BLDC, 4 pole-pairs ECXtorque
 
 const PWM_POLARITIES: u32 = 0x00000000;
@@ -45,10 +46,10 @@ const PID_TORQUE_FLUX_LIMITS: u32 = 0x00001000; // 4000
 // const PID_TORQUE_FLUX_LIMITS: u32 = 0x00001000; // 4000
 //                                                 // PI settings
 //ECX22
-const PID_FLUX_P_FLUX_I: u32 = 0x03200080;
-const PID_TORQUE_P_TORQUE_I: u32 = 0x03200000;
-const PID_VELOCITY_P_VELOCITY_I: u32 = 0x01000080;
-const PID_POSITION_P_POSITION_I: u32 = 0x00400010;
+// const PID_FLUX_P_FLUX_I: u32 = 0x03200080;
+// const PID_TORQUE_P_TORQUE_I: u32 = 0x03200000;
+// const PID_VELOCITY_P_VELOCITY_I: u32 = 0x01000080;
+// const PID_POSITION_P_POSITION_I: u32 = 0x00400010;
 
 // Motor alignment
 const OPENLOOP_ACCELERATION: u32 = 0x0000003c; // Wizard default
@@ -440,18 +441,21 @@ impl Ventouse {
         )?; // ~4000
 
         // PI settings
-        self.tmc4671_checked_write(Tmc4671Registers::PID_FLUX_P_FLUX_I as u8, PID_FLUX_P_FLUX_I)?;
+        self.tmc4671_checked_write(
+            Tmc4671Registers::PID_FLUX_P_FLUX_I as u8,
+            MotorConfig::PID_FLUX_P_FLUX_I as u32,
+        )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_TORQUE_P_TORQUE_I as u8,
-            PID_TORQUE_P_TORQUE_I,
+            MotorConfig::PID_TORQUE_P_TORQUE_I as u32,
         )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_VELOCITY_P_VELOCITY_I as u8,
-            PID_VELOCITY_P_VELOCITY_I,
+            MotorConfig::PID_VELOCITY_P_VELOCITY_I as u32,
         )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_POSITION_P_POSITION_I as u8,
-            PID_POSITION_P_POSITION_I,
+            MotorConfig::PID_POSITION_P_POSITION_I as u32,
         )?;
 
         Ok(())

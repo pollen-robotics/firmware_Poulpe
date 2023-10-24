@@ -9,6 +9,24 @@ use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 pub static DXL_ID: u8 = 42;
 
+#[cfg(feature = "ecx22")]
+#[repr(u32)]
+pub enum MotorConfig {
+    PID_FLUX_P_FLUX_I = 0x03200080,
+    PID_TORQUE_P_TORQUE_I = 0x03200000,
+    PID_VELOCITY_P_VELOCITY_I = 0x01000080,
+    PID_POSITION_P_POSITION_I = 0x00400010,
+}
+
+#[cfg(feature = "ec45")]
+#[repr(u32)]
+pub enum MotorConfig {
+    PID_FLUX_P_FLUX_I = 0x03200000,
+    PID_TORQUE_P_TORQUE_I = 0x03200000,
+    PID_VELOCITY_P_VELOCITY_I = 0x01F401C2,
+    PID_POSITION_P_POSITION_I = 0x00500000,
+}
+
 define_register_map!(
     DXL_REGISTERS,
     DxlRegistersEnum,
