@@ -142,7 +142,8 @@ async fn main(spawner: Spawner) {
     config.detect_previous_overrun = false;
     let usart = Uart::new(
         p.USART1, p.PB15, p.PB14, Irqs, p.DMA1_CH0, p.DMA1_CH1, config,
-    );
+    )
+    .unwrap();
 
     unwrap!(spawner.spawn(dxl_serial(usart, p.PD9.into())));
     // TMC4671 init
