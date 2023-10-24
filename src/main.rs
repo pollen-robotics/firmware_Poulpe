@@ -126,8 +126,61 @@ async fn dxl_serial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pi
 async fn main(spawner: Spawner) {
     info!("Hello World!");
 
-    let stm32_conf = stm32_config::default();
-    //here config the clock, stm32_conf.rcc.truc=
+    let mut stm32_conf = stm32_config::default();
+    //32MHz config with HSI48 active
+    /*
+    {
+        use embassy_stm32::rcc::*;
+
+        stm32_conf.rcc.hse = None; //No external clock
+        stm32_conf.rcc.hsi = Some(Hsi::Mhz32); // div/2
+        stm32_conf.rcc.hsi48 = true;
+        stm32_conf.rcc.csi = true;
+
+        stm32_conf.rcc.sys = Sysclk::HSI;
+
+        stm32_conf.rcc.ahb_pre = AHBPrescaler::DIV1;
+        stm32_conf.rcc.apb1_pre = APBPrescaler::DIV1;
+        stm32_conf.rcc.apb2_pre = APBPrescaler::DIV1;
+        stm32_conf.rcc.apb3_pre = APBPrescaler::DIV1;
+        stm32_conf.rcc.apb4_pre = APBPrescaler::DIV1;
+        stm32_conf.rcc.voltage_scale = VoltageScale::Scale3;
+    }
+     */
+    //400MHz config with HSI48 active
+    {
+        use embassy_stm32::rcc::*;
+
+        stm32_conf.rcc.hse = None; //No external clock
+        stm32_conf.rcc.hsi = Some(Hsi::Mhz64); // div/1
+        stm32_conf.rcc.hsi48 = true;
+        stm32_conf.rcc.csi = true;
+
+        stm32_conf.rcc.pll1 = Some(Pll {
+            // source: PllSource::Hsi,
+            prediv: 4,
+            mul: 50,
+            divp: Some(2),
+            divq: Some(8), // SPI1 cksel defaults to pll1_q
+            divr: None,
+        });
+        stm32_conf.rcc.pll2 = Some(Pll {
+            // source: PllSource::HSI,
+            prediv: 4,
+            mul: 50,
+            divp: Some(8), // 100mhz
+            divq: None,
+            divr: None,
+        });
+
+        stm32_conf.rcc.sys = Sysclk::Pll1P;
+        stm32_conf.rcc.ahb_pre = AHBPrescaler::DIV2;
+        stm32_conf.rcc.apb1_pre = APBPrescaler::DIV2;
+        stm32_conf.rcc.apb2_pre = APBPrescaler::DIV2;
+        stm32_conf.rcc.apb3_pre = APBPrescaler::DIV2;
+        stm32_conf.rcc.apb4_pre = APBPrescaler::DIV2;
+        stm32_conf.rcc.voltage_scale = VoltageScale::Scale1;
+    }
 
     let p = embassy_stm32::init(stm32_conf);
 
@@ -161,8 +214,17 @@ async fn main(spawner: Spawner) {
     // ventouse.tmc4671_set_target_velocity(2000);
     // unwrap!(spawner.spawn(test_reg()));
 
-    // let mut led = Output::new(p.PC9, Level::High, Speed::Low);
-
+    let curpos = ventouse.tmc4671_get_actual_position().unwrap();
+    info!("Current position: {:?}", curpos);
+    /*
+    ventouse.tmc4671_set_mode(ventouse::MotionMode::Position);
+    ventouse.tmc4671_set_target_position(curpos);
+    Timer::after(Duration::from_millis(1000)).await;
+    ventouse.tmc4671_set_target_position(curpos + 1000000);
+    Timer::after(Duration::from_millis(1000)).await;
+    let curpos = ventouse.tmc4671_get_actual_position().unwrap();
+    info!("Current position: {:?}", curpos);
+     */
     loop {
         led_hello.set_high();
         Timer::after(Duration::from_millis(500)).await;

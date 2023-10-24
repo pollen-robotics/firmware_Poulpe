@@ -374,6 +374,13 @@ impl Ventouse {
         self.tmc4671_get_i32(Tmc4671Registers::PID_VELOCITY_ACTUAL as u8)
     }
 
+    pub fn tmc4671_set_target_position(&mut self, position_target: i32) {
+        self.tmc4671_write_register(
+            Tmc4671Registers::PID_POSITION_TARGET as u8,
+            position_target as u32,
+        );
+    }
+
     pub fn tmc4671_get_actual_position(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
         self.tmc4671_get_i32(Tmc4671Registers::PID_POSITION_ACTUAL as u8)
     }
@@ -499,12 +506,12 @@ impl Ventouse {
         // Rotate right
         info!("Rotate right...");
         self.tmc4671_set_target_velocity(1000);
-        let _ = Timer::after(Duration::from_millis(3000)).await;
+        let _ = Timer::after(Duration::from_millis(1000)).await;
 
         // Rotate left
         info!("Rotate left...");
         self.tmc4671_set_target_velocity(-1000);
-        let _ = Timer::after(Duration::from_millis(3000)).await;
+        let _ = Timer::after(Duration::from_millis(1000)).await;
 
         // Stop
         info!("Stop...");
