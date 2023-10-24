@@ -25,7 +25,8 @@ async fn main(_spawner: Spawner) {
     led_error.set_low();
     led_hello.set_low();
 
-    let mut ventouse = ventouse::Ventouse::new(
+    // J5 - Ventouse-B
+    /*let mut ventouse = ventouse::Ventouse::new(
         p.PE3,
         p.PC15,
         p.PE12,
@@ -37,6 +38,21 @@ async fn main(_spawner: Spawner) {
         p.PE0,
         p.PC13,
         p.PC14
+    );*/
+
+    // J10 - Ventouse-C
+    let mut ventouse = ventouse::Ventouse::new(
+        p.PD7,
+        p.PD6,
+        p.PB3,
+        p.PB4,
+        p.PB5,
+        p.SPI6,
+        NoDma,
+        NoDma,
+        p.PD5,
+        p.PD4,
+        p.PD3
     );
 
     // Tuning mode: uncomment to set Poulpe and Ventouse ready for tuning
@@ -54,10 +70,15 @@ async fn main(_spawner: Spawner) {
     ventouse.tmc4671_align_motor().await.unwrap();
 
     ventouse.tmc4671_set_mode(ventouse::MotionMode::Velocity);
+    ventouse.tmc4671_write_register(0x5Eu8, 8000); // PID_TORQUE_FLUX_LIMITS = 0x5E,
     ventouse.tmc4671_set_target_velocity(2000);
 
     loop {
-        info!("Velocity_actual: {:?} [{:#04x}]", ventouse.tmc4671_get_actual_velocity().unwrap(), ventouse.tmc4671_get_mode().unwrap());
+//        info!("Velocity_actual: {:?} [{:#04x}]", ventouse.tmc4671_get_actual_velocity().unwrap(), ventouse.tmc4671_get_mode().unwrap());
+        info!("Actual Velocity/Torque [mode]: {:?}/{:?} [{:#04x}]",
+            ventouse.tmc4671_get_actual_velocity().unwrap(), 
+            ventouse.tmc4671_get_torque_actual().unwrap(),
+            ventouse.tmc4671_get_mode().unwrap());
 
         led_hello.set_high();
         Timer::after(Duration::from_millis(500)).await;
