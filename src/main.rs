@@ -24,6 +24,7 @@ mod ventouse;
 use paste::paste;
 
 use {defmt_rtt as _, panic_probe as _};
+const UART_SLEEP_US: u64 = 1;
 
 bind_interrupts!(struct Irqs {
     USART1 => usart::InterruptHandler<peripherals::USART1>;
@@ -96,7 +97,7 @@ async fn dxl_serial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pi
                     Ok(dynamixel::RWAction::Tx(data)) => {
                         debug!("Sending response: {:?}", data);
                         dir.set_high(); //writing mode
-                        Timer::after(Duration::from_micros(100)).await;
+                        Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
                         match usart.write(data).await {
                             Ok(()) => {
                                 //good
@@ -106,19 +107,64 @@ async fn dxl_serial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pi
                                 error!("Error sending response");
                             }
                         }
+                        Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
                         dir.set_low(); //reading mode
+                        Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
                     }
 
                     Err(_err) => {
                         match _err {
                             dynamixel::Error::BadCRC => {
                                 error!("Error bad crc received");
+
+                                dir.set_high(); //writing mode
+                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                                match usart.write(&dxlcom.get_status_packet().await).await {
+                                    Ok(()) => {
+                                        //good
+                                        // debug!("Sent: {:?}", data);
+                                    }
+                                    Err(_) => {
+                                        error!("Error sending response");
+                                    }
+                                }
+                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                                dir.set_low(); //reading mode
+                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
                             }
                             dynamixel::Error::BadInstruction => {
                                 error!("Error bad instruction received");
+                                dir.set_high(); //writing mode
+                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                                match usart.write(&dxlcom.get_status_packet().await).await {
+                                    Ok(()) => {
+                                        //good
+                                        // debug!("Sent: {:?}", data);
+                                    }
+                                    Err(_) => {
+                                        error!("Error sending response");
+                                    }
+                                }
+                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                                dir.set_low(); //reading mode
+                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
                             }
                             dynamixel::Error::BadPacket => {
                                 error!("Error bad packet received");
+                                dir.set_high(); //writing mode
+                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                                match usart.write(&dxlcom.get_status_packet().await).await {
+                                    Ok(()) => {
+                                        //good
+                                        // debug!("Sent: {:?}", data);
+                                    }
+                                    Err(_) => {
+                                        error!("Error sending response");
+                                    }
+                                }
+                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                                dir.set_low(); //reading mode
+                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
                             }
                         }
                         // error!("Action Error??"); //TODO
@@ -141,23 +187,23 @@ async fn main(spawner: Spawner) {
     let mut stm32_conf = stm32_config::default();
     //32MHz config with HSI48 active
 
-    {
-        use embassy_stm32::rcc::*;
+    // {
+    //     use embassy_stm32::rcc::*;
 
-        stm32_conf.rcc.hse = None; //No external clock
-        stm32_conf.rcc.hsi = Some(Hsi::Mhz32); // div/2
-        stm32_conf.rcc.hsi48 = true;
-        stm32_conf.rcc.csi = true;
+    //     stm32_conf.rcc.hse = None; //No external clock
+    //     stm32_conf.rcc.hsi = Some(Hsi::Mhz32); // div/2
+    //     stm32_conf.rcc.hsi48 = true;
+    //     stm32_conf.rcc.csi = true;
 
-        stm32_conf.rcc.sys = Sysclk::HSI;
+    //     stm32_conf.rcc.sys = Sysclk::HSI;
 
-        stm32_conf.rcc.ahb_pre = AHBPrescaler::DIV1;
-        stm32_conf.rcc.apb1_pre = APBPrescaler::DIV1;
-        stm32_conf.rcc.apb2_pre = APBPrescaler::DIV1;
-        stm32_conf.rcc.apb3_pre = APBPrescaler::DIV1;
-        stm32_conf.rcc.apb4_pre = APBPrescaler::DIV1;
-        stm32_conf.rcc.voltage_scale = VoltageScale::Scale3;
-    }
+    //     stm32_conf.rcc.ahb_pre = AHBPrescaler::DIV1;
+    //     stm32_conf.rcc.apb1_pre = APBPrescaler::DIV1;
+    //     stm32_conf.rcc.apb2_pre = APBPrescaler::DIV1;
+    //     stm32_conf.rcc.apb3_pre = APBPrescaler::DIV1;
+    //     stm32_conf.rcc.apb4_pre = APBPrescaler::DIV1;
+    //     stm32_conf.rcc.voltage_scale = VoltageScale::Scale3;
+    // }
 
     //400MHz config with HSI48 active
     /*
@@ -195,6 +241,7 @@ async fn main(spawner: Spawner) {
         stm32_conf.rcc.voltage_scale = VoltageScale::Scale1;
     }
      */
+
     let p = embassy_stm32::init(stm32_conf);
 
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
@@ -207,12 +254,23 @@ async fn main(spawner: Spawner) {
     );
 
     let mut config = Config::default();
-    config.baudrate = 1_000_000;
+    // config.baudrate = 1_000_000;
+    config.baudrate = 115200;
+    config.stop_bits = embassy_stm32::usart::StopBits::STOP1;
+    config.data_bits = embassy_stm32::usart::DataBits::DataBits8;
+    config.parity = embassy_stm32::usart::Parity::ParityNone;
+
     config.detect_previous_overrun = false;
+
+    //more "recent" version of embassy returns a Result here
+    // let usart = Uart::new(
+    //     p.USART1, p.PB15, p.PB14, Irqs, p.DMA1_CH0, p.DMA1_CH1, config,
+    // )
+    // .unwrap();
+
     let usart = Uart::new(
         p.USART1, p.PB15, p.PB14, Irqs, p.DMA1_CH0, p.DMA1_CH1, config,
-    )
-    .unwrap();
+    );
 
     unwrap!(spawner.spawn(dxl_serial(usart, p.PD9.into())));
     // TMC4671 init
@@ -242,6 +300,7 @@ async fn main(spawner: Spawner) {
     ventouse.tmc4671_set_mode(ventouse::MotionMode::Position);
     ventouse.tmc4671_set_target_position(curpos);
     Timer::after(Duration::from_millis(1000)).await;
+
     loop {
         /*
             led_hello.set_high();
@@ -270,7 +329,8 @@ async fn main(spawner: Spawner) {
         .await;
         // info!("goal pos: {:?} actual pos: {:?}", gposf, curpos);
 
-        Timer::after(Duration::from_millis(1)).await;
+        // Timer::after(Duration::from_millis(1)).await;
+        Timer::after(Duration::from_micros(1000)).await;
     }
 }
 

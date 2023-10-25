@@ -67,16 +67,15 @@ pub enum RWAction<'a> {
     Ignore,
     Ok,
 }
-fn crc(data: &[u8]) -> u8 {
+pub fn crc(data: &[u8]) -> u8 {
     // !data.iter().sum::<u8>() //error does not wrap
+
     let mut crc: u8 = 0;
+    // debug!("DEBUG CRC DATA: {:?}", data);
     for b in data {
-        if *b < 255 {
-            //Craaaaaazy
-            crc = crc.wrapping_add(*b);
-        }
+        crc = crc.wrapping_add(*b);
+        // debug!("DEBUG CRC: b: {:?} crc: {:?}", *b, crc);
     }
-    // debug!("CRC: {:?} {:?}", crc, !crc);
     !crc
 }
 
@@ -133,7 +132,17 @@ impl DxlCom {
             Err(Error::BadPacket)
         }
     }
-
+    pub async fn get_status_packet(&mut self) -> [u8; 6] {
+        let mut status: [u8; 6] = [0, 0, 0, 0, 0, 0];
+        //status packet
+        status[0] = 0xff;
+        status[1] = 0xff;
+        status[2] = self.id;
+        status[3] = 2;
+        status[4] = DXL_STATUS_ERROR.lock().await.bytes[0]; //Error byte
+        status[5] = crc(&status[2..5]);
+        status
+    }
     async fn handle_instruction(&mut self, data: &[u8]) -> RWAction {
         match MessageType::from_u8(data[4]) {
             MessageType::PingMessage => {
@@ -171,7 +180,7 @@ impl DxlCom {
                 match crate::config::dxl_registers_read_by_address(addr, size, &mut buffer).await {
                     Ok(()) => {
                         self.tx_buffer[5..5 + size].clone_from_slice(&buffer[0..size]);
-                        self.tx_buffer[size + 5] = crc(&self.tx_buffer[2..4 + size]);
+                        self.tx_buffer[size + 5] = crc(&self.tx_buffer[2..4 + size + 1]); //ICI
                         RWAction::Tx(&self.tx_buffer[0..size + 6])
                     }
                     Err(()) => {
