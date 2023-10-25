@@ -13,6 +13,7 @@ use embassy_stm32::{bind_interrupts, peripherals, usart};
 // use embassy_sync::channel::Channel;
 // use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 // use embassy_sync::mutex::Mutex;
+use embassy_stm32::time::mhz;
 use embassy_stm32::Config as stm32_config;
 use embassy_time::{Duration, Timer};
 // declare the modules
@@ -24,7 +25,16 @@ mod ventouse;
 use paste::paste;
 
 use {defmt_rtt as _, panic_probe as _};
-const UART_SLEEP_US: u64 = 1;
+//seems ok at 115200 with LOG=Debug
+// const UART_SLEEP_US_DIRLOW: u64 = 10;
+// const UART_SLEEP_US_DIRHIGH: u64 = 1;
+
+//Seems ok at 115200 with LOG=Info
+const UART_SLEEP_US_DIRLOW: u64 = 200;
+const UART_SLEEP_US_DIRHIGH: u64 = 300;
+
+// const UART_SLEEP_US_DIRLOW: u64 = 400;
+// const UART_SLEEP_US_DIRHIGH: u64 = 600;
 
 bind_interrupts!(struct Irqs {
     USART1 => usart::InterruptHandler<peripherals::USART1>;
@@ -85,31 +95,31 @@ async fn dxl_serial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pi
 
         match res {
             Ok(nb) => {
-                debug!("received {:?} bytes: {:?}", nb, buf[0..nb]);
+                trace!("received {:?} bytes: {:?}", nb, buf[0..nb]);
                 let action = dxlcom.parse(&buf[0..nb]).await;
                 match action {
                     Ok(dynamixel::RWAction::Ignore) => {
-                        debug!("Ignoring");
+                        trace!("Ignoring");
                     }
                     Ok(dynamixel::RWAction::Ok) => {
-                        debug!("Done");
+                        trace!("Done");
                     }
                     Ok(dynamixel::RWAction::Tx(data)) => {
-                        debug!("Sending response: {:?}", data);
+                        trace!("Sending response: {:?}", data);
                         dir.set_high(); //writing mode
-                        Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                        Timer::after(Duration::from_micros(UART_SLEEP_US_DIRHIGH)).await;
                         match usart.write(data).await {
                             Ok(()) => {
                                 //good
-                                debug!("Sent: {:?}", data);
+                                trace!("Sent: {:?}", data);
                             }
                             Err(_) => {
                                 error!("Error sending response");
                             }
                         }
-                        Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                        Timer::after(Duration::from_micros(UART_SLEEP_US_DIRLOW)).await; //Very important sleep here
                         dir.set_low(); //reading mode
-                        Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                                       // Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
                     }
 
                     Err(_err) => {
@@ -118,7 +128,7 @@ async fn dxl_serial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pi
                                 error!("Error bad crc received");
 
                                 dir.set_high(); //writing mode
-                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                                Timer::after(Duration::from_micros(UART_SLEEP_US_DIRHIGH)).await;
                                 match usart.write(&dxlcom.get_status_packet().await).await {
                                     Ok(()) => {
                                         //good
@@ -128,14 +138,14 @@ async fn dxl_serial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pi
                                         error!("Error sending response");
                                     }
                                 }
-                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                                Timer::after(Duration::from_micros(UART_SLEEP_US_DIRLOW)).await;
                                 dir.set_low(); //reading mode
-                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                                               // Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
                             }
                             dynamixel::Error::BadInstruction => {
                                 error!("Error bad instruction received");
                                 dir.set_high(); //writing mode
-                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                                Timer::after(Duration::from_micros(UART_SLEEP_US_DIRHIGH)).await;
                                 match usart.write(&dxlcom.get_status_packet().await).await {
                                     Ok(()) => {
                                         //good
@@ -145,14 +155,14 @@ async fn dxl_serial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pi
                                         error!("Error sending response");
                                     }
                                 }
-                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                                Timer::after(Duration::from_micros(UART_SLEEP_US_DIRLOW)).await;
                                 dir.set_low(); //reading mode
-                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                                               // Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
                             }
                             dynamixel::Error::BadPacket => {
                                 error!("Error bad packet received");
                                 dir.set_high(); //writing mode
-                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                                Timer::after(Duration::from_micros(UART_SLEEP_US_DIRHIGH)).await;
                                 match usart.write(&dxlcom.get_status_packet().await).await {
                                     Ok(()) => {
                                         //good
@@ -162,9 +172,9 @@ async fn dxl_serial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pi
                                         error!("Error sending response");
                                     }
                                 }
-                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                                Timer::after(Duration::from_micros(UART_SLEEP_US_DIRLOW)).await;
                                 dir.set_low(); //reading mode
-                                Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
+                                               // Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
                             }
                         }
                         // error!("Action Error??"); //TODO
@@ -242,6 +252,10 @@ async fn main(spawner: Spawner) {
     }
      */
 
+    stm32_conf.rcc.sys_ck = Some(mhz(400));
+    // stm32_conf.rcc.hclk = Some(mhz(200));
+    // stm32_conf.rcc.pll1.q_ck = Some(mhz(100));
+
     let p = embassy_stm32::init(stm32_conf);
 
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
@@ -254,8 +268,10 @@ async fn main(spawner: Spawner) {
     );
 
     let mut config = Config::default();
-    // config.baudrate = 1_000_000;
-    config.baudrate = 115200;
+    config.baudrate = 1_000_000;
+    // config.baudrate = 115200;
+    // config.baudrate = 9600;
+
     config.stop_bits = embassy_stm32::usart::StopBits::STOP1;
     config.data_bits = embassy_stm32::usart::DataBits::DataBits8;
     config.parity = embassy_stm32::usart::Parity::ParityNone;

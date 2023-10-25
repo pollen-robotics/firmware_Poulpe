@@ -93,11 +93,11 @@ impl DxlCom {
     pub async fn parse(&mut self, bytes: &[u8]) -> Result<RWAction, Error> {
         if bytes.len() < 6 {
             //Minimum packet size
-            debug!("packet size is {:?} <6", bytes.len());
+            error!("packet size is {:?} <6", bytes.len());
             Err(Error::BadPacket)
         } else if bytes[0] == 0xff && bytes[1] == 0xff && bytes.len() == (bytes[3] + 4).into() {
             //Header is detected
-            debug!("header ok",);
+            trace!("header ok",);
             if bytes[2] == self.id {
                 /*
                         debug!("id is {:?}", bytes[2]);
@@ -116,7 +116,7 @@ impl DxlCom {
                     DXL_STATUS_ERROR.lock().await.set_checksum_error(true);
                     return Err(Error::BadCRC);
                 } else {
-                    debug!("Packet is ok");
+                    trace!("Packet is ok");
                     //Packet seems ok
                     Ok(self.handle_instruction(bytes).await)
 
@@ -128,6 +128,7 @@ impl DxlCom {
             }
         } else {
             //Ill formed packet?
+            error!("Malformed packet: {:?}", bytes);
             DXL_STATUS_ERROR.lock().await.set_instruction_error(true);
             Err(Error::BadPacket)
         }
@@ -162,7 +163,7 @@ impl DxlCom {
                 //return the read value from register
                 let addr: usize = data[5].into();
                 let size: usize = data[6].into(); //TODO check that size is <MAX_DATA_LENGTH?
-                debug!("Packet is READ addr: {:?} size: {:?}", addr, size);
+                trace!("Packet is READ addr: {:?} size: {:?}", addr, size);
                 self.tx_buffer[0] = 0xff;
                 self.tx_buffer[1] = 0xff;
                 self.tx_buffer[2] = self.id;
@@ -208,7 +209,7 @@ impl DxlCom {
                 //return status packet
                 let addr: usize = data[5].into();
                 let size: usize = <u8 as Into<usize>>::into(data[3]) - (3_usize);
-                debug!("Packet is WRITE addr: {:?} size: {:?}", addr, size);
+                trace!("Packet is WRITE addr: {:?} size: {:?}", addr, size);
                 let mut buffer = [0u8; MAX_BUFFER_LENGTH]; // Ensure buffer is of appropriate size
                 buffer[0..size].clone_from_slice(&data[6..6 + size]);
 
