@@ -12,6 +12,9 @@
 
 - `cargo build`
 
+## Run
+- `DEFMT_LOG=debug cargo run --release --features ecx22`
+
 
 ## Architecture
 
