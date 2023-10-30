@@ -4,9 +4,26 @@ name = "firmware_poulpe"
 version = "0.1.0"
 license = "MIT OR Apache-2.0"
 
+[features]
+#motor specifig config
+ecx22 = []  #Maxon ECX22 Ortbia3D
+ec45=[] #Maxon EC45 flat Orbita2D
+ec60=[] #Maxon EC60 flat Orbita2D
+
 [dependencies]
 # rustypot = "0.4.2"
 # stm32h742vg
+
+#embassy with split pins (weird behavior)
+# embassy-stm32 = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy", rev="5924cc8", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x", "unstable-pac", "unstable-traits"] }
+# embassy-sync = { version = "0.3.0", git = "https://github.com/embassy-rs/embassy", rev="5924cc8", features = ["defmt"] }
+# embassy-executor = { version = "0.3.0", git = "https://github.com/embassy-rs/embassy", rev="5924cc8", features = ["nightly", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers"] }
+# embassy-time = { version = "0.1.3", git = "https://github.com/embassy-rs/embassy", rev="5924cc8", features = ["defmt", "defmt-timestamp-uptime", "unstable-traits", "tick-hz-32_768"] }
+# embassy-net = { git = "https://github.com/embassy-rs/embassy", rev="5924cc8", features = ["defmt", "nightly", "tcp", "dhcpv4", "medium-ethernet", "proto-ipv6"] }
+# embassy-usb = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy", rev="5924cc8", features = ["defmt"] }
+# embedded-io-async = { version = "0.5.0" }
+
+#embassy which seems ok
 embassy-stm32 = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy", rev="ce662766", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x", "unstable-pac", "unstable-traits"] }
 embassy-sync = { version = "0.2.0", git = "https://github.com/embassy-rs/embassy", rev="ce662766", features = ["defmt"] }
 embassy-executor = { version = "0.3.0", git = "https://github.com/embassy-rs/embassy", rev="ce662766", features = ["nightly", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers"] }
@@ -15,8 +32,11 @@ embassy-net = { git = "https://github.com/embassy-rs/embassy", rev="ce662766", f
 embedded-io-async = { version = "0.5.0" }
 embassy-usb = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy", rev="ce662766", features = ["defmt"] }
 
+
+
 defmt = "0.3"
 defmt-rtt = "0.4"
+
 
 cortex-m = { version = "0.7.6", features = ["inline-asm", "critical-section-single-core"] }
 cortex-m-rt = "0.7.0"
@@ -33,6 +53,21 @@ micromath = "2.0.0"
 stm32-fmc = "0.2.4"
 embedded-storage = "0.3.0"
 static_cell = { version = "1.1", features = ["nightly"]}
+paste = "1.0.14"
+modular-bitfield = "0.11.2"
+
+
+
+
+[dev-dependencies]
+defmt = "0.3"
+defmt-rtt = "0.4"
+defmt-test = "0.3.1"
+
+[dev-dependencies.panic-probe]
+version = "0.3"
+features = ["print-defmt"]
+
 
 # cargo build/run
 [profile.dev]
@@ -47,7 +82,7 @@ overflow-checks = true # <-
 [profile.test]
 codegen-units = 1
 debug = 2
-debug-assertions = true # <-
+debug-assertions = false # <-
 incremental = false
 opt-level = 3 # <-
 overflow-checks = true # <-
@@ -71,3 +106,9 @@ incremental = false
 lto = 'fat'
 opt-level = 3 # <-
 overflow-checks = false # <-
+
+
+
+[[bin]]
+name = "firmware_poulpe" # src/main.rs
+test = false
