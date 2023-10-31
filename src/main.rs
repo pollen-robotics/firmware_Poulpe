@@ -1,8 +1,10 @@
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
+#![feature(generic_const_exprs)]
 
 use defmt::*;
+use dynamixel::Register;
 use embassy_executor::Spawner;
 use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{AnyPin, Level, Output, Speed};
@@ -23,6 +25,8 @@ mod registers;
 
 mod ventouse;
 use paste::paste;
+
+use crate::dynamixel::StatusPacket;
 
 use {defmt_rtt as _, panic_probe as _};
 //seems ok at 115200 with LOG=Debug
@@ -81,114 +85,49 @@ async fn test_reg() {
 }
 
 #[embassy_executor::task]
-async fn dxl_serial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pin: AnyPin) {
-    //How can I avoid passing this specific type?
-    let mut dxlcom = dynamixel::DxlCom::new(config::DXL_ID); //TODO read/write ID from flash
-    let mut dir = Output::new(dir_pin, Level::Low, Speed::High);
-
-    let mut buf: [u8; dynamixel::MAX_BUFFER_LENGTH] = [0; dynamixel::MAX_BUFFER_LENGTH];
-
-    dir.set_low(); //reading
+async fn dxl_serial(usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pin: AnyPin) {
+    let mut dxl = dynamixel::DynamixelSerialV1::new(usart, dir_pin, config::DXL_ID);
 
     loop {
-        let res = usart.read_until_idle(&mut buf).await;
+        let instruction_packet = dxl.read_instruction_packet().await;
 
-        match res {
-            Ok(nb) => {
-                trace!("received {:?} bytes: {:?}", nb, buf[0..nb]);
-                let action = dxlcom.parse(&buf[0..nb]).await;
-                match action {
-                    Ok(dynamixel::RWAction::Ignore) => {
-                        trace!("Ignoring");
-                    }
-                    Ok(dynamixel::RWAction::Ok) => {
-                        trace!("Done");
-                    }
-                    Ok(dynamixel::RWAction::Tx(data)) => {
-                        trace!("Sending response: {:?}", data);
-                        dir.set_high(); //writing mode
-                        Timer::after(Duration::from_micros(UART_SLEEP_US_DIRHIGH)).await;
-                        match usart.write(data).await {
-                            Ok(()) => {
-                                //good
-                                trace!("Sent: {:?}", data);
-                            }
-                            Err(_) => {
-                                error!("Error sending response");
-                            }
-                        }
-                        Timer::after(Duration::from_micros(UART_SLEEP_US_DIRLOW)).await; //Very important sleep here
-                        dir.set_low(); //reading mode
-                                       // Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
-                    }
-
-                    Err(_err) => {
-                        match _err {
-                            dynamixel::Error::BadCRC => {
-                                error!("Error bad crc received");
-
-                                dir.set_high(); //writing mode
-                                Timer::after(Duration::from_micros(UART_SLEEP_US_DIRHIGH)).await;
-                                match usart.write(&dxlcom.get_status_packet().await).await {
-                                    Ok(()) => {
-                                        //good
-                                        // debug!("Sent: {:?}", data);
-                                    }
-                                    Err(_) => {
-                                        error!("Error sending response");
-                                    }
-                                }
-                                Timer::after(Duration::from_micros(UART_SLEEP_US_DIRLOW)).await;
-                                dir.set_low(); //reading mode
-                                               // Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
-                            }
-                            dynamixel::Error::BadInstruction => {
-                                error!("Error bad instruction received");
-                                dir.set_high(); //writing mode
-                                Timer::after(Duration::from_micros(UART_SLEEP_US_DIRHIGH)).await;
-                                match usart.write(&dxlcom.get_status_packet().await).await {
-                                    Ok(()) => {
-                                        //good
-                                        // debug!("Sent: {:?}", data);
-                                    }
-                                    Err(_) => {
-                                        error!("Error sending response");
-                                    }
-                                }
-                                Timer::after(Duration::from_micros(UART_SLEEP_US_DIRLOW)).await;
-                                dir.set_low(); //reading mode
-                                               // Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
-                            }
-                            dynamixel::Error::BadPacket => {
-                                error!("Error bad packet received");
-                                dir.set_high(); //writing mode
-                                Timer::after(Duration::from_micros(UART_SLEEP_US_DIRHIGH)).await;
-                                match usart.write(&dxlcom.get_status_packet().await).await {
-                                    Ok(()) => {
-                                        //good
-                                        // debug!("Sent: {:?}", data);
-                                    }
-                                    Err(_) => {
-                                        error!("Error sending response");
-                                    }
-                                }
-                                Timer::after(Duration::from_micros(UART_SLEEP_US_DIRLOW)).await;
-                                dir.set_low(); //reading mode
-                                               // Timer::after(Duration::from_micros(UART_SLEEP_US)).await;
-                            }
-                        }
-                        // error!("Action Error??"); //TODO
-                    }
-                }
+        match instruction_packet {
+            Ok(dynamixel::InstructionPacket::Ping) => {
+                info!("PONG!");
+                let _ = dxl.send_status_packet(&StatusPacket::pong()).await;
             }
-            Err(err) => {
-                error!("ERROR {:?}", err);
+            Ok(dynamixel::InstructionPacket::ReadData(reg)) => match reg {
+                Register::CurrentPosition => {
+                    info!("Should read current position");
+                    let current_position = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+                    let _ = dxl
+                        .send_status_packet(&StatusPacket::with_register(reg, &current_position))
+                        .await;
+                }
+                Register::TargetPosition => {
+                    info!("Should read target position");
+                    let target_position = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
+                    let _ = dxl
+                        .send_status_packet(&StatusPacket::with_register(reg, &target_position))
+                        .await;
+                }
+            },
+            Ok(dynamixel::InstructionPacket::WriteData(reg, data)) => match reg {
+                Register::TargetPosition => {
+                    info!("Should write target position from {:?}", data);
+                    let _ = dxl.send_status_packet(&StatusPacket::ack()).await;
+                }
+                _ => {
+                    error!("Unknown register {:?} with data {:?}", reg, data);
+                }
+            },
+
+            Err(e) => {
+                error!("Error: {:?}", e);
             }
         }
     }
 }
-
-// static EXECUTOR: StaticCell<Executor> = StaticCell::new();
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -349,26 +288,3 @@ async fn main(spawner: Spawner) {
         Timer::after(Duration::from_micros(1000)).await;
     }
 }
-
-/*
-#[cfg(test)]
-#[defmt_test::tests]
-mod tests {
-    use super::*;
-    // #[init]
-    // fn init() {}
-
-    use defmt::{assert, assert_eq};
-
-    #[test]
-    fn test_it_works() {
-        info!("TEST");
-        assert!(true)
-    }
-    #[test]
-    fn test_42() {
-        let a: u8 = 42;
-        assert_eq!(a, 42)
-    }
-}
-*/
