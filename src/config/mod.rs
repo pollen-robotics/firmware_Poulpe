@@ -52,28 +52,3 @@ define_register_map!(
 
 
 );
-
-/*
-#[macro_export]
-macro_rules! define_uart {
-    ($uart_name:ident, $usart:ident, $rx_pin:ident, $tx_pin:ident, $irq:ident, $tx_dma:ident, $rx_dma:ident) => {
-        pub fn $uart_name(p: embassy_stm32::Peripherals) -> Uart {
-            // use embassy_stm32::config::Config;
-
-            let mut config = Config::default();
-            config.baudrate = 1_000_000;
-            config.detect_previous_overrun = false;
-
-            Uart::new(
-                p.$usart, p.$rx_pin, p.$tx_pin, $irq, p.$tx_dma, p.$rx_dma, config,
-            )
-        }
-    };
-}
-
-bind_interrupts!(struct Irqs {
-    USART1 => usart::InterruptHandler<peripherals::USART1>;
-});
-
-define_uart!(dxl_uart, USART1, PB15, PB14, Irqs, DMA1_CH0, DMA1_CH1);
-*/

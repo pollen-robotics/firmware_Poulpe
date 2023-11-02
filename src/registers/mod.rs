@@ -1,17 +1,4 @@
-// use defmt::*;
-// use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-// use embassy_sync::mutex::Mutex;
-
-// use crate::paste;
-// use paste::paste;
-
 use {defmt_rtt as _, panic_probe as _};
-// pub struct Registers {
-//     pub buffer: [u8; 512],
-// }
-
-// pub static REGISTERS: Mutex<ThreadModeRawMutex, Registers> =
-//     Mutex::new(Registers { buffer: [0; 512] });
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AccessType {
