@@ -3,14 +3,12 @@ use crate::define_register_map;
 use crate::registers::AccessType;
 
 use crate::paste;
-use embassy_stm32::usart::{Config, Uart};
-use embassy_stm32::{bind_interrupts, peripherals, usart};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 pub static DXL_ID: u8 = 42;
 
 #[cfg(feature = "ecx22")]
-pub mod MotorConfig {
+pub mod motor {
     pub const PID_FLUX_P_FLUX_I: u32 = 0x03200080;
     pub const PID_TORQUE_P_TORQUE_I: u32 = 0x03200000;
     pub const PID_VELOCITY_P_VELOCITY_I: u32 = 0x01000080;
@@ -18,7 +16,7 @@ pub mod MotorConfig {
 }
 
 #[cfg(feature = "ec60")]
-pub mod MotorConfig {
+pub mod motor {
     pub const PID_FLUX_P_FLUX_I: u32 = 0x03200000;
     pub const PID_TORQUE_P_TORQUE_I: u32 = 0x03200000;
     pub const PID_VELOCITY_P_VELOCITY_I: u32 = 0x01F401C2;

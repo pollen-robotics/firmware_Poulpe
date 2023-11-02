@@ -1,7 +1,4 @@
-#![no_std]
-#![no_main]
-
-use crate::config::MotorConfig;
+use crate::config;
 
 use defmt::*;
 use embassy_stm32::dma::NoDma;
@@ -20,10 +17,10 @@ const PWM_BBM_H_BBM_L: u32 = 0x00001919; // Break-Before-Make
 const PWM_SV_CHOP: u32 = 0x00000107;
 // ADC configuration
 const ADC_I_SELECT: u32 = 0x24000100;
-const dsADC_MCFG_B_MCFG_A: u32 = 0x00100010;
-const dsADC_MCLK_A: u32 = 0x20000000;
-const dsADC_MCLK_B: u32 = 0x00000000;
-const dsADC_MDEC_B_MDEC_A: u32 = 0x014E014E;
+const DS_ADC_MCFG_B_MCFG_A: u32 = 0x00100010;
+const DS_ADC_MCLK_A: u32 = 0x20000000;
+const DS_ADC_MCLK_B: u32 = 0x00000000;
+const DS_ADC_MDEC_B_MDEC_A: u32 = 0x014E014E;
 
 const ADC_I0_SCALE_OFFSET: u32 = 0x002B822E; // gain is 43 and offset is centered on 2^32 (-> millis Amps)
 const ADC_I1_SCALE_OFFSET: u32 = 0x002B83CF; // gain is 43 and offset is centered on 2^32
@@ -55,6 +52,8 @@ const PID_TORQUE_FLUX_LIMITS: u32 = 0x00001000; // 4000
 const OPENLOOP_ACCELERATION: u32 = 0x0000003c; // Wizard default
 const UQ_UD_EXT: u32 = 0x000007D0; // Openloop "torque_target"
 
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
 pub enum Tmc4671Registers {
     CHIPINFO_DATA = 0x00,
     CHIPINFO_ADDR = 0x01,
@@ -142,6 +141,7 @@ pub enum Tmc4671Registers {
     STATUS_MASK = 0x7D,
 }
 
+#[allow(dead_code)]
 pub enum MotionMode {
     // From register MODE_RAMP_MODE_MOTION
     Stopped = 0,
@@ -162,61 +162,19 @@ pub enum MotionMode {
     PmwIPosition = 15,
 }
 
-impl MotionMode {
-    fn motion_from_u8(value: u8) -> Option<MotionMode> {
-        match value {
-            0 => Some(MotionMode::Stopped),
-            1 => Some(MotionMode::Torque),
-            2 => Some(MotionMode::Velocity),
-            3 => Some(MotionMode::Position),
-            4 => Some(MotionMode::PrbsFlux),
-            5 => Some(MotionMode::PrbsTorque),
-            6 => Some(MotionMode::PrbsVelocity),
-            7 => Some(MotionMode::PrbsPosition),
-            8 => Some(MotionMode::UqUdExt),
-            9 => Some(MotionMode::Reserved),
-            10 => Some(MotionMode::AgpiATorque),
-            11 => Some(MotionMode::AgpiAVelocity),
-            12 => Some(MotionMode::AgpiAPosition),
-            13 => Some(MotionMode::PmwITorque),
-            14 => Some(MotionMode::PmwIVelocity),
-            15 => Some(MotionMode::PmwIPosition),
-            _ => None, // Handle invalid values, if needed
-        }
-    }
-    fn motion_to_u8(value: MotionMode) -> Option<u8> {
-        match value {
-            MotionMode::Stopped => Some(0),
-            MotionMode::Torque => Some(1),
-            MotionMode::Velocity => Some(2),
-            MotionMode::Position => Some(3),
-            MotionMode::PrbsFlux => Some(4),
-            MotionMode::PrbsTorque => Some(5),
-            MotionMode::PrbsVelocity => Some(6),
-            MotionMode::PrbsPosition => Some(7),
-            MotionMode::UqUdExt => Some(8),
-            MotionMode::Reserved => Some(9),
-            MotionMode::AgpiATorque => Some(10),
-            MotionMode::AgpiAVelocity => Some(11),
-            MotionMode::AgpiAPosition => Some(12),
-            MotionMode::PmwITorque => Some(13),
-            MotionMode::PmwIVelocity => Some(14),
-            MotionMode::PmwIPosition => Some(15),
-            _ => None, // Handle invalid values, if needed
-        }
-    }
-}
-
 pub struct Ventouse {
     // Now that is for J5 (middle FCC) - Motor "B"
     spi: Spi<'static, p::SPI4, NoDma, NoDma>,
     cs_foc: Output<'static, p::PE3>,
     cs_driver: Output<'static, p::PC15>,
     foc_enable: Output<'static, p::PE0>,
+    #[allow(dead_code)]
     foc_status: Input<'static, p::PC13>,
+    #[allow(dead_code)]
     driver_fault: Input<'static, p::PC14>,
 }
 
+#[allow(dead_code)]
 impl Ventouse {
     pub fn new(
         cs_foc_p: p::PE3,
@@ -261,52 +219,52 @@ impl Ventouse {
         self.foc_enable.set_low();
     }
 
-    pub fn tmc4671_set_mode(&mut self, mode: MotionMode) {
+    pub fn tmc4671_set_mode(&mut self, mode: MotionMode) -> Result<u32, embassy_stm32::spi::Error> {
         let mut data = 0x00000000u32;
         // read current state first
         self.tmc4671_transmit_raw_data(false, Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data)
             .unwrap();
         data &= 0xFFFFFF00u32;
         data |= mode as u32;
-        self.tmc4671_write_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data);
+        self.tmc4671_write_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data)
     }
 
     pub fn tmc4671_get_mode(&mut self) -> Result<u8, embassy_stm32::spi::Error> {
         // TODO: it should return a MotionMode but display of enum with defmt is unstable
         if let Ok(read) = self.tmc4671_read_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8)
         {
-            return Ok((read & 0x000000FFu32) as u8);
+            Ok((read & 0x000000FFu32) as u8)
             /*let data = match MotionMode::motion_from_u8(res as u8) {
                 Some(d) => d,
                 None => return Err(embassy_stm32::spi::Error::Framing)
             };
             return Ok(data);*/
         } else {
-            return Err(embassy_stm32::spi::Error::Framing);
+            Err(embassy_stm32::spi::Error::Framing)
         }
     }
 
     pub fn tmc4671_get_u32(&mut self, reg: u8) -> Result<u32, embassy_stm32::spi::Error> {
         if let Ok(res) = self.tmc4671_read_register(reg) {
-            return Ok(res);
+            Ok(res)
         } else {
-            return Err(embassy_stm32::spi::Error::Framing);
+            Err(embassy_stm32::spi::Error::Framing)
         }
     }
 
     pub fn tmc4671_get_i32(&mut self, reg: u8) -> Result<i32, embassy_stm32::spi::Error> {
         if let Ok(res) = self.tmc4671_read_register(reg) {
-            return Ok(res as i32);
+            Ok(res as i32)
         } else {
-            return Err(embassy_stm32::spi::Error::Framing);
+            Err(embassy_stm32::spi::Error::Framing)
         }
     }
 
     fn tmc4671_get_lower_i16(&mut self, reg: u8) -> Result<i16, embassy_stm32::spi::Error> {
         if let Ok(res) = self.tmc4671_read_register(reg) {
-            return Ok((res & 0x0000FFFFu32) as i16);
+            Ok((res & 0x0000FFFFu32) as i16)
         } else {
-            return Err(embassy_stm32::spi::Error::Framing);
+            Err(embassy_stm32::spi::Error::Framing)
         }
     }
 
@@ -333,7 +291,10 @@ impl Ventouse {
         self.tmc4671_get_lower_i16(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8)
     }
 
-    pub fn tmc4671_set_torque_target(&mut self, torque_target: i16) {
+    pub fn tmc4671_set_torque_target(
+        &mut self,
+        torque_target: i16,
+    ) -> Result<u32, embassy_stm32::spi::Error> {
         // read current state first -> bits 15-0 is flux_target and should be kept.
         let mut torque_and_flux = self
             .tmc4671_read_register(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8)
@@ -343,27 +304,32 @@ impl Ventouse {
         self.tmc4671_write_register(
             Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8,
             torque_and_flux,
-        );
+        )
     }
 
-    pub fn tmc4671_set_flux_target(&mut self, flux_target: i16) {
+    pub fn tmc4671_set_flux_target(
+        &mut self,
+        flux_target: i16,
+    ) -> Result<u32, embassy_stm32::spi::Error> {
         // read current state first -> bits 31-16 is torque_target and should be kept.
-        let mut torque_and_flux = self
-            .tmc4671_read_register(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8)
-            .unwrap();
+        let mut torque_and_flux =
+            self.tmc4671_read_register(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8)?;
         torque_and_flux &= 0xFFFF0000u32; // clear actual flux
         torque_and_flux |= flux_target as u32;
         self.tmc4671_write_register(
             Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8,
             torque_and_flux,
-        );
+        )
     }
 
-    pub fn tmc4671_set_target_velocity(&mut self, velocity_target: i32) {
+    pub fn tmc4671_set_target_velocity(
+        &mut self,
+        velocity_target: i32,
+    ) -> Result<u32, embassy_stm32::spi::Error> {
         self.tmc4671_write_register(
             Tmc4671Registers::PID_VELOCITY_TARGET as u8,
             velocity_target as u32,
-        );
+        )
     }
 
     pub fn tmc4671_get_target_velocity(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
@@ -374,11 +340,14 @@ impl Ventouse {
         self.tmc4671_get_i32(Tmc4671Registers::PID_VELOCITY_ACTUAL as u8)
     }
 
-    pub fn tmc4671_set_target_position(&mut self, position_target: i32) {
+    pub fn tmc4671_set_target_position(
+        &mut self,
+        position_target: i32,
+    ) -> Result<u32, embassy_stm32::spi::Error> {
         self.tmc4671_write_register(
             Tmc4671Registers::PID_POSITION_TARGET as u8,
             position_target as u32,
-        );
+        )
     }
 
     pub fn tmc4671_get_actual_position(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
@@ -393,8 +362,8 @@ impl Ventouse {
         self.tmc4671_get_i32(Tmc4671Registers::ABN_DECODER_PPR as u8)
     }
 
-    pub fn tmc4671_set_encoder_ppr(&mut self, ppr: i32) {
-        self.tmc4671_write_register(Tmc4671Registers::PID_VELOCITY_TARGET as u8, ppr as u32);
+    pub fn tmc4671_set_encoder_ppr(&mut self, ppr: i32) -> Result<u32, embassy_stm32::spi::Error> {
+        self.tmc4671_write_register(Tmc4671Registers::PID_VELOCITY_TARGET as u8, ppr as u32)
     }
 
     pub async fn tmc4671_init_registers(&mut self) -> Result<(), embassy_stm32::spi::Error> {
@@ -415,13 +384,13 @@ impl Ventouse {
         self.tmc4671_checked_write(Tmc4671Registers::ADC_I_SELECT as u8, ADC_I_SELECT)?;
         self.tmc4671_checked_write(
             Tmc4671Registers::dsADC_MCFG_B_MCFG_A as u8,
-            dsADC_MCFG_B_MCFG_A,
+            DS_ADC_MCFG_B_MCFG_A,
         )?;
-        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MCLK_A as u8, dsADC_MCLK_A)?;
-        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MCLK_B as u8, dsADC_MCLK_B)?;
+        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MCLK_A as u8, DS_ADC_MCLK_A)?;
+        self.tmc4671_checked_write(Tmc4671Registers::dsADC_MCLK_B as u8, DS_ADC_MCLK_B)?;
         self.tmc4671_checked_write(
             Tmc4671Registers::dsADC_MDEC_B_MDEC_A as u8,
-            dsADC_MDEC_B_MDEC_A,
+            DS_ADC_MDEC_B_MDEC_A,
         )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::ADC_I1_SCALE_OFFSET as u8,
@@ -450,19 +419,19 @@ impl Ventouse {
         // PI settings
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_FLUX_P_FLUX_I as u8,
-            MotorConfig::PID_FLUX_P_FLUX_I as u32,
+            config::motor::PID_FLUX_P_FLUX_I,
         )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_TORQUE_P_TORQUE_I as u8,
-            MotorConfig::PID_TORQUE_P_TORQUE_I as u32,
+            config::motor::PID_TORQUE_P_TORQUE_I,
         )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_VELOCITY_P_VELOCITY_I as u8,
-            MotorConfig::PID_VELOCITY_P_VELOCITY_I as u32,
+            config::motor::PID_VELOCITY_P_VELOCITY_I,
         )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_POSITION_P_POSITION_I as u8,
-            MotorConfig::PID_POSITION_P_POSITION_I as u32,
+            config::motor::PID_POSITION_P_POSITION_I,
         )?;
 
         Ok(())
@@ -470,7 +439,7 @@ impl Ventouse {
 
     pub async fn tmc4671_align_motor(&mut self) -> Result<(), embassy_stm32::spi::Error> {
         // /!\ Please note that the TMC6200 must be in Single-line mode (aka 6-PMW)
-        self.tmc6200_checked_write(0x00u8, 0x00000000u32);
+        self.tmc6200_checked_write(0x00u8, 0x00000000u32)?;
 
         // Set openloop mode
         self.tmc4671_checked_write(Tmc4671Registers::OPENLOOP_MODE as u8, 0x00000000)?; // Positive Openloop phi e (OPENLOOP_MODE)
@@ -501,22 +470,22 @@ impl Ventouse {
         // self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, 0x00007D00)?; // ~4000
 
         // Move!
-        self.tmc4671_set_mode(MotionMode::Velocity);
+        self.tmc4671_set_mode(MotionMode::Velocity)?;
 
         // Rotate right
         info!("Rotate right...");
-        self.tmc4671_set_target_velocity(1000);
+        self.tmc4671_set_target_velocity(1000)?;
         let _ = Timer::after(Duration::from_millis(1000)).await;
 
         // Rotate left
         info!("Rotate left...");
-        self.tmc4671_set_target_velocity(-1000);
+        self.tmc4671_set_target_velocity(-1000)?;
         let _ = Timer::after(Duration::from_millis(1000)).await;
 
         // Stop
         info!("Stop...");
-        self.tmc4671_set_target_velocity(0);
-        self.tmc4671_set_mode(MotionMode::Stopped);
+        self.tmc4671_set_target_velocity(0)?;
+        self.tmc4671_set_mode(MotionMode::Stopped)?;
 
         Ok(())
     }
@@ -541,14 +510,13 @@ impl Ventouse {
         reg: u8,
         data_w: u32,
     ) -> Result<u32, embassy_stm32::spi::Error> {
-        let mut data_m = data_w;
-        let res = self.tmc4671_transmit_raw_data(true, reg, data_m);
-        return res;
+        let data_m = data_w;
+        self.tmc4671_transmit_raw_data(true, reg, data_m)
     }
 
     pub fn tmc4671_read_register(&mut self, reg: u8) -> Result<u32, embassy_stm32::spi::Error> {
-        let mut data_m = 0x00000000u32;
-        return self.tmc4671_transmit_raw_data(false, reg, data_m);
+        let data_m = 0x00000000u32;
+        self.tmc4671_transmit_raw_data(false, reg, data_m)
     }
 
     pub fn tmc4671_transmit_raw_data(
@@ -560,7 +528,7 @@ impl Ventouse {
         // Building the array
         let mut msb_data = addr;
         let mut data_u8_array = data.to_le_bytes();
-        if write_bit == true {
+        if write_bit {
             msb_data = addr | 0b10000000;
         } else {
             data_u8_array = [0x00u8; 4];
@@ -574,9 +542,9 @@ impl Ventouse {
         ];
 
         // Sending data
-        &mut self.cs_foc.set_low();
+        self.cs_foc.set_low();
         let _result = &mut self.spi.blocking_transfer_in_place(&mut transfer_data);
-        &mut self.cs_foc.set_high();
+        self.cs_foc.set_high();
 
         let mut read_data = transfer_data[4] as u32;
         read_data += (transfer_data[3] as u32) << 8;
@@ -606,25 +574,24 @@ impl Ventouse {
         reg: u8,
         data_w: u32,
     ) -> Result<u32, embassy_stm32::spi::Error> {
-        let mut data_m = data_w;
-        let res = self.tmc6200_transmit_raw_data(true, reg, &mut data_m);
-        return res;
+        let data_m = data_w;
+        self.tmc6200_transmit_raw_data(true, reg, &data_m)
     }
 
     pub fn tmc6200_read_register(&mut self, reg: u8) -> Result<u32, embassy_stm32::spi::Error> {
-        let mut data_m = 0x00000000u32;
-        return self.tmc6200_transmit_raw_data(false, reg, &mut data_m);
+        let data_m = 0x00000000u32;
+        self.tmc6200_transmit_raw_data(false, reg, &data_m)
     }
 
     pub fn tmc6200_transmit_raw_data(
         &mut self,
         write_bit: bool,
         addr: u8,
-        data: &mut u32,
+        data: &u32,
     ) -> Result<u32, embassy_stm32::spi::Error> {
         // Building array
         let mut msb_data = addr;
-        if write_bit == true {
+        if write_bit {
             msb_data = addr | 0b10000000;
         }
         let data_u8_array = data.to_le_bytes();
@@ -637,9 +604,9 @@ impl Ventouse {
         ];
 
         // Sending data
-        &mut self.cs_driver.set_low();
+        self.cs_driver.set_low();
         let _result = &mut self.spi.blocking_transfer_in_place(&mut transfer_data); // Todo: the error is not treated.
-        &mut self.cs_driver.set_high();
+        self.cs_driver.set_high();
 
         let mut read_data = transfer_data[4] as u32;
         read_data += (transfer_data[3] as u32) << 8;

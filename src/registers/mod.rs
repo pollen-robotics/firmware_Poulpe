@@ -121,5 +121,3 @@ macro_rules! define_register_map {
 macro_rules! count_items {
     ($($item:ident),+ $(,)?) => { 0 $(+ { stringify!($item); 1 })+ };
 }
-
-const FLASH_ADDR: u32 = 0; // This is the offset into bank 2, the absolute address is 0x8_0000
