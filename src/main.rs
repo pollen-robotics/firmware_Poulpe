@@ -87,6 +87,7 @@ async fn dxl_serial(usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pin: A
     let dxl_error = 0;
 
     loop {
+        info!("Waiting for packet...");
         match dxl.read().await {
             Ok(packet) => {
                 info!("Got packet: {:?}", packet);
@@ -120,46 +121,6 @@ async fn dxl_serial(usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pin: A
             }
         }
     }
-
-    // loop {
-    //     let instruction_packet = dxl.read_instruction_packet().await;
-
-    //     match instruction_packet {
-    //         Ok(dynamixel::InstructionPacket::Ping) => {
-    //             info!("PONG!");
-    //             let _ = dxl.send_status_packet(&StatusPacket::pong()).await;
-    //         }
-    //         Ok(dynamixel::InstructionPacket::ReadData(reg)) => match reg {
-    //             Register::CurrentPosition => {
-    //                 info!("Should read current position");
-    //                 let current_position = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-    //                 let _ = dxl
-    //                     .send_status_packet(&StatusPacket::with_register(reg, &current_position))
-    //                     .await;
-    //             }
-    //             Register::TargetPosition => {
-    //                 info!("Should read target position");
-    //                 let target_position = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
-    //                 let _ = dxl
-    //                     .send_status_packet(&StatusPacket::with_register(reg, &target_position))
-    //                     .await;
-    //             }
-    //         },
-    //         Ok(dynamixel::InstructionPacket::WriteData(reg, data)) => match reg {
-    //             Register::TargetPosition => {
-    //                 info!("Should write target position from {:?}", data);
-    //                 let _ = dxl.send_status_packet(&StatusPacket::ack()).await;
-    //             }
-    //             _ => {
-    //                 error!("Unknown register {:?} with data {:?}", reg, data);
-    //             }
-    //         },
-
-    //         Err(e) => {
-    //             error!("Error: {:?}", e);
-    //         }
-    //     }
-    // }
 }
 
 #[embassy_executor::main]
