@@ -1,4 +1,4 @@
-use defmt::Format;
+use defmt::{debug, Format};
 use embassy_stm32::{
     gpio::{AnyPin, Level, Output, Speed},
     usart::{BasicInstance, Uart},
@@ -11,6 +11,7 @@ const MAX_BUFFER_LENGTH: usize = 256;
 //Seems ok at 115200 with LOG=Info
 const UART_SLEEP_US_DIRLOW: u64 = 200;
 const UART_SLEEP_US_DIRHIGH: u64 = 300;
+const MAX_READ_BUFFER_LENGTH: usize = 16;
 
 pub struct DynamixelUsartIO<'d, T, TxDma, RxDma>
 where
@@ -46,12 +47,34 @@ where
     pub async fn read(&mut self) -> Result<InstructionPacketKind, CommunicationError> {
         // We should always be in read mode when this method is called
 
-        let n = match self.usart.read_until_idle(&mut self.read_buffer).await {
-            Ok(n) => n,
-            Err(e) => return Err(CommunicationError::UartError(e)),
-        };
+        let mut total = 0;
 
-        InstructionPacketKind::parse(&self.read_buffer[..n], self.id)
+        loop {
+            let n = match self
+                .usart
+                .read_until_idle(&mut self.read_buffer[total..])
+                .await
+            {
+                Ok(n) => n,
+                Err(e) => return Err(CommunicationError::UartError(e)),
+            };
+
+            total += n;
+
+            assert!(total <= MAX_BUFFER_LENGTH - MAX_READ_BUFFER_LENGTH);
+
+            if n == 0 {
+                continue;
+            }
+
+            if n < MAX_READ_BUFFER_LENGTH {
+                break;
+            }
+        }
+
+        debug!("Read {} bytes", total);
+
+        InstructionPacketKind::parse(&self.read_buffer[..total], self.id)
             .map_err(CommunicationError::DynamixelParsingError)
     }
 
