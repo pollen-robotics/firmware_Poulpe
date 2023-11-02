@@ -93,7 +93,7 @@ where
         Timer::after(Duration::from_micros(UART_SLEEP_US_DIRLOW)).await;
         self.dir.set_low(); // Switch to reading
 
-        res.map_err(|e| CommunicationError::UartError(e))
+        res.map_err(CommunicationError::UartError)
     }
 }
 
