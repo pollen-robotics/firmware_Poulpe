@@ -4,7 +4,6 @@
 #![feature(generic_const_exprs)]
 
 use defmt::*;
-use dynamixel::Register;
 use embassy_executor::Spawner;
 use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{AnyPin, Level, Output, Speed};
@@ -26,16 +25,12 @@ mod registers;
 mod ventouse;
 use paste::paste;
 
-use crate::dynamixel::StatusPacket;
+use crate::dynamixel::{InstructionPacketKind, StatusPacket};
 
 use {defmt_rtt as _, panic_probe as _};
 //seems ok at 115200 with LOG=Debug
 // const UART_SLEEP_US_DIRLOW: u64 = 10;
 // const UART_SLEEP_US_DIRHIGH: u64 = 1;
-
-//Seems ok at 115200 with LOG=Info
-const UART_SLEEP_US_DIRLOW: u64 = 200;
-const UART_SLEEP_US_DIRHIGH: u64 = 300;
 
 // const UART_SLEEP_US_DIRLOW: u64 = 400;
 // const UART_SLEEP_US_DIRHIGH: u64 = 600;
@@ -86,47 +81,85 @@ async fn test_reg() {
 
 #[embassy_executor::task]
 async fn dxl_serial(usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pin: AnyPin) {
-    let mut dxl = dynamixel::DynamixelSerialV1::new(usart, dir_pin, config::DXL_ID);
+    let id = config::DXL_ID;
+    let mut dxl = dynamixel::DynamixelUsartIO::new(usart, dir_pin, id);
+
+    let dxl_error = 0;
 
     loop {
-        let instruction_packet = dxl.read_instruction_packet().await;
+        match dxl.read().await {
+            Ok(packet) => {
+                info!("Got packet: {:?}", packet);
 
-        match instruction_packet {
-            Ok(dynamixel::InstructionPacket::Ping) => {
-                info!("PONG!");
-                let _ = dxl.send_status_packet(&StatusPacket::pong()).await;
+                match packet {
+                    InstructionPacketKind::Ping(_) => {
+                        let sp = StatusPacket::ack(id, dxl_error);
+                        info!("Sending status packet: {:?}", sp);
+                        if let Some(e) = dxl.write(&sp).await.err() {
+                            error!("Error: {:?}", e);
+                        }
+                    }
+                    InstructionPacketKind::ReadData(read_data_packet) => {
+                        let sp = StatusPacket::with_value(id, dxl_error, [0, 0, 0, 0]);
+                        info!("Sending status packet: {:?}", sp);
+                        if let Some(e) = dxl.write(&sp).await.err() {
+                            error!("Error: {:?}", e);
+                        }
+                    }
+                    InstructionPacketKind::WriteData(write_data_packet) => {
+                        let sp = StatusPacket::ack(id, dxl_error);
+                        info!("Sending status packet: {:?}", sp);
+                        if let Some(e) = dxl.write(&sp).await.err() {
+                            error!("Error: {:?}", e);
+                        }
+                    }
+                }
             }
-            Ok(dynamixel::InstructionPacket::ReadData(reg)) => match reg {
-                Register::CurrentPosition => {
-                    info!("Should read current position");
-                    let current_position = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-                    let _ = dxl
-                        .send_status_packet(&StatusPacket::with_register(reg, &current_position))
-                        .await;
-                }
-                Register::TargetPosition => {
-                    info!("Should read target position");
-                    let target_position = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
-                    let _ = dxl
-                        .send_status_packet(&StatusPacket::with_register(reg, &target_position))
-                        .await;
-                }
-            },
-            Ok(dynamixel::InstructionPacket::WriteData(reg, data)) => match reg {
-                Register::TargetPosition => {
-                    info!("Should write target position from {:?}", data);
-                    let _ = dxl.send_status_packet(&StatusPacket::ack()).await;
-                }
-                _ => {
-                    error!("Unknown register {:?} with data {:?}", reg, data);
-                }
-            },
-
             Err(e) => {
                 error!("Error: {:?}", e);
             }
         }
     }
+
+    // loop {
+    //     let instruction_packet = dxl.read_instruction_packet().await;
+
+    //     match instruction_packet {
+    //         Ok(dynamixel::InstructionPacket::Ping) => {
+    //             info!("PONG!");
+    //             let _ = dxl.send_status_packet(&StatusPacket::pong()).await;
+    //         }
+    //         Ok(dynamixel::InstructionPacket::ReadData(reg)) => match reg {
+    //             Register::CurrentPosition => {
+    //                 info!("Should read current position");
+    //                 let current_position = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    //                 let _ = dxl
+    //                     .send_status_packet(&StatusPacket::with_register(reg, &current_position))
+    //                     .await;
+    //             }
+    //             Register::TargetPosition => {
+    //                 info!("Should read target position");
+    //                 let target_position = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
+    //                 let _ = dxl
+    //                     .send_status_packet(&StatusPacket::with_register(reg, &target_position))
+    //                     .await;
+    //             }
+    //         },
+    //         Ok(dynamixel::InstructionPacket::WriteData(reg, data)) => match reg {
+    //             Register::TargetPosition => {
+    //                 info!("Should write target position from {:?}", data);
+    //                 let _ = dxl.send_status_packet(&StatusPacket::ack()).await;
+    //             }
+    //             _ => {
+    //                 error!("Unknown register {:?} with data {:?}", reg, data);
+    //             }
+    //         },
+
+    //         Err(e) => {
+    //             error!("Error: {:?}", e);
+    //         }
+    //     }
+    // }
 }
 
 #[embassy_executor::main]

@@ -1,8 +1,5 @@
 mod packet;
-pub use packet::{InstructionPacket, StatusPacket};
+pub use packet::{InstructionPacketKind, StatusPacket};
 
-mod register;
-pub use register::Register;
-
-mod v1;
-pub use v1::DynamixelSerialV1;
+mod usart_io;
+pub use usart_io::DynamixelUsartIO;
