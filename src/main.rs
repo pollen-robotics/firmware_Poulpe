@@ -101,7 +101,7 @@ async fn dxl_serial(usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pin: A
                         }
                     }
                     InstructionPacketKind::ReadData(read_data_packet) => {
-                        let sp = StatusPacket::with_value(id, dxl_error, [0, 0, 0, 0]);
+                        let sp = StatusPacket::with_value(id, dxl_error, [0, 42, 0, 10]);
                         debug!("Sending status packet: {:?}", sp);
                         if let Some(e) = dxl.write(&sp).await.err() {
                             error!("Error: {:?}", e);
