@@ -252,7 +252,7 @@ async fn main(spawner: Spawner) {
     }
      */
 
-    stm32_conf.rcc.sys_ck = Some(mhz(400));
+    // stm32_conf.rcc.sys_ck = Some(mhz(400));
     // stm32_conf.rcc.hclk = Some(mhz(200));
     // stm32_conf.rcc.pll1.q_ck = Some(mhz(100));
 
@@ -286,7 +286,8 @@ async fn main(spawner: Spawner) {
 
     let usart = Uart::new(
         p.USART1, p.PB15, p.PB14, Irqs, p.DMA1_CH0, p.DMA1_CH1, config,
-    );
+    )
+    .unwrap();
 
     unwrap!(spawner.spawn(dxl_serial(usart, p.PD9.into())));
     // TMC4671 init
