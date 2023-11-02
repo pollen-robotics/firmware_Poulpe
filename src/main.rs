@@ -101,13 +101,18 @@ async fn dxl_serial(usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pin: A
                         }
                     }
                     InstructionPacketKind::ReadData(read_data_packet) => {
-                        let sp = StatusPacket::with_value(id, dxl_error, [0, 42, 0, 10]);
+                        // let value: [u8; N] = register.get_data(read_data_packet.address, read_data_packet.data_length).unwrap();
+                        let value = [0, 42, 0, 10];
+
+                        let sp = StatusPacket::with_value(id, dxl_error, value);
                         debug!("Sending status packet: {:?}", sp);
                         if let Some(e) = dxl.write(&sp).await.err() {
                             error!("Error: {:?}", e);
                         }
                     }
                     InstructionPacketKind::WriteData(write_data_packet) => {
+                        // register.set_data(write_data_packet.address, write_data_packet.data).unwrap();
+
                         let sp = StatusPacket::ack(id, dxl_error);
                         debug!("Sending status packet: {:?}", sp);
                         if let Some(e) = dxl.write(&sp).await.err() {
