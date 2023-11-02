@@ -87,29 +87,29 @@ async fn dxl_serial(usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pin: A
     let dxl_error = 0;
 
     loop {
-        info!("Waiting for packet...");
+        debug!("Waiting for packet...");
         match dxl.read().await {
             Ok(packet) => {
-                info!("Got packet: {:?}", packet);
+                debug!("Got packet: {:?}", packet);
 
                 match packet {
                     InstructionPacketKind::Ping(_) => {
                         let sp = StatusPacket::ack(id, dxl_error);
-                        info!("Sending status packet: {:?}", sp);
+                        debug!("Sending status packet: {:?}", sp);
                         if let Some(e) = dxl.write(&sp).await.err() {
                             error!("Error: {:?}", e);
                         }
                     }
                     InstructionPacketKind::ReadData(read_data_packet) => {
                         let sp = StatusPacket::with_value(id, dxl_error, [0, 0, 0, 0]);
-                        info!("Sending status packet: {:?}", sp);
+                        debug!("Sending status packet: {:?}", sp);
                         if let Some(e) = dxl.write(&sp).await.err() {
                             error!("Error: {:?}", e);
                         }
                     }
                     InstructionPacketKind::WriteData(write_data_packet) => {
                         let sp = StatusPacket::ack(id, dxl_error);
-                        info!("Sending status packet: {:?}", sp);
+                        debug!("Sending status packet: {:?}", sp);
                         if let Some(e) = dxl.write(&sp).await.err() {
                             error!("Error: {:?}", e);
                         }
