@@ -7,12 +7,11 @@
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_stm32::gpio::{AnyPin, Level, Output, Speed};
-use embassy_stm32::usart::Config;
+use embassy_stm32::usart::Config as usart_config;
 use embassy_stm32::Config as stm32_config;
 use embassy_stm32::{bind_interrupts, peripherals, usart};
 use embassy_time::{Duration, Timer};
 
-// declare the modules
 mod config;
 mod dynamixel;
 mod motor_control;
@@ -110,15 +109,21 @@ async fn main(spawner: Spawner) {
     let p = embassy_stm32::init(stm32_conf);
 
     // Prepare and spawn the DXL serial task
-    let mut config = Config::default();
-    config.baudrate = 1_000_000;
-    config.stop_bits = embassy_stm32::usart::StopBits::STOP1;
-    config.data_bits = embassy_stm32::usart::DataBits::DataBits8;
-    config.parity = embassy_stm32::usart::Parity::ParityNone;
-    config.detect_previous_overrun = false;
+    let mut usart_config = usart_config::default();
+    usart_config.baudrate = 1_000_000;
+    usart_config.stop_bits = embassy_stm32::usart::StopBits::STOP1;
+    usart_config.data_bits = embassy_stm32::usart::DataBits::DataBits8;
+    usart_config.parity = embassy_stm32::usart::Parity::ParityNone;
+    usart_config.detect_previous_overrun = false;
 
     let usart = config::DynamixelUart::new(
-        p.USART1, p.PB15, p.PB14, Irqs, p.DMA1_CH0, p.DMA1_CH1, config,
+        p.USART1,
+        p.PB15,
+        p.PB14,
+        Irqs,
+        p.DMA1_CH0,
+        p.DMA1_CH1,
+        usart_config,
     )
     .unwrap();
 
