@@ -6,7 +6,6 @@
 
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{AnyPin, Level, Output, Speed};
 use embassy_stm32::usart::Config;
 use embassy_stm32::Config as stm32_config;
@@ -126,34 +125,33 @@ async fn main(spawner: Spawner) {
     unwrap!(spawner.spawn(dxl_serial(usart, p.PD9.into())));
 
     // Prepare and spawn the ventouse task
-
     let orbita_2d = Actuator::new([
         VentouseKind::A(config::VentouseA::new(
-            p.PE3,
-            p.PC15,
-            p.SPI4,
-            p.PE12,
-            p.PE6,
-            p.PE5,
-            NoDma,
-            NoDma,
-            p.PE0,
-            p.PC13,
-            p.PC14,
+            motor_control::VentouseConfig {
+                cs_foc: p.PE3,
+                cs_driver: p.PC15,
+                peri: p.SPI4,
+                sck: p.PE12,
+                mosi: p.PE6,
+                miso: p.PE5,
+                foc_enable: p.PE0,
+                foc_status: p.PC13,
+                driver_fault: p.PC14,
+            },
             config::BrushlessMotor::ecx22(),
         )),
         VentouseKind::B(config::VentouseB::new(
-            p.PD7,
-            p.PD6,
-            p.SPI6,
-            p.PB3,
-            p.PB5,
-            p.PB4,
-            NoDma,
-            NoDma,
-            p.PD5,
-            p.PD4,
-            p.PD3,
+            motor_control::VentouseConfig {
+                cs_foc: p.PD7,
+                cs_driver: p.PD6,
+                peri: p.SPI6,
+                sck: p.PB3,
+                mosi: p.PB5,
+                miso: p.PB4,
+                foc_enable: p.PD5,
+                foc_status: p.PD4,
+                driver_fault: p.PD3,
+            },
             config::BrushlessMotor::ecx22(),
         )),
     ]);

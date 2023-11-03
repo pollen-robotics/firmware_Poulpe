@@ -2,9 +2,9 @@ use super::axis::Axis;
 use crate::config;
 
 use defmt::*;
+use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{Input, Level, Output, Pin, Pull, Speed};
 use embassy_stm32::spi::{Config, Instance, MisoPin, MosiPin, SckPin, Spi};
-use embassy_stm32::Peripheral;
 use embassy_time::*;
 
 const MOTOR_TYPE_N_POLE_PAIRS: u32 = 0x00030004; // BLDC, 4 pole-pairs ECXtorque
@@ -171,7 +171,7 @@ impl MotionMode {
     }
 }
 
-pub struct Ventouse<'d, T, Tx, Rx, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt>
+pub struct Ventouse<'d, T, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt>
 where
     T: Instance,
     CsFoc: Pin,
@@ -181,7 +181,7 @@ where
     DrvFlt: Pin,
 {
     // Now that is for J5 (middle FCC) - Motor "B"
-    spi: Spi<'d, T, Tx, Rx>,
+    spi: Spi<'d, T, NoDma, NoDma>,
 
     cs_foc: Output<'d, CsFoc>,
     cs_driver: Output<'d, CsDrv>,
@@ -194,9 +194,31 @@ where
     brushless_motor_config: config::BrushlessMotor,
 }
 
+pub struct VentouseConfig<
+    T: Instance,
+    CsFoc: Pin,
+    CsDrv: Pin,
+    Sck: SckPin<T>,
+    Mosi: MosiPin<T>,
+    Miso: MisoPin<T>,
+    FocEnb: Pin,
+    FocStat: Pin,
+    DrvFlt: Pin,
+> {
+    pub cs_foc: CsFoc,
+    pub cs_driver: CsDrv,
+    pub peri: T,
+    pub sck: Sck,
+    pub mosi: Mosi,
+    pub miso: Miso,
+    pub foc_enable: FocEnb,
+    pub foc_status: FocStat,
+    pub driver_fault: DrvFlt,
+}
+
 #[allow(dead_code)]
-impl<'d, T, Tx, Rx, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt>
-    Ventouse<'d, T, Tx, Rx, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt>
+impl<'d, T, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt>
+    Ventouse<'d, T, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt>
 where
     T: Instance,
     CsFoc: Pin,
@@ -206,32 +228,39 @@ where
     DrvFlt: Pin,
 {
     pub fn new(
-        cs_foc: impl Peripheral<P = CsFoc> + 'd,
-        cs_driver: impl Peripheral<P = CsDrv> + 'd,
-        peri: impl Peripheral<P = T> + 'd,
-        sck: impl Peripheral<P = impl SckPin<T>> + 'd,
-        mosi: impl Peripheral<P = impl MosiPin<T>> + 'd,
-        miso: impl Peripheral<P = impl MisoPin<T>> + 'd,
-        txdma: impl Peripheral<P = Tx> + 'd,
-        rxdma: impl Peripheral<P = Rx> + 'd,
-        foc_enable: impl Peripheral<P = FocEnb> + 'd,
-        foc_status: impl Peripheral<P = FocStat> + 'd,
-        driver_fault: impl Peripheral<P = DrvFlt> + 'd,
+        ventouse_config: VentouseConfig<
+            T,
+            CsFoc,
+            CsDrv,
+            impl SckPin<T>,
+            impl MosiPin<T>,
+            impl MisoPin<T>,
+            FocEnb,
+            FocStat,
+            DrvFlt,
+        >,
         brushless_motor_config: config::BrushlessMotor,
     ) -> Self {
-        // SPI
-        let mut config = Config::default();
-        config.mode = embassy_stm32::spi::MODE_3;
-        let spi = Spi::new(peri, sck, mosi, miso, txdma, rxdma, config);
+        let mut spi_config = Config::default();
+        spi_config.mode = embassy_stm32::spi::MODE_3;
+        let spi = Spi::new(
+            ventouse_config.peri,
+            ventouse_config.sck,
+            ventouse_config.mosi,
+            ventouse_config.miso,
+            NoDma,
+            NoDma,
+            spi_config,
+        );
 
         // IOs
-        let cs_foc = Output::new(cs_foc, Level::High, Speed::Medium);
-        let cs_driver = Output::new(cs_driver, Level::High, Speed::Medium);
+        let cs_foc = Output::new(ventouse_config.cs_foc, Level::High, Speed::Medium);
+        let cs_driver = Output::new(ventouse_config.cs_driver, Level::High, Speed::Medium);
 
-        let mut foc_enable = Output::new(foc_enable, Level::Low, Speed::Low);
+        let mut foc_enable = Output::new(ventouse_config.foc_enable, Level::Low, Speed::Low);
         foc_enable.set_low();
-        let foc_status = Input::new(foc_status, Pull::None);
-        let driver_fault = Input::new(driver_fault, Pull::None);
+        let foc_status = Input::new(ventouse_config.foc_status, Pull::None);
+        let driver_fault = Input::new(ventouse_config.driver_fault, Pull::None);
 
         Self {
             cs_foc,
@@ -243,6 +272,45 @@ where
             brushless_motor_config,
         }
     }
+
+    // pub fn new(
+    //     cs_foc: impl Peripheral<P = CsFoc> + 'd,
+    //     cs_driver: impl Peripheral<P = CsDrv> + 'd,
+    //     peri: impl Peripheral<P = T> + 'd,
+    //     sck: impl Peripheral<P = impl SckPin<T>> + 'd,
+    //     mosi: impl Peripheral<P = impl MosiPin<T>> + 'd,
+    //     miso: impl Peripheral<P = impl MisoPin<T>> + 'd,
+    //     txdma: impl Peripheral<P = Tx> + 'd,
+    //     rxdma: impl Peripheral<P = Rx> + 'd,
+    //     foc_enable: impl Peripheral<P = FocEnb> + 'd,
+    //     foc_status: impl Peripheral<P = FocStat> + 'd,
+    //     driver_fault: impl Peripheral<P = DrvFlt> + 'd,
+    //     brushless_motor_config: config::BrushlessMotor,
+    // ) -> Self {
+    //     // SPI
+    //     let mut config = Config::default();
+    //     config.mode = embassy_stm32::spi::MODE_3;
+    //     let spi = Spi::new(peri, sck, mosi, miso, txdma, rxdma, config);
+
+    //     // IOs
+    //     let cs_foc = Output::new(cs_foc, Level::High, Speed::Medium);
+    //     let cs_driver = Output::new(cs_driver, Level::High, Speed::Medium);
+
+    //     let mut foc_enable = Output::new(foc_enable, Level::Low, Speed::Low);
+    //     foc_enable.set_low();
+    //     let foc_status = Input::new(foc_status, Pull::None);
+    //     let driver_fault = Input::new(driver_fault, Pull::None);
+
+    //     Self {
+    //         cs_foc,
+    //         cs_driver,
+    //         spi,
+    //         foc_enable,
+    //         foc_status,
+    //         driver_fault,
+    //         brushless_motor_config,
+    //     }
+    // }
 
     pub fn tmc4671_enable(&mut self) {
         self.foc_enable.set_high();
@@ -646,8 +714,8 @@ where
     }
 }
 
-impl<'d, T, Tx, Rx, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt> Axis
-    for Ventouse<'d, T, Tx, Rx, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt>
+impl<'d, T, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt> Axis
+    for Ventouse<'d, T, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt>
 where
     T: Instance,
     CsFoc: Pin,
