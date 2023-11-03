@@ -3,9 +3,13 @@ use crate::define_register_map;
 use crate::registers::AccessType;
 
 use crate::paste;
+use embassy_stm32::peripherals as p;
+use embassy_stm32::usart::Uart;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 pub static DXL_ID: u8 = 42;
+
+pub type DynamixelUart = Uart<'static, p::USART1, p::DMA1_CH0, p::DMA1_CH1>;
 
 #[cfg(feature = "ecx22")]
 pub mod motor {

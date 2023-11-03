@@ -4,6 +4,7 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
+use config::DynamixelUart;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_stm32::dma::NoDma;
@@ -42,7 +43,7 @@ pub fn exit() -> ! {
 }
 
 #[embassy_executor::task]
-async fn dxl_serial(usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pin: AnyPin) {
+async fn dxl_serial(usart: DynamixelUart, dir_pin: AnyPin) {
     let id = config::DXL_ID;
     let mut dxl = dynamixel::DynamixelUsartIO::new(usart, dir_pin, id);
 
@@ -105,7 +106,7 @@ async fn main(spawner: Spawner) {
     config.parity = embassy_stm32::usart::Parity::ParityNone;
     config.detect_previous_overrun = false;
 
-    let usart = Uart::new(
+    let usart = DynamixelUart::new(
         p.USART1, p.PB15, p.PB14, Irqs, p.DMA1_CH0, p.DMA1_CH1, config,
     )
     .unwrap();
