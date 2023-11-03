@@ -4,7 +4,7 @@ use crate::config;
 use defmt::*;
 use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{Input, Level, Output, Pin, Pull, Speed};
-use embassy_stm32::spi::{Config, Instance, MisoPin, MosiPin, SckPin, Spi};
+use embassy_stm32::spi::{Config, Error, Instance, MisoPin, MosiPin, SckPin, Spi};
 use embassy_time::*;
 
 const MOTOR_TYPE_N_POLE_PAIRS: u32 = 0x00030004; // BLDC, 4 pole-pairs ECXtorque
@@ -685,18 +685,19 @@ where
     FocStat: Pin,
     DrvFlt: Pin,
 {
-    fn init(&mut self) {
-        // todo!()
+    async fn init(&mut self) {
+        self.tmc4671_init_registers().await.unwrap();
+        info!("TMC4671 init done");
+        self.tmc4671_align_motor().await.unwrap();
+        info!("Motor align done");
     }
 
-    fn get_actual_position(&mut self) -> Result<(), ()> {
-        let _curpos = self.tmc4671_get_actual_position().unwrap();
-        Ok(())
+    fn get_actual_position(&mut self) -> Result<i32, Error> {
+        self.tmc4671_get_actual_position()
     }
 
-    fn set_target_position(&mut self, _position: i32) -> Result<(), ()> {
-        // todo!()
-        Ok(())
+    fn set_target_position(&mut self, position_target: i32) -> Result<u32, Error> {
+        self.tmc4671_set_target_position(position_target)
     }
 }
 
@@ -706,21 +707,21 @@ pub enum VentouseKind {
 }
 
 impl Axis for VentouseKind {
-    fn init(&mut self) {
+    async fn init(&mut self) {
         match self {
-            VentouseKind::A(v) => v.init(),
-            VentouseKind::B(v) => v.init(),
+            VentouseKind::A(v) => v.init().await,
+            VentouseKind::B(v) => v.init().await,
         }
     }
 
-    fn get_actual_position(&mut self) -> Result<(), ()> {
+    fn get_actual_position(&mut self) -> Result<i32, Error> {
         match self {
             VentouseKind::A(v) => v.get_actual_position(),
             VentouseKind::B(v) => v.get_actual_position(),
         }
     }
 
-    fn set_target_position(&mut self, position: i32) -> Result<(), ()> {
+    fn set_target_position(&mut self, position: i32) -> Result<u32, Error> {
         match self {
             VentouseKind::A(v) => v.set_target_position(position),
             VentouseKind::B(v) => v.set_target_position(position),

@@ -3,6 +3,7 @@
 #![feature(type_alias_impl_trait)]
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
+#![feature(async_fn_in_trait)]
 
 use defmt::*;
 use embassy_executor::Spawner;
@@ -92,7 +93,7 @@ const N_AXIS: usize = 2;
 async fn control_loop(actuator: Actuator<N_AXIS>) {
     let mut actuator = actuator;
 
-    actuator.init();
+    actuator.init().await;
 
     loop {
         actuator.get_actual_position().unwrap();
