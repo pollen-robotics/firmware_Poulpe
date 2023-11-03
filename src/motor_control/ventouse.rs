@@ -1,52 +1,36 @@
+use super::axis::Axis;
 use crate::config;
 
 use defmt::*;
 use embassy_stm32::dma::NoDma;
-use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
-use embassy_stm32::peripherals as p;
-use embassy_stm32::spi::{Config, Spi};
+use embassy_stm32::gpio::{Input, Level, Output, Pin, Pull, Speed};
+use embassy_stm32::spi::{Config, Instance, MisoPin, MosiPin, SckPin, Spi};
 use embassy_time::*;
-use {defmt_rtt as _, panic_probe as _}; // TODO : to be remove (delays for testing purposes only)
-                                        // Motor type & PWM configuration
-                                        // const MOTOR_TYPE_N_POLE_PAIRS: u32 = 0x00030007; // BLDC, 7 pole-pairs EC45
+
 const MOTOR_TYPE_N_POLE_PAIRS: u32 = 0x00030004; // BLDC, 4 pole-pairs ECXtorque
 
+// PWM configuration
 const PWM_POLARITIES: u32 = 0x00000000;
 const PWM_MAXCNT: u32 = 0x00000F9F; // PWM-freq
 const PWM_BBM_H_BBM_L: u32 = 0x00001919; // Break-Before-Make
 const PWM_SV_CHOP: u32 = 0x00000107;
+
 // ADC configuration
 const ADC_I_SELECT: u32 = 0x24000100;
 const DS_ADC_MCFG_B_MCFG_A: u32 = 0x00100010;
 const DS_ADC_MCLK_A: u32 = 0x20000000;
 const DS_ADC_MCLK_B: u32 = 0x00000000;
 const DS_ADC_MDEC_B_MDEC_A: u32 = 0x014E014E;
-
 const ADC_I0_SCALE_OFFSET: u32 = 0x002B822E; // gain is 43 and offset is centered on 2^32 (-> millis Amps)
-const ADC_I1_SCALE_OFFSET: u32 = 0x002B83CF; // gain is 43 and offset is centered on 2^32
-                                             // const ADC_I0_SCALE_OFFSET: u32 = 0x010083D4;
-                                             // const ADC_I1_SCALE_OFFSET: u32 = 0x01008355;
+const ADC_I1_SCALE_OFFSET: u32 = 0x002B83CF; // gain is 43 and offset is centered on 2^32 (-> millis Amps)
 
 // ABN encoder settings
 const ABN_DECODER_MODE: u32 = 0x00000000;
 const ABN_DECODER_PPR: u32 = 0x00001000;
 const ABN_DECODER_PHI_E_PHI_M_OFFSET: u32 = 0x00000000;
+
 // Limits
 const PID_TORQUE_FLUX_LIMITS: u32 = 0x00001000; // 4000
-                                                // PI settings
-                                                //EC45
-                                                // const PID_FLUX_P_FLUX_I: u32 = 0x03200000;
-                                                // const PID_TORQUE_P_TORQUE_I: u32 = 0x03200000;
-                                                // const PID_VELOCITY_P_VELOCITY_I: u32 = 0x01F401C2;
-                                                // const PID_POSITION_P_POSITION_I: u32 = 0x00500000;
-
-// const PID_TORQUE_FLUX_LIMITS: u32 = 0x00001000; // 4000
-//                                                 // PI settings
-//ECX22
-// const PID_FLUX_P_FLUX_I: u32 = 0x03200080;
-// const PID_TORQUE_P_TORQUE_I: u32 = 0x03200000;
-// const PID_VELOCITY_P_VELOCITY_I: u32 = 0x01000080;
-// const PID_POSITION_P_POSITION_I: u32 = 0x00400010;
 
 // Motor alignment
 const OPENLOOP_ACCELERATION: u32 = 0x0000003c; // Wizard default
@@ -142,64 +126,141 @@ pub enum Tmc4671Registers {
 }
 
 #[allow(dead_code)]
+#[derive(Debug, Clone, Copy)]
 pub enum MotionMode {
     // From register MODE_RAMP_MODE_MOTION
-    Stopped = 0,
-    Torque = 1,
-    Velocity = 2,
-    Position = 3,
-    PrbsFlux = 4,
-    PrbsTorque = 5,
-    PrbsVelocity = 6,
-    PrbsPosition = 7,
-    UqUdExt = 8,
-    Reserved = 9,
-    AgpiATorque = 10,
-    AgpiAVelocity = 11,
-    AgpiAPosition = 12,
-    PmwITorque = 13,
-    PmwIVelocity = 14,
-    PmwIPosition = 15,
+    Stopped,
+    Torque,
+    Velocity,
+    Position,
+    PrbsFlux,
+    PrbsTorque,
+    PrbsVelocity,
+    PrbsPosition,
+    UqUdExt,
+    Reserved,
+    AgpiATorque,
+    AgpiAVelocity,
+    AgpiAPosition,
+    PmwITorque,
+    PmwIVelocity,
+    PmwIPosition,
 }
 
-pub struct Ventouse {
+impl MotionMode {
+    fn from_u8(val: u8) -> Option<MotionMode> {
+        match val {
+            0 => Some(MotionMode::Stopped),
+            1 => Some(MotionMode::Torque),
+            2 => Some(MotionMode::Velocity),
+            3 => Some(MotionMode::Position),
+            4 => Some(MotionMode::PrbsFlux),
+            5 => Some(MotionMode::PrbsTorque),
+            6 => Some(MotionMode::PrbsVelocity),
+            7 => Some(MotionMode::PrbsPosition),
+            8 => Some(MotionMode::UqUdExt),
+            9 => Some(MotionMode::Reserved),
+            10 => Some(MotionMode::AgpiATorque),
+            11 => Some(MotionMode::AgpiAVelocity),
+            12 => Some(MotionMode::AgpiAPosition),
+            13 => Some(MotionMode::PmwITorque),
+            14 => Some(MotionMode::PmwIVelocity),
+            15 => Some(MotionMode::PmwIPosition),
+            _ => None,
+        }
+    }
+}
+
+pub struct Ventouse<'d, T, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt>
+where
+    T: Instance,
+    CsFoc: Pin,
+    CsDrv: Pin,
+    FocEnb: Pin,
+    FocStat: Pin,
+    DrvFlt: Pin,
+{
     // Now that is for J5 (middle FCC) - Motor "B"
-    spi: Spi<'static, p::SPI4, NoDma, NoDma>,
-    cs_foc: Output<'static, p::PE3>,
-    cs_driver: Output<'static, p::PC15>,
-    foc_enable: Output<'static, p::PE0>,
+    spi: Spi<'d, T, NoDma, NoDma>,
+
+    cs_foc: Output<'d, CsFoc>,
+    cs_driver: Output<'d, CsDrv>,
+    foc_enable: Output<'d, FocEnb>,
     #[allow(dead_code)]
-    foc_status: Input<'static, p::PC13>,
+    foc_status: Input<'d, FocStat>,
     #[allow(dead_code)]
-    driver_fault: Input<'static, p::PC14>,
+    driver_fault: Input<'d, DrvFlt>,
+
+    brushless_motor_config: config::BrushlessMotor,
+}
+
+pub struct VentouseConfig<
+    T: Instance,
+    CsFoc: Pin,
+    CsDrv: Pin,
+    Sck: SckPin<T>,
+    Mosi: MosiPin<T>,
+    Miso: MisoPin<T>,
+    FocEnb: Pin,
+    FocStat: Pin,
+    DrvFlt: Pin,
+> {
+    pub cs_foc: CsFoc,
+    pub cs_driver: CsDrv,
+    pub peri: T,
+    pub sck: Sck,
+    pub mosi: Mosi,
+    pub miso: Miso,
+    pub foc_enable: FocEnb,
+    pub foc_status: FocStat,
+    pub driver_fault: DrvFlt,
 }
 
 #[allow(dead_code)]
-impl Ventouse {
+impl<'d, T, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt>
+    Ventouse<'d, T, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt>
+where
+    T: Instance,
+    CsFoc: Pin,
+    CsDrv: Pin,
+    FocEnb: Pin,
+    FocStat: Pin,
+    DrvFlt: Pin,
+{
     pub fn new(
-        cs_foc_p: p::PE3,
-        cs_driver_p: p::PC15,
-        sck_p: p::PE12,
-        miso_p: p::PE5,
-        mosi_p: p::PE6,
-        spi: p::SPI4,
-        dma_rx: NoDma,
-        dma_tx: NoDma,
-        foc_enable_p: p::PE0,
-        foc_status_p: p::PC13,
-        driver_fault_p: p::PC14,
+        ventouse_config: VentouseConfig<
+            T,
+            CsFoc,
+            CsDrv,
+            impl SckPin<T>,
+            impl MosiPin<T>,
+            impl MisoPin<T>,
+            FocEnb,
+            FocStat,
+            DrvFlt,
+        >,
+        brushless_motor_config: config::BrushlessMotor,
     ) -> Self {
-        // SPI
-        let cs_foc = Output::new(cs_foc_p, Level::High, Speed::Medium);
-        let cs_driver = Output::new(cs_driver_p, Level::High, Speed::Medium);
-        let mut cfg = Config::default();
-        cfg.mode = embassy_stm32::spi::MODE_3;
-        let spi = Spi::new(spi, sck_p, mosi_p, miso_p, dma_tx, dma_rx, cfg);
+        let mut spi_config = Config::default();
+        spi_config.mode = embassy_stm32::spi::MODE_3;
+        let spi = Spi::new(
+            ventouse_config.peri,
+            ventouse_config.sck,
+            ventouse_config.mosi,
+            ventouse_config.miso,
+            NoDma,
+            NoDma,
+            spi_config,
+        );
+
         // IOs
-        let mut foc_enable = Output::new(foc_enable_p, Level::Low, Speed::Low);
+        let cs_foc = Output::new(ventouse_config.cs_foc, Level::High, Speed::Medium);
+        let cs_driver = Output::new(ventouse_config.cs_driver, Level::High, Speed::Medium);
+
+        let mut foc_enable = Output::new(ventouse_config.foc_enable, Level::Low, Speed::Low);
         foc_enable.set_low();
-        let foc_status = Input::new(foc_status_p, Pull::None);
-        let driver_fault = Input::new(driver_fault_p, Pull::None);
+        let foc_status = Input::new(ventouse_config.foc_status, Pull::None);
+        let driver_fault = Input::new(ventouse_config.driver_fault, Pull::None);
 
         Self {
             cs_foc,
@@ -208,8 +269,48 @@ impl Ventouse {
             foc_enable,
             foc_status,
             driver_fault,
+            brushless_motor_config,
         }
     }
+
+    // pub fn new(
+    //     cs_foc: impl Peripheral<P = CsFoc> + 'd,
+    //     cs_driver: impl Peripheral<P = CsDrv> + 'd,
+    //     peri: impl Peripheral<P = T> + 'd,
+    //     sck: impl Peripheral<P = impl SckPin<T>> + 'd,
+    //     mosi: impl Peripheral<P = impl MosiPin<T>> + 'd,
+    //     miso: impl Peripheral<P = impl MisoPin<T>> + 'd,
+    //     txdma: impl Peripheral<P = Tx> + 'd,
+    //     rxdma: impl Peripheral<P = Rx> + 'd,
+    //     foc_enable: impl Peripheral<P = FocEnb> + 'd,
+    //     foc_status: impl Peripheral<P = FocStat> + 'd,
+    //     driver_fault: impl Peripheral<P = DrvFlt> + 'd,
+    //     brushless_motor_config: config::BrushlessMotor,
+    // ) -> Self {
+    //     // SPI
+    //     let mut config = Config::default();
+    //     config.mode = embassy_stm32::spi::MODE_3;
+    //     let spi = Spi::new(peri, sck, mosi, miso, txdma, rxdma, config);
+
+    //     // IOs
+    //     let cs_foc = Output::new(cs_foc, Level::High, Speed::Medium);
+    //     let cs_driver = Output::new(cs_driver, Level::High, Speed::Medium);
+
+    //     let mut foc_enable = Output::new(foc_enable, Level::Low, Speed::Low);
+    //     foc_enable.set_low();
+    //     let foc_status = Input::new(foc_status, Pull::None);
+    //     let driver_fault = Input::new(driver_fault, Pull::None);
+
+    //     Self {
+    //         cs_foc,
+    //         cs_driver,
+    //         spi,
+    //         foc_enable,
+    //         foc_status,
+    //         driver_fault,
+    //         brushless_motor_config,
+    //     }
+    // }
 
     pub fn tmc4671_enable(&mut self) {
         self.foc_enable.set_high();
@@ -222,56 +323,18 @@ impl Ventouse {
     pub fn tmc4671_set_mode(&mut self, mode: MotionMode) -> Result<u32, embassy_stm32::spi::Error> {
         let mut data = 0x00000000u32;
         // read current state first
-        self.tmc4671_transmit_raw_data(false, Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data)
-            .unwrap();
+        self.tmc4671_transmit_raw_data(false, Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data)?;
         data &= 0xFFFFFF00u32;
         data |= mode as u32;
         self.tmc4671_write_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data)
     }
 
-    pub fn tmc4671_get_mode(&mut self) -> Result<u8, embassy_stm32::spi::Error> {
-        // TODO: it should return a MotionMode but display of enum with defmt is unstable
+    pub fn tmc4671_get_mode(&mut self) -> Result<MotionMode, embassy_stm32::spi::Error> {
         if let Ok(read) = self.tmc4671_read_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8)
         {
-            Ok((read & 0x000000FFu32) as u8)
-            /*let data = match MotionMode::motion_from_u8(res as u8) {
-                Some(d) => d,
-                None => return Err(embassy_stm32::spi::Error::Framing)
-            };
-            return Ok(data);*/
+            Ok(MotionMode::from_u8((read & 0x000000FFu32) as u8).unwrap())
         } else {
             Err(embassy_stm32::spi::Error::Framing)
-        }
-    }
-
-    pub fn tmc4671_get_u32(&mut self, reg: u8) -> Result<u32, embassy_stm32::spi::Error> {
-        if let Ok(res) = self.tmc4671_read_register(reg) {
-            Ok(res)
-        } else {
-            Err(embassy_stm32::spi::Error::Framing)
-        }
-    }
-
-    pub fn tmc4671_get_i32(&mut self, reg: u8) -> Result<i32, embassy_stm32::spi::Error> {
-        if let Ok(res) = self.tmc4671_read_register(reg) {
-            Ok(res as i32)
-        } else {
-            Err(embassy_stm32::spi::Error::Framing)
-        }
-    }
-
-    fn tmc4671_get_lower_i16(&mut self, reg: u8) -> Result<i16, embassy_stm32::spi::Error> {
-        if let Ok(res) = self.tmc4671_read_register(reg) {
-            Ok((res & 0x0000FFFFu32) as i16)
-        } else {
-            Err(embassy_stm32::spi::Error::Framing)
-        }
-    }
-
-    fn tmc4671_get_upper_i16(&mut self, reg: u8) -> Result<i16, embassy_stm32::spi::Error> {
-        match self.tmc4671_read_register(reg) {
-            Ok(res) => Ok(((res & 0xFFFF0000u32) >> 16) as i16),
-            Err(e) => Err(e),
         }
     }
 
@@ -296,9 +359,8 @@ impl Ventouse {
         torque_target: i16,
     ) -> Result<u32, embassy_stm32::spi::Error> {
         // read current state first -> bits 15-0 is flux_target and should be kept.
-        let mut torque_and_flux = self
-            .tmc4671_read_register(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8)
-            .unwrap();
+        let mut torque_and_flux =
+            self.tmc4671_read_register(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8)?;
         torque_and_flux &= 0x0000FFFFu32; // clear actual torque
         torque_and_flux |= (torque_target as u32) << 16;
         self.tmc4671_write_register(
@@ -419,19 +481,19 @@ impl Ventouse {
         // PI settings
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_FLUX_P_FLUX_I as u8,
-            config::motor::PID_FLUX_P_FLUX_I,
+            self.brushless_motor_config.pid_flux_p_flux_i(),
         )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_TORQUE_P_TORQUE_I as u8,
-            config::motor::PID_TORQUE_P_TORQUE_I,
+            self.brushless_motor_config.pid_torque_p_torque_i(),
         )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_VELOCITY_P_VELOCITY_I as u8,
-            config::motor::PID_VELOCITY_P_VELOCITY_I,
+            self.brushless_motor_config.pid_velocity_p_velocity_i(),
         )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_POSITION_P_POSITION_I as u8,
-            config::motor::PID_POSITION_P_POSITION_I,
+            self.brushless_motor_config.pid_position_p_position_i(),
         )?;
 
         Ok(())
@@ -490,7 +552,7 @@ impl Ventouse {
         Ok(())
     }
 
-    pub fn tmc4671_checked_write(
+    fn tmc4671_checked_write(
         &mut self,
         reg: u8,
         data_w: u32,
@@ -505,7 +567,7 @@ impl Ventouse {
         }
     }
 
-    pub fn tmc4671_write_register(
+    fn tmc4671_write_register(
         &mut self,
         reg: u8,
         data_w: u32,
@@ -514,12 +576,12 @@ impl Ventouse {
         self.tmc4671_transmit_raw_data(true, reg, data_m)
     }
 
-    pub fn tmc4671_read_register(&mut self, reg: u8) -> Result<u32, embassy_stm32::spi::Error> {
+    fn tmc4671_read_register(&mut self, reg: u8) -> Result<u32, embassy_stm32::spi::Error> {
         let data_m = 0x00000000u32;
         self.tmc4671_transmit_raw_data(false, reg, data_m)
     }
 
-    pub fn tmc4671_transmit_raw_data(
+    fn tmc4671_transmit_raw_data(
         &mut self,
         write_bit: bool,
         addr: u8,
@@ -543,8 +605,10 @@ impl Ventouse {
 
         // Sending data
         self.cs_foc.set_low();
-        let _result = &mut self.spi.blocking_transfer_in_place(&mut transfer_data);
+        let result = self.spi.blocking_transfer_in_place(&mut transfer_data);
         self.cs_foc.set_high();
+
+        result?;
 
         let mut read_data = transfer_data[4] as u32;
         read_data += (transfer_data[3] as u32) << 8;
@@ -554,7 +618,7 @@ impl Ventouse {
         Ok(read_data)
     }
 
-    pub fn tmc6200_checked_write(
+    fn tmc6200_checked_write(
         &mut self,
         reg: u8,
         data_w: u32,
@@ -569,7 +633,7 @@ impl Ventouse {
         }
     }
 
-    pub fn tmc6200_write_register(
+    fn tmc6200_write_register(
         &mut self,
         reg: u8,
         data_w: u32,
@@ -578,12 +642,12 @@ impl Ventouse {
         self.tmc6200_transmit_raw_data(true, reg, &data_m)
     }
 
-    pub fn tmc6200_read_register(&mut self, reg: u8) -> Result<u32, embassy_stm32::spi::Error> {
+    fn tmc6200_read_register(&mut self, reg: u8) -> Result<u32, embassy_stm32::spi::Error> {
         let data_m = 0x00000000u32;
         self.tmc6200_transmit_raw_data(false, reg, &data_m)
     }
 
-    pub fn tmc6200_transmit_raw_data(
+    fn tmc6200_transmit_raw_data(
         &mut self,
         write_bit: bool,
         addr: u8,
@@ -605,8 +669,10 @@ impl Ventouse {
 
         // Sending data
         self.cs_driver.set_low();
-        let _result = &mut self.spi.blocking_transfer_in_place(&mut transfer_data); // Todo: the error is not treated.
+        let result = self.spi.blocking_transfer_in_place(&mut transfer_data);
         self.cs_driver.set_high();
+
+        result?;
 
         let mut read_data = transfer_data[4] as u32;
         read_data += (transfer_data[3] as u32) << 8;
@@ -614,5 +680,89 @@ impl Ventouse {
         read_data += (transfer_data[1] as u32) << 24;
 
         Ok(read_data)
+    }
+
+    fn tmc4671_get_u32(&mut self, reg: u8) -> Result<u32, embassy_stm32::spi::Error> {
+        if let Ok(res) = self.tmc4671_read_register(reg) {
+            Ok(res)
+        } else {
+            Err(embassy_stm32::spi::Error::Framing)
+        }
+    }
+
+    fn tmc4671_get_i32(&mut self, reg: u8) -> Result<i32, embassy_stm32::spi::Error> {
+        if let Ok(res) = self.tmc4671_read_register(reg) {
+            Ok(res as i32)
+        } else {
+            Err(embassy_stm32::spi::Error::Framing)
+        }
+    }
+
+    fn tmc4671_get_lower_i16(&mut self, reg: u8) -> Result<i16, embassy_stm32::spi::Error> {
+        if let Ok(res) = self.tmc4671_read_register(reg) {
+            Ok((res & 0x0000FFFFu32) as i16)
+        } else {
+            Err(embassy_stm32::spi::Error::Framing)
+        }
+    }
+
+    fn tmc4671_get_upper_i16(&mut self, reg: u8) -> Result<i16, embassy_stm32::spi::Error> {
+        match self.tmc4671_read_register(reg) {
+            Ok(res) => Ok(((res & 0xFFFF0000u32) >> 16) as i16),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+impl<'d, T, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt> Axis
+    for Ventouse<'d, T, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt>
+where
+    T: Instance,
+    CsFoc: Pin,
+    CsDrv: Pin,
+    FocEnb: Pin,
+    FocStat: Pin,
+    DrvFlt: Pin,
+{
+    fn init(&mut self) {
+        // todo!()
+    }
+
+    fn get_actual_position(&mut self) -> Result<(), ()> {
+        let _curpos = self.tmc4671_get_actual_position().unwrap();
+        Ok(())
+    }
+
+    fn set_target_position(&mut self, _position: i32) -> Result<(), ()> {
+        // todo!()
+        Ok(())
+    }
+}
+
+pub enum VentouseKind {
+    A(config::VentouseA),
+    B(config::VentouseB),
+}
+
+impl Axis for VentouseKind {
+    fn init(&mut self) {
+        match self {
+            VentouseKind::A(v) => v.init(),
+            VentouseKind::B(v) => v.init(),
+        }
+    }
+
+    fn get_actual_position(&mut self) -> Result<(), ()> {
+        match self {
+            VentouseKind::A(v) => v.get_actual_position(),
+            VentouseKind::B(v) => v.get_actual_position(),
+        }
+    }
+
+    fn set_target_position(&mut self, position: i32) -> Result<(), ()> {
+        match self {
+            VentouseKind::A(v) => v.set_target_position(position),
+            VentouseKind::B(v) => v.set_target_position(position),
+        }
     }
 }

@@ -4,25 +4,20 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
-use config::DynamixelUart;
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{AnyPin, Level, Output, Speed};
-use embassy_stm32::peripherals::{DMA1_CH0, DMA1_CH1, USART1};
-use embassy_stm32::usart::{Config, Uart};
+use embassy_stm32::usart::Config as usart_config;
 use embassy_stm32::Config as stm32_config;
 use embassy_stm32::{bind_interrupts, peripherals, usart};
 use embassy_time::{Duration, Timer};
-use paste::paste;
 
-// declare the modules
 mod config;
 mod dynamixel;
-mod registers;
-mod ventouse;
+mod motor_control;
 
 use crate::dynamixel::{InstructionPacketKind, StatusPacket};
+use crate::motor_control::{Actuator, VentouseKind};
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -43,7 +38,7 @@ pub fn exit() -> ! {
 }
 
 #[embassy_executor::task]
-async fn dxl_serial(usart: DynamixelUart, dir_pin: AnyPin) {
+async fn dxl_serial(usart: config::DynamixelUart, dir_pin: AnyPin) {
     let id = config::DXL_ID;
     let mut dxl = dynamixel::DynamixelUsartIO::new(usart, dir_pin, id);
 
@@ -91,6 +86,21 @@ async fn dxl_serial(usart: DynamixelUart, dir_pin: AnyPin) {
     }
 }
 
+const N_AXIS: usize = 2;
+
+#[embassy_executor::task]
+async fn control_loop(actuator: Actuator<N_AXIS>) {
+    let mut actuator = actuator;
+
+    actuator.init();
+
+    loop {
+        actuator.get_actual_position().unwrap();
+        actuator.set_target_position([0, 0]).unwrap();
+        Timer::after(Duration::from_millis(10)).await;
+    }
+}
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     info!("Hello World!");
@@ -99,35 +109,58 @@ async fn main(spawner: Spawner) {
     let p = embassy_stm32::init(stm32_conf);
 
     // Prepare and spawn the DXL serial task
-    let mut config = Config::default();
-    config.baudrate = 1_000_000;
-    config.stop_bits = embassy_stm32::usart::StopBits::STOP1;
-    config.data_bits = embassy_stm32::usart::DataBits::DataBits8;
-    config.parity = embassy_stm32::usart::Parity::ParityNone;
-    config.detect_previous_overrun = false;
+    let mut usart_config = usart_config::default();
+    usart_config.baudrate = 1_000_000;
+    usart_config.stop_bits = embassy_stm32::usart::StopBits::STOP1;
+    usart_config.data_bits = embassy_stm32::usart::DataBits::DataBits8;
+    usart_config.parity = embassy_stm32::usart::Parity::ParityNone;
+    usart_config.detect_previous_overrun = false;
 
-    let usart = DynamixelUart::new(
-        p.USART1, p.PB15, p.PB14, Irqs, p.DMA1_CH0, p.DMA1_CH1, config,
+    let usart = config::DynamixelUart::new(
+        p.USART1,
+        p.PB15,
+        p.PB14,
+        Irqs,
+        p.DMA1_CH0,
+        p.DMA1_CH1,
+        usart_config,
     )
     .unwrap();
 
     unwrap!(spawner.spawn(dxl_serial(usart, p.PD9.into())));
 
     // Prepare and spawn the ventouse task
-    let mut ventouse = ventouse::Ventouse::new(
-        p.PE3, p.PC15, p.PE12, p.PE5, p.PE6, p.SPI4, NoDma, NoDma, p.PE0, p.PC13, p.PC14,
-    );
-    ventouse.tmc4671_init_registers().await.unwrap();
-    info!("TMC4671 init done");
-    ventouse.tmc4671_align_motor().await.unwrap();
-    info!("Motor align done");
-    let curpos = ventouse.tmc4671_get_actual_position().unwrap();
-    info!("Current position: {:?}", curpos);
-    ventouse
-        .tmc4671_set_mode(ventouse::MotionMode::Position)
-        .unwrap();
-    ventouse.tmc4671_set_target_position(curpos).unwrap();
-    Timer::after(Duration::from_millis(1000)).await;
+    let orbita_2d = Actuator::new([
+        VentouseKind::A(config::VentouseA::new(
+            motor_control::VentouseConfig {
+                cs_foc: p.PE3,
+                cs_driver: p.PC15,
+                peri: p.SPI4,
+                sck: p.PE12,
+                mosi: p.PE6,
+                miso: p.PE5,
+                foc_enable: p.PE0,
+                foc_status: p.PC13,
+                driver_fault: p.PC14,
+            },
+            config::BrushlessMotor::ecx22(),
+        )),
+        VentouseKind::B(config::VentouseB::new(
+            motor_control::VentouseConfig {
+                cs_foc: p.PD7,
+                cs_driver: p.PD6,
+                peri: p.SPI6,
+                sck: p.PB3,
+                mosi: p.PB5,
+                miso: p.PB4,
+                foc_enable: p.PD5,
+                foc_status: p.PD4,
+                driver_fault: p.PD3,
+            },
+            config::BrushlessMotor::ecx22(),
+        )),
+    ]);
+    unwrap!(spawner.spawn(control_loop(orbita_2d)));
 
     // Prepare and spawn the main task
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
