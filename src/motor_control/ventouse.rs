@@ -1,10 +1,9 @@
 use crate::config;
 
 use defmt::*;
-use embassy_stm32::dma::NoDma;
-use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
-use embassy_stm32::peripherals as p;
-use embassy_stm32::spi::{Config, Spi};
+use embassy_stm32::gpio::{Input, Level, Output, Pin, Pull, Speed};
+use embassy_stm32::spi::{Config, Instance, MisoPin, MosiPin, SckPin, Spi};
+use embassy_stm32::Peripheral;
 use embassy_time::*;
 use {defmt_rtt as _, panic_probe as _}; // TODO : to be remove (delays for testing purposes only)
                                         // Motor type & PWM configuration
@@ -162,44 +161,64 @@ pub enum MotionMode {
     PmwIPosition = 15,
 }
 
-pub struct Ventouse {
+pub struct Ventouse<'d, T, Tx, Rx, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt>
+where
+    T: Instance,
+    CsFoc: Pin,
+    CsDrv: Pin,
+    FocEnb: Pin,
+    FocStat: Pin,
+    DrvFlt: Pin,
+{
     // Now that is for J5 (middle FCC) - Motor "B"
-    spi: Spi<'static, p::SPI4, NoDma, NoDma>,
-    cs_foc: Output<'static, p::PE3>,
-    cs_driver: Output<'static, p::PC15>,
-    foc_enable: Output<'static, p::PE0>,
+    spi: Spi<'d, T, Tx, Rx>,
+
+    cs_foc: Output<'d, CsFoc>,
+    cs_driver: Output<'d, CsDrv>,
+    foc_enable: Output<'d, FocEnb>,
     #[allow(dead_code)]
-    foc_status: Input<'static, p::PC13>,
+    foc_status: Input<'d, FocStat>,
     #[allow(dead_code)]
-    driver_fault: Input<'static, p::PC14>,
+    driver_fault: Input<'d, DrvFlt>,
 }
 
 #[allow(dead_code)]
-impl Ventouse {
+impl<'d, T, Tx, Rx, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt>
+    Ventouse<'d, T, Tx, Rx, CsFoc, CsDrv, FocEnb, FocStat, DrvFlt>
+where
+    T: Instance,
+    CsFoc: Pin,
+    CsDrv: Pin,
+    FocEnb: Pin,
+    FocStat: Pin,
+    DrvFlt: Pin,
+{
     pub fn new(
-        cs_foc_p: p::PE3,
-        cs_driver_p: p::PC15,
-        sck_p: p::PE12,
-        miso_p: p::PE5,
-        mosi_p: p::PE6,
-        spi: p::SPI4,
-        dma_rx: NoDma,
-        dma_tx: NoDma,
-        foc_enable_p: p::PE0,
-        foc_status_p: p::PC13,
-        driver_fault_p: p::PC14,
+        cs_foc: impl Peripheral<P = CsFoc> + 'd,
+        cs_driver: impl Peripheral<P = CsDrv> + 'd,
+        peri: impl Peripheral<P = T> + 'd,
+        sck: impl Peripheral<P = impl SckPin<T>> + 'd,
+        mosi: impl Peripheral<P = impl MosiPin<T>> + 'd,
+        miso: impl Peripheral<P = impl MisoPin<T>> + 'd,
+        txdma: impl Peripheral<P = Tx> + 'd,
+        rxdma: impl Peripheral<P = Rx> + 'd,
+        foc_enable: impl Peripheral<P = FocEnb> + 'd,
+        foc_status: impl Peripheral<P = FocStat> + 'd,
+        driver_fault: impl Peripheral<P = DrvFlt> + 'd,
     ) -> Self {
         // SPI
-        let cs_foc = Output::new(cs_foc_p, Level::High, Speed::Medium);
-        let cs_driver = Output::new(cs_driver_p, Level::High, Speed::Medium);
-        let mut cfg = Config::default();
-        cfg.mode = embassy_stm32::spi::MODE_3;
-        let spi = Spi::new(spi, sck_p, mosi_p, miso_p, dma_tx, dma_rx, cfg);
+        let cs_foc = Output::new(cs_foc, Level::High, Speed::Medium);
+        let cs_driver = Output::new(cs_driver, Level::High, Speed::Medium);
+
+        let mut config = Config::default();
+        config.mode = embassy_stm32::spi::MODE_3;
+        let spi = Spi::new(peri, sck, mosi, miso, txdma, rxdma, config);
+
         // IOs
-        let mut foc_enable = Output::new(foc_enable_p, Level::Low, Speed::Low);
+        let mut foc_enable = Output::new(foc_enable, Level::Low, Speed::Low);
         foc_enable.set_low();
-        let foc_status = Input::new(foc_status_p, Pull::None);
-        let driver_fault = Input::new(driver_fault_p, Pull::None);
+        let foc_status = Input::new(foc_status, Pull::None);
+        let driver_fault = Input::new(driver_fault, Pull::None);
 
         Self {
             cs_foc,
