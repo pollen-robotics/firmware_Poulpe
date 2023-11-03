@@ -193,26 +193,26 @@ impl MotionMode {
 }
 
 
-/*pub struct Ventouse { // Now that is for J5 (middle FCC) - Motor "B"
+pub struct Ventouse { // Now that is for J5 (middle FCC) - Motor "B"
     spi: Spi<'static, p::SPI4, NoDma, NoDma>,
     cs_foc:       Output<'static, p::PE3>,
     cs_driver:    Output<'static, p::PC15>,
     foc_enable:   Output<'static, p::PE0>,
     foc_status:   Input<'static,  p::PC13>,
     driver_fault: Input<'static,  p::PC14>,
-}*/
+}
 
-pub struct Ventouse { // Now that is for J10 ('right' FCC) - Motor "C"
+/*pub struct Ventouse { // Now that is for J10 ('right' FCC) - Motor "C"
     spi: Spi<'static, p::SPI6, NoDma, NoDma>,
     cs_foc:       Output<'static, p::PD7>,
     cs_driver:    Output<'static, p::PD6>,
     foc_enable:   Output<'static, p::PD5>,
     foc_status:   Input<'static,  p::PD4>,
     driver_fault: Input<'static,  p::PD3>,
-}
+}*/
 
 impl Ventouse {
-/*    pub fn new( // Ventouse-B on J5
+    pub fn new( // Ventouse-B on J5
         cs_foc_p: p::PE3,
         cs_driver_p: p::PC15,
         sck_p: p::PE12,
@@ -238,9 +238,9 @@ impl Ventouse {
         let driver_fault = Input::new(driver_fault_p, Pull::None);
 
         Self { cs_foc, cs_driver, spi, foc_enable, foc_status, driver_fault }
-    }*/
+    }
 
-    pub fn new( // Ventouse-C on J10
+    /*pub fn new( // Ventouse-C on J10
         cs_foc_p: p::PD7,
         cs_driver_p: p::PD6,
         sck_p: p::PB3,
@@ -266,7 +266,7 @@ impl Ventouse {
         let driver_fault = Input::new(driver_fault_p, Pull::None);
 
         Self { cs_foc, cs_driver, spi, foc_enable, foc_status, driver_fault }
-    }
+    }*/
 
     pub fn tmc4671_enable(&mut self) {
         self.foc_enable.set_high();

@@ -7,7 +7,9 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 # rustypot = "0.4.2"
 # stm32h742vg
-embassy-stm32 = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy", rev="ce662766", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x", "unstable-pac", "unstable-traits"] }
+#embassy-stm32 = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy", rev="ce662766", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x", "unstable-pac", "unstable-traits"] }
+# stm32h743vi
+embassy-stm32 = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy", rev="ce662766", features = ["nightly", "defmt", "stm32h743vi", "time-driver-any", "exti", "memory-x", "unstable-pac", "unstable-traits"] }
 embassy-sync = { version = "0.2.0", git = "https://github.com/embassy-rs/embassy", rev="ce662766", features = ["defmt"] }
 embassy-executor = { version = "0.3.0", git = "https://github.com/embassy-rs/embassy", rev="ce662766", features = ["nightly", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers"] }
 embassy-time = { version = "0.1.3", git = "https://github.com/embassy-rs/embassy", rev="ce662766", features = ["defmt", "defmt-timestamp-uptime", "unstable-traits", "tick-hz-32_768"] }
