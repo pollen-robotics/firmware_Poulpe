@@ -1,14 +1,9 @@
-use crate::count_items;
-use crate::define_register_map;
 use crate::motor_control::Ventouse;
-use crate::registers::AccessType;
 
-use crate::paste;
 use embassy_stm32::dma::NoDma;
 use embassy_stm32::peripherals as p;
 use embassy_stm32::usart::Uart;
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use embassy_sync::mutex::Mutex;
+
 pub static DXL_ID: u8 = 42;
 
 pub type DynamixelUart = Uart<'static, p::USART1, p::DMA1_CH0, p::DMA1_CH1>;
@@ -33,33 +28,3 @@ pub mod motor {
     pub const PID_VELOCITY_P_VELOCITY_I: u32 = 0x01F401C2;
     pub const PID_POSITION_P_POSITION_I: u32 = 0x00500000;
 }
-
-define_register_map!(
-    DXL_REGISTERS,
-    DxlRegistersEnum,
-    DXL_REGISTERS_BUFFER,
-    Mutex < ThreadModeRawMutex,[u8; 256] >,
-    1, // Word size for the entire register map
-    //register_name, address, size, access
-    ModelNumber, 0, 2, AccessType::ReadOnly,
-    FirmwareRev, 6, 1,  AccessType::ReadOnly,
-    Id, 7, 1, AccessType::ReadWrite,
-    SystemCheck, 8, 1, AccessType::WriteOnly,
-    VoltageLimit, 10, 4, AccessType::ReadWrite,
-    IntensityLimit, 14, 4, AccessType::ReadWrite,
-    VelocityPID, 18, 12, AccessType::ReadWrite,
-    VelocityPGain, 18, 4, AccessType::ReadWrite,
-    VelocityIGain, 22, 4, AccessType::ReadWrite,
-    VelocityDGain, 26, 4, AccessType::ReadWrite,
-    VelocityRampOut, 30, 4, AccessType::ReadWrite,
-    SensorRingPresentPosition, 67, 4, AccessType::ReadOnly,
-    SensorCenterPresentPosition, 71, 4, AccessType::ReadOnly,
-
-    MotorAGoalPosition, 75, 4, AccessType::ReadWrite,
-    MotorBGoalPosition, 79, 4, AccessType::ReadWrite,
-    MotorAPresentPosition, 83, 4, AccessType::ReadWrite,
-    MotorBPresentPosition, 87, 4, AccessType::ReadWrite,
-
-
-
-);

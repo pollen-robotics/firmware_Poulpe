@@ -1,32 +1,32 @@
-use defmt::info;
-use embassy_stm32::spi::Error;
+use super::axis::Axis;
+use super::ventouse::VentouseKind;
 
-use super::{ventouse::Ventouse, MotionMode};
-
-pub struct Actuator {
-    ventouse: Ventouse,
+pub struct Actuator<const N: usize> {
+    axes: [VentouseKind; N],
 }
 
-impl Actuator {
-    pub fn new(ventouse: Ventouse) -> Self {
-        Self { ventouse }
+impl<const N: usize> Actuator<N> {
+    pub fn new(axes: [VentouseKind; N]) -> Self {
+        Self { axes }
     }
 
-    pub async fn init(&mut self) {
-        self.ventouse.tmc4671_init_registers().await.unwrap();
-        info!("TMC4671 init done");
-        self.ventouse.tmc4671_align_motor().await.unwrap();
-        info!("Motor align done");
+    pub fn init(&mut self) {
+        for v in self.axes.iter_mut() {
+            v.init();
+        }
     }
 
-    pub fn set_mode(&mut self, mode: MotionMode) -> Result<u32, Error> {
-        self.ventouse.tmc4671_set_mode(mode)
+    pub fn get_actual_position(&mut self) -> Result<(), ()> {
+        for v in self.axes.iter_mut() {
+            v.get_actual_position()?;
+        }
+        Ok(())
     }
 
-    pub fn get_actual_position(&mut self) -> Result<i32, Error> {
-        self.ventouse.tmc4671_get_actual_position()
-    }
-    pub fn set_target_position(&mut self, position: i32) -> Result<u32, Error> {
-        self.ventouse.tmc4671_set_target_position(position)
+    pub fn set_target_position(&mut self, position: [i32; N]) -> Result<(), ()> {
+        for (v, p) in self.axes.iter_mut().zip(position) {
+            v.set_target_position(p)?;
+        }
+        Ok(())
     }
 }

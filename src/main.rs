@@ -4,25 +4,22 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
-use config::DynamixelUart;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{AnyPin, Level, Output, Speed};
-use embassy_stm32::peripherals::{DMA1_CH0, DMA1_CH1, USART1};
-use embassy_stm32::usart::{Config, Uart};
+use embassy_stm32::usart::Config;
 use embassy_stm32::Config as stm32_config;
 use embassy_stm32::{bind_interrupts, peripherals, usart};
 use embassy_time::{Duration, Timer};
-use paste::paste;
 
 // declare the modules
 mod config;
 mod dynamixel;
-mod registers;
-mod ventouse;
+mod motor_control;
 
 use crate::dynamixel::{InstructionPacketKind, StatusPacket};
+use crate::motor_control::{Actuator, VentouseKind};
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -43,7 +40,7 @@ pub fn exit() -> ! {
 }
 
 #[embassy_executor::task]
-async fn dxl_serial(usart: DynamixelUart, dir_pin: AnyPin) {
+async fn dxl_serial(usart: config::DynamixelUart, dir_pin: AnyPin) {
     let id = config::DXL_ID;
     let mut dxl = dynamixel::DynamixelUsartIO::new(usart, dir_pin, id);
 
@@ -91,6 +88,21 @@ async fn dxl_serial(usart: DynamixelUart, dir_pin: AnyPin) {
     }
 }
 
+const N_AXIS: usize = 2;
+
+#[embassy_executor::task]
+async fn control_loop(actuator: Actuator<N_AXIS>) {
+    let mut actuator = actuator;
+
+    actuator.init();
+
+    loop {
+        actuator.get_actual_position().unwrap();
+        actuator.set_target_position([0, 0]).unwrap();
+        Timer::after(Duration::from_millis(10)).await;
+    }
+}
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     info!("Hello World!");
@@ -106,7 +118,7 @@ async fn main(spawner: Spawner) {
     config.parity = embassy_stm32::usart::Parity::ParityNone;
     config.detect_previous_overrun = false;
 
-    let usart = DynamixelUart::new(
+    let usart = config::DynamixelUart::new(
         p.USART1, p.PB15, p.PB14, Irqs, p.DMA1_CH0, p.DMA1_CH1, config,
     )
     .unwrap();
@@ -114,20 +126,16 @@ async fn main(spawner: Spawner) {
     unwrap!(spawner.spawn(dxl_serial(usart, p.PD9.into())));
 
     // Prepare and spawn the ventouse task
-    let mut ventouse = ventouse::Ventouse::new(
-        p.PE3, p.PC15, p.PE12, p.PE5, p.PE6, p.SPI4, NoDma, NoDma, p.PE0, p.PC13, p.PC14,
-    );
-    ventouse.tmc4671_init_registers().await.unwrap();
-    info!("TMC4671 init done");
-    ventouse.tmc4671_align_motor().await.unwrap();
-    info!("Motor align done");
-    let curpos = ventouse.tmc4671_get_actual_position().unwrap();
-    info!("Current position: {:?}", curpos);
-    ventouse
-        .tmc4671_set_mode(ventouse::MotionMode::Position)
-        .unwrap();
-    ventouse.tmc4671_set_target_position(curpos).unwrap();
-    Timer::after(Duration::from_millis(1000)).await;
+
+    let orbita_2d = Actuator::new([
+        VentouseKind::A(config::VentouseA::new(
+            p.PE3, p.PC15, p.SPI4, p.PE12, p.PE6, p.PE5, NoDma, NoDma, p.PE0, p.PC13, p.PC14,
+        )),
+        VentouseKind::B(config::VentouseB::new(
+            p.PD7, p.PD6, p.SPI6, p.PB3, p.PB5, p.PB4, NoDma, NoDma, p.PD5, p.PD4, p.PD3,
+        )),
+    ]);
+    unwrap!(spawner.spawn(control_loop(orbita_2d)));
 
     // Prepare and spawn the main task
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
