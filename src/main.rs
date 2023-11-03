@@ -129,10 +129,32 @@ async fn main(spawner: Spawner) {
 
     let orbita_2d = Actuator::new([
         VentouseKind::A(config::VentouseA::new(
-            p.PE3, p.PC15, p.SPI4, p.PE12, p.PE6, p.PE5, NoDma, NoDma, p.PE0, p.PC13, p.PC14,
+            p.PE3,
+            p.PC15,
+            p.SPI4,
+            p.PE12,
+            p.PE6,
+            p.PE5,
+            NoDma,
+            NoDma,
+            p.PE0,
+            p.PC13,
+            p.PC14,
+            config::BrushlessMotor::ecx22(),
         )),
         VentouseKind::B(config::VentouseB::new(
-            p.PD7, p.PD6, p.SPI6, p.PB3, p.PB5, p.PB4, NoDma, NoDma, p.PD5, p.PD4, p.PD3,
+            p.PD7,
+            p.PD6,
+            p.SPI6,
+            p.PB3,
+            p.PB5,
+            p.PB4,
+            NoDma,
+            NoDma,
+            p.PD5,
+            p.PD4,
+            p.PD3,
+            config::BrushlessMotor::ecx22(),
         )),
     ]);
     unwrap!(spawner.spawn(control_loop(orbita_2d)));

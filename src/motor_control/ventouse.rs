@@ -191,6 +191,8 @@ where
     foc_status: Input<'d, FocStat>,
     #[allow(dead_code)]
     driver_fault: Input<'d, DrvFlt>,
+
+    brushless_motor_config: config::BrushlessMotor,
 }
 
 #[allow(dead_code)]
@@ -216,6 +218,7 @@ where
         foc_enable: impl Peripheral<P = FocEnb> + 'd,
         foc_status: impl Peripheral<P = FocStat> + 'd,
         driver_fault: impl Peripheral<P = DrvFlt> + 'd,
+        brushless_motor_config: config::BrushlessMotor,
     ) -> Self {
         // SPI
         let mut config = Config::default();
@@ -238,6 +241,7 @@ where
             foc_enable,
             foc_status,
             driver_fault,
+            brushless_motor_config,
         }
     }
 
@@ -412,19 +416,19 @@ where
         // PI settings
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_FLUX_P_FLUX_I as u8,
-            config::motor::PID_FLUX_P_FLUX_I,
+            self.brushless_motor_config.pid_flux_p_flux_i(),
         )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_TORQUE_P_TORQUE_I as u8,
-            config::motor::PID_TORQUE_P_TORQUE_I,
+            self.brushless_motor_config.pid_torque_p_torque_i(),
         )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_VELOCITY_P_VELOCITY_I as u8,
-            config::motor::PID_VELOCITY_P_VELOCITY_I,
+            self.brushless_motor_config.pid_velocity_p_velocity_i(),
         )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_POSITION_P_POSITION_I as u8,
-            config::motor::PID_POSITION_P_POSITION_I,
+            self.brushless_motor_config.pid_position_p_position_i(),
         )?;
 
         Ok(())
