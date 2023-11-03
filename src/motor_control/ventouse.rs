@@ -1,3 +1,4 @@
+use super::axis::Axis;
 use crate::config;
 
 use defmt::*;
@@ -5,8 +6,6 @@ use embassy_stm32::gpio::{Input, Level, Output, Pin, Pull, Speed};
 use embassy_stm32::spi::{Config, Instance, MisoPin, MosiPin, SckPin, Spi};
 use embassy_stm32::Peripheral;
 use embassy_time::*;
-
-use super::axis::Axis;
 
 const MOTOR_TYPE_N_POLE_PAIRS: u32 = 0x00030004; // BLDC, 4 pole-pairs ECXtorque
 
@@ -256,8 +255,7 @@ where
     pub fn tmc4671_set_mode(&mut self, mode: MotionMode) -> Result<u32, embassy_stm32::spi::Error> {
         let mut data = 0x00000000u32;
         // read current state first
-        self.tmc4671_transmit_raw_data(false, Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data)
-            .unwrap();
+        self.tmc4671_transmit_raw_data(false, Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data)?;
         data &= 0xFFFFFF00u32;
         data |= mode as u32;
         self.tmc4671_write_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data)
@@ -293,9 +291,8 @@ where
         torque_target: i16,
     ) -> Result<u32, embassy_stm32::spi::Error> {
         // read current state first -> bits 15-0 is flux_target and should be kept.
-        let mut torque_and_flux = self
-            .tmc4671_read_register(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8)
-            .unwrap();
+        let mut torque_and_flux =
+            self.tmc4671_read_register(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8)?;
         torque_and_flux &= 0x0000FFFFu32; // clear actual torque
         torque_and_flux |= (torque_target as u32) << 16;
         self.tmc4671_write_register(
@@ -540,8 +537,10 @@ where
 
         // Sending data
         self.cs_foc.set_low();
-        let _result = &mut self.spi.blocking_transfer_in_place(&mut transfer_data);
+        let result = self.spi.blocking_transfer_in_place(&mut transfer_data);
         self.cs_foc.set_high();
+
+        result?;
 
         let mut read_data = transfer_data[4] as u32;
         read_data += (transfer_data[3] as u32) << 8;
@@ -602,8 +601,10 @@ where
 
         // Sending data
         self.cs_driver.set_low();
-        let _result = &mut self.spi.blocking_transfer_in_place(&mut transfer_data); // Todo: the error is not treated.
+        let result = self.spi.blocking_transfer_in_place(&mut transfer_data);
         self.cs_driver.set_high();
+
+        result?;
 
         let mut read_data = transfer_data[4] as u32;
         read_data += (transfer_data[3] as u32) << 8;
