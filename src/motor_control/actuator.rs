@@ -1,3 +1,4 @@
+use embassy_futures::join;
 use embassy_stm32::spi::Error;
 
 use super::axis::Axis;
@@ -13,10 +14,7 @@ impl<const N: usize> Actuator<N> {
     }
 
     pub async fn init(&mut self) {
-        // TODO: this should be done in parallel
-        for v in self.axes.iter_mut() {
-            v.init().await;
-        }
+        join::join_array(self.axes.each_mut().map(|v| v.init())).await;
     }
 
     pub fn get_actual_position(&mut self) -> Result<[i32; N], Error> {

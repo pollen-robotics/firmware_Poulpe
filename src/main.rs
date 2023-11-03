@@ -4,6 +4,7 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 #![feature(async_fn_in_trait)]
+#![feature(array_methods)]
 
 use defmt::*;
 use embassy_executor::Spawner;
