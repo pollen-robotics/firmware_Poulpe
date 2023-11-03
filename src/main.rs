@@ -26,7 +26,7 @@ async fn main(_spawner: Spawner) {
     led_hello.set_low();
 
     // J5 - Ventouse-B
-    let mut ventouse = ventouse::Ventouse::new(
+    /*let mut ventouse = ventouse::Ventouse::new(
         p.PE3,
         p.PC15,
         p.PE12,
@@ -38,7 +38,7 @@ async fn main(_spawner: Spawner) {
         p.PE0,
         p.PC13,
         p.PC14
-    );
+    );*/
 
     // J10 - Ventouse-C
     /*let mut ventouse = ventouse::Ventouse::new(
@@ -54,6 +54,21 @@ async fn main(_spawner: Spawner) {
         p.PD4,
         p.PD3
     );*/
+
+    // Poulpe + Eval Board J5/J10
+    let mut ventouse = ventouse::Ventouse::new(
+        p.PE4,
+        p.PA15,
+        p.PE12,
+        p.PE5,
+        p.PE6,
+        p.SPI4,
+        NoDma,
+        NoDma,
+        p.PE0,
+        p.PC13,
+        p.PC14
+    );
 
     // Tuning mode: uncomment to set Poulpe and Ventouse ready for tuning
 /*    info!("TMC6200 -> 6-PWM mode {:?}", ventouse.tmc6200_checked_write(0x00u8, 0x00000000u32));
