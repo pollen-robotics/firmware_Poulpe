@@ -273,45 +273,6 @@ where
         }
     }
 
-    // pub fn new(
-    //     cs_foc: impl Peripheral<P = CsFoc> + 'd,
-    //     cs_driver: impl Peripheral<P = CsDrv> + 'd,
-    //     peri: impl Peripheral<P = T> + 'd,
-    //     sck: impl Peripheral<P = impl SckPin<T>> + 'd,
-    //     mosi: impl Peripheral<P = impl MosiPin<T>> + 'd,
-    //     miso: impl Peripheral<P = impl MisoPin<T>> + 'd,
-    //     txdma: impl Peripheral<P = Tx> + 'd,
-    //     rxdma: impl Peripheral<P = Rx> + 'd,
-    //     foc_enable: impl Peripheral<P = FocEnb> + 'd,
-    //     foc_status: impl Peripheral<P = FocStat> + 'd,
-    //     driver_fault: impl Peripheral<P = DrvFlt> + 'd,
-    //     brushless_motor_config: config::BrushlessMotor,
-    // ) -> Self {
-    //     // SPI
-    //     let mut config = Config::default();
-    //     config.mode = embassy_stm32::spi::MODE_3;
-    //     let spi = Spi::new(peri, sck, mosi, miso, txdma, rxdma, config);
-
-    //     // IOs
-    //     let cs_foc = Output::new(cs_foc, Level::High, Speed::Medium);
-    //     let cs_driver = Output::new(cs_driver, Level::High, Speed::Medium);
-
-    //     let mut foc_enable = Output::new(foc_enable, Level::Low, Speed::Low);
-    //     foc_enable.set_low();
-    //     let foc_status = Input::new(foc_status, Pull::None);
-    //     let driver_fault = Input::new(driver_fault, Pull::None);
-
-    //     Self {
-    //         cs_foc,
-    //         cs_driver,
-    //         spi,
-    //         foc_enable,
-    //         foc_status,
-    //         driver_fault,
-    //         brushless_motor_config,
-    //     }
-    // }
-
     pub fn tmc4671_enable(&mut self) {
         self.foc_enable.set_high();
     }
