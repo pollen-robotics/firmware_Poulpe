@@ -194,67 +194,30 @@ async fn dxl_serial(mut usart: Uart<'static, USART1, DMA1_CH0, DMA1_CH1>, dir_pi
 async fn main(spawner: Spawner) {
     info!("Hello World!");
 
+    //440MHz (without HSE)
     let mut stm32_conf = stm32_config::default();
-    //32MHz config with HSI48 active
-
-    // {
-    //     use embassy_stm32::rcc::*;
-
-    //     stm32_conf.rcc.hse = None; //No external clock
-    //     stm32_conf.rcc.hsi = Some(Hsi::Mhz32); // div/2
-    //     stm32_conf.rcc.hsi48 = true;
-    //     stm32_conf.rcc.csi = true;
-
-    //     stm32_conf.rcc.sys = Sysclk::HSI;
-
-    //     stm32_conf.rcc.ahb_pre = AHBPrescaler::DIV1;
-    //     stm32_conf.rcc.apb1_pre = APBPrescaler::DIV1;
-    //     stm32_conf.rcc.apb2_pre = APBPrescaler::DIV1;
-    //     stm32_conf.rcc.apb3_pre = APBPrescaler::DIV1;
-    //     stm32_conf.rcc.apb4_pre = APBPrescaler::DIV1;
-    //     stm32_conf.rcc.voltage_scale = VoltageScale::Scale3;
-    // }
-
-    //400MHz config with HSI48 active
-    /*
     {
         use embassy_stm32::rcc::*;
-
-        stm32_conf.rcc.hse = None; //No external clock
-        stm32_conf.rcc.hsi = Some(Hsi::Mhz64); // div/1
-        stm32_conf.rcc.hsi48 = true;
-        stm32_conf.rcc.csi = true;
-
+        stm32_conf.rcc.hsi = Some(HSIPrescaler::DIV1); //HSIState = RCC_HSI_DIV1
+        stm32_conf.rcc.csi = true; //CSIState = RCC_CSI_ON;
+                                   // stm32_conf.rcc.hse = Som(Hse{Hertz::mhz(48), HseMode::Oscillator}); //TODO
         stm32_conf.rcc.pll1 = Some(Pll {
-            // source: PllSource::Hsi,
-            prediv: 4,
-            mul: 50,
-            divp: Some(2),
-            divq: Some(8), // SPI1 cksel defaults to pll1_q
-            divr: None,
+            // source: PllSource::HSI
+            source: PllSource::CSI,   //PLLSource = RCC_PLLSOURCE_CSI
+            prediv: PllPreDiv::DIV1,  //PLLM = 1;
+            mul: PllMul::MUL220,      //PLLN = 220
+            divp: Some(PllDiv::DIV2), //PLLP = 2;
+            divq: Some(PllDiv::DIV5), //PLLQ = 5;
+            divr: Some(PllDiv::DIV5), //PLLR = 5;
         });
-        stm32_conf.rcc.pll2 = Some(Pll {
-            // source: PllSource::HSI,
-            prediv: 4,
-            mul: 50,
-            divp: Some(8), // 100mhz
-            divq: None,
-            divr: None,
-        });
-
-        stm32_conf.rcc.sys = Sysclk::Pll1P;
-        stm32_conf.rcc.ahb_pre = AHBPrescaler::DIV2;
-        stm32_conf.rcc.apb1_pre = APBPrescaler::DIV2;
-        stm32_conf.rcc.apb2_pre = APBPrescaler::DIV2;
-        stm32_conf.rcc.apb3_pre = APBPrescaler::DIV2;
-        stm32_conf.rcc.apb4_pre = APBPrescaler::DIV2;
-        stm32_conf.rcc.voltage_scale = VoltageScale::Scale1;
+        stm32_conf.rcc.sys = Sysclk::PLL1_P; // 440 Mhz
+        stm32_conf.rcc.ahb_pre = AHBPrescaler::DIV2; // 220 Mhz
+        stm32_conf.rcc.apb1_pre = APBPrescaler::DIV2; // 110 Mhz
+        stm32_conf.rcc.apb2_pre = APBPrescaler::DIV2; // 110 Mhz
+        stm32_conf.rcc.apb3_pre = APBPrescaler::DIV2; // 110 Mhz
+        stm32_conf.rcc.apb4_pre = APBPrescaler::DIV2; // 110 Mhz
+        stm32_conf.rcc.voltage_scale = VoltageScale::Scale0;
     }
-     */
-
-    stm32_conf.rcc.sys_ck = Some(mhz(400));
-    // stm32_conf.rcc.hclk = Some(mhz(200));
-    // stm32_conf.rcc.pll1.q_ck = Some(mhz(100));
 
     let p = embassy_stm32::init(stm32_conf);
 
