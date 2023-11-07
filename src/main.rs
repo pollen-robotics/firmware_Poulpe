@@ -6,26 +6,33 @@
 #![feature(async_fn_in_trait)]
 #![feature(array_methods)]
 
-use defmt::*;
+use defmt::{info, unwrap};
 use embassy_executor::Spawner;
-use embassy_stm32::gpio::{AnyPin, Level, Output, Speed};
+use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_stm32::usart::Config as usart_config;
 use embassy_stm32::Config as stm32_config;
 use embassy_stm32::{bind_interrupts, peripherals, usart};
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
 
 mod config;
 mod dynamixel;
 mod motor_control;
+mod shared_memory;
 
-use crate::dynamixel::{InstructionPacketKind, StatusPacket};
 use crate::motor_control::{Actuator, VentouseKind};
+use crate::shared_memory::SharedMemory;
 
 use {defmt_rtt as _, panic_probe as _};
 
 bind_interrupts!(struct Irqs {
     USART1 => usart::InterruptHandler<peripherals::USART1>;
 });
+
+// TODO: Use a NoopMutex instead of a real mutex?
+static SHARED_MEMORY: Mutex<ThreadModeRawMutex, SharedMemory<{ config::N_AXIS }>> =
+    Mutex::new(SharedMemory::default());
 
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message
 // this prevents the panic message being printed *twice* when `defmt::panic` is invoked
@@ -39,70 +46,6 @@ pub fn exit() -> ! {
     }
 }
 
-#[embassy_executor::task]
-async fn dxl_serial(usart: config::DynamixelUart, dir_pin: AnyPin) {
-    let id = config::DXL_ID;
-    let mut dxl = dynamixel::DynamixelUsartIO::new(usart, dir_pin, id);
-
-    let dxl_error = 0;
-
-    loop {
-        debug!("Waiting for packet...");
-        match dxl.read().await {
-            Ok(packet) => {
-                debug!("Got packet: {:?}", packet);
-
-                match packet {
-                    InstructionPacketKind::Ping(_) => {
-                        let sp = StatusPacket::ack(id, dxl_error);
-                        debug!("Sending status packet: {:?}", sp);
-                        if let Some(e) = dxl.write(&sp).await.err() {
-                            error!("Error: {:?}", e);
-                        }
-                    }
-                    InstructionPacketKind::ReadData(_read_data_packet) => {
-                        // let value: [u8; N] = register.get_data(read_data_packet.address, read_data_packet.data_length).unwrap();
-                        let value = [0, 42, 0, 10];
-
-                        let sp = StatusPacket::with_value(id, dxl_error, value);
-                        debug!("Sending status packet: {:?}", sp);
-                        if let Some(e) = dxl.write(&sp).await.err() {
-                            error!("Error: {:?}", e);
-                        }
-                    }
-                    InstructionPacketKind::WriteData(_write_data_packet) => {
-                        // register.set_data(write_data_packet.address, write_data_packet.data).unwrap();
-
-                        let sp = StatusPacket::ack(id, dxl_error);
-                        debug!("Sending status packet: {:?}", sp);
-                        if let Some(e) = dxl.write(&sp).await.err() {
-                            error!("Error: {:?}", e);
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                error!("Error: {:?}", e);
-            }
-        }
-    }
-}
-
-const N_AXIS: usize = 2;
-
-#[embassy_executor::task]
-async fn control_loop(actuator: Actuator<N_AXIS>) {
-    let mut actuator = actuator;
-
-    actuator.init().await;
-
-    loop {
-        actuator.get_actual_position().unwrap();
-        actuator.set_target_position([0, 0]).unwrap();
-        Timer::after(Duration::from_millis(10)).await;
-    }
-}
-
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     info!("Hello World!");
@@ -110,29 +53,8 @@ async fn main(spawner: Spawner) {
     let stm32_conf = stm32_config::default();
     let p = embassy_stm32::init(stm32_conf);
 
-    // Prepare and spawn the DXL serial task
-    let mut usart_config = usart_config::default();
-    usart_config.baudrate = 1_000_000;
-    usart_config.stop_bits = embassy_stm32::usart::StopBits::STOP1;
-    usart_config.data_bits = embassy_stm32::usart::DataBits::DataBits8;
-    usart_config.parity = embassy_stm32::usart::Parity::ParityNone;
-    usart_config.detect_previous_overrun = false;
-
-    let usart = config::DynamixelUart::new(
-        p.USART1,
-        p.PB15,
-        p.PB14,
-        Irqs,
-        p.DMA1_CH0,
-        p.DMA1_CH1,
-        usart_config,
-    )
-    .unwrap();
-
-    unwrap!(spawner.spawn(dxl_serial(usart, p.PD9.into())));
-
-    // Prepare and spawn the ventouse task
-    let orbita_2d = Actuator::new([
+    // Setup the actuator with the configured ventouses
+    let mut actuator = Actuator::new([
         VentouseKind::A(config::VentouseA::new(
             motor_control::VentouseConfig {
                 cs_foc: p.PE3,
@@ -162,7 +84,32 @@ async fn main(spawner: Spawner) {
             config::BrushlessMotor::ecx22(),
         )),
     ]);
-    unwrap!(spawner.spawn(control_loop(orbita_2d)));
+
+    // Init SharedMemory with real values before actually running the control loop
+    SHARED_MEMORY.lock().await.init(&mut actuator);
+
+    // Spawn the control loop
+    unwrap!(spawner.spawn(motor_control::task::control_loop(actuator)));
+
+    // Prepare and spawn the DXL communication task
+    let mut usart_config = usart_config::default();
+    usart_config.baudrate = 1_000_000;
+    usart_config.stop_bits = embassy_stm32::usart::StopBits::STOP1;
+    usart_config.data_bits = embassy_stm32::usart::DataBits::DataBits8;
+    usart_config.parity = embassy_stm32::usart::Parity::ParityNone;
+    usart_config.detect_previous_overrun = false;
+
+    let usart = config::DynamixelUart::new(
+        p.USART1,
+        p.PB15,
+        p.PB14,
+        Irqs,
+        p.DMA1_CH0,
+        p.DMA1_CH1,
+        usart_config,
+    )
+    .unwrap();
+    unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
 
     // Prepare and spawn the main task
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
