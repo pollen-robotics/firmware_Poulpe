@@ -778,9 +778,11 @@ where
 
 mod conversion {
     pub fn encoder_to_rads(enc: i32) -> f32 {
+        // TODO: real implementation
         enc as f32
     }
     pub fn rads_to_encoder(rads: f32) -> i32 {
+        // TODO: real implementation
         rads as i32
     }
 }
