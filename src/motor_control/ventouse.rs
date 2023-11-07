@@ -281,6 +281,8 @@ where
         info!("TMC4671 init done");
         self.tmc4671_align_motor().await.unwrap();
         info!("Motor align done");
+        self.tmc4671_set_mode(MotionMode::Position).unwrap();
+        info!("Motor set to position mode done");
     }
 
     pub fn tmc4671_enable(&mut self) {
