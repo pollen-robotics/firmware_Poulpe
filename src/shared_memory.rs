@@ -1,13 +1,17 @@
 use core::cell::RefCell;
 
+use defmt::Format;
+
 use crate::motor_control::{Actuator, RawMotorsIO};
 
+#[derive(Clone, Format)]
 pub struct Memory<const N: usize> {
     torque_on: [bool; N],
     current_position: [f32; N],
     target_position: [f32; N],
 }
 
+#[derive(Format)]
 pub struct SharedMemory<const N: usize> {
     inner: RefCell<Memory<N>>,
 }
@@ -52,5 +56,9 @@ impl<const N: usize> SharedMemory<N> {
             current_position: actuator.get_current_position().unwrap(),
             target_position: actuator.get_target_position().unwrap(),
         };
+    }
+
+    pub fn snapshot(&self) -> Memory<N> {
+        self.inner.borrow().clone()
     }
 }
