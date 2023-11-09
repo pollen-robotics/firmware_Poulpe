@@ -195,6 +195,8 @@ where
     driver_fault: Input<'d, DrvFlt>,
 
     brushless_motor_config: config::BrushlessMotor,
+
+    ppr: Option<f32>,
 }
 
 pub struct VentouseConfig<
@@ -273,16 +275,22 @@ where
             foc_status,
             driver_fault,
             brushless_motor_config,
+            ppr: None,
         }
     }
 
-    pub async fn init(&mut self) {
-        self.tmc4671_init_registers().await.unwrap();
+    pub async fn init(&mut self) -> Result<(), embassy_stm32::spi::Error> {
+        self.tmc4671_init_registers().await?;
         info!("TMC4671 init done");
-        self.tmc4671_align_motor().await.unwrap();
+
+        self.ppr = Some(self.tmc4671_get_encoder_ppr()? as f32);
+
+        self.tmc4671_align_motor().await?;
         info!("Motor align done");
-        self.tmc4671_set_mode(MotionMode::Position).unwrap();
+        self.tmc4671_set_mode(MotionMode::Position)?;
         info!("Motor set to position mode done");
+
+        Ok(())
     }
 
     pub fn tmc4671_enable(&mut self) {
@@ -699,12 +707,15 @@ where
 {
     /// Check if the motors are ON or OFF
     fn is_torque_on(&mut self) -> Result<[bool; 1], IOError> {
-        // TODO:
-        Ok([true])
+        Ok([self.foc_enable.is_set_high()])
     }
     /// Enable/Disable the torque
-    fn set_torque(&mut self, _on: [bool; 1]) -> Result<(), IOError> {
-        // TODO:
+    fn set_torque(&mut self, on: [bool; 1]) -> Result<(), IOError> {
+        if on[0] {
+            self.tmc4671_enable();
+        } else {
+            self.tmc4671_disable();
+        }
         Ok(())
     }
 
@@ -713,7 +724,7 @@ where
         let encoder = self
             .tmc4671_get_actual_position()
             .map_err(IOError::SpiError)?;
-        let rads = conversion::encoder_to_rads(encoder);
+        let rads = conversion::encoder_to_rads(encoder, self.ppr.unwrap());
 
         Ok([rads])
     }
@@ -735,9 +746,12 @@ where
     }
     /// Set the current target position of the motors (in radians)
     fn set_target_position(&mut self, position: [f32; 1]) -> Result<(), IOError> {
-        self.tmc4671_set_target_position(conversion::rads_to_encoder(position[0]))
-            .map(|_| ())
-            .map_err(IOError::SpiError)
+        self.tmc4671_set_target_position(conversion::rads_to_encoder(
+            position[0],
+            self.ppr.unwrap(),
+        ))
+        .map(|_| ())
+        .map_err(IOError::SpiError)
     }
 
     /// Get the velocity limit of the motors (in radians per second)
@@ -779,13 +793,11 @@ where
 }
 
 mod conversion {
-    pub fn encoder_to_rads(enc: i32) -> f32 {
-        // TODO: real implementation
-        enc as f32
+    pub fn encoder_to_rads(enc: i32, ppr: f32) -> f32 {
+        enc as f32 / ppr
     }
-    pub fn rads_to_encoder(rads: f32) -> i32 {
-        // TODO: real implementation
-        rads as i32
+    pub fn rads_to_encoder(rads: f32, ppr: f32) -> i32 {
+        (rads * ppr) as i32
     }
 }
 
@@ -795,7 +807,7 @@ pub enum VentouseKind {
 }
 
 impl VentouseKind {
-    pub async fn init(&mut self) {
+    pub async fn init(&mut self) -> Result<(), embassy_stm32::spi::Error> {
         match self {
             VentouseKind::A(v) => v.init().await,
             VentouseKind::B(v) => v.init().await,
