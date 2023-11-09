@@ -699,12 +699,15 @@ where
 {
     /// Check if the motors are ON or OFF
     fn is_torque_on(&mut self) -> Result<[bool; 1], IOError> {
-        // TODO:
-        Ok([true])
+        Ok([self.foc_enable.is_set_high()])
     }
     /// Enable/Disable the torque
-    fn set_torque(&mut self, _on: [bool; 1]) -> Result<(), IOError> {
-        // TODO:
+    fn set_torque(&mut self, on: [bool; 1]) -> Result<(), IOError> {
+        if on[0] {
+            self.tmc4671_enable();
+        } else {
+            self.tmc4671_disable();
+        }
         Ok(())
     }
 
