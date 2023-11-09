@@ -6,10 +6,9 @@ license = "MIT OR Apache-2.0"
 
 [features]
 #motor specifig config
-default = ["ecx22"]
-ecx22 = []  #Maxon ECX22 Ortbia3D
-ec45=[] #Maxon EC45 flat Orbita2D
-ec60=[] #Maxon EC60 flat Orbita2D
+default = ["orbita3d"]
+orbita2d = []
+orbita3d = []
 
 [dependencies]
 # rustypot = "0.4.2"

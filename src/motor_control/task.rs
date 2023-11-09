@@ -16,6 +16,9 @@ pub async fn control_loop(actuator: Actuator<{ config::N_AXIS }>) {
             SHARED_MEMORY.lock().await.set_current_position(pos)
         }
 
+        let torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
+        actuator.set_torque(torque_on).unwrap();
+
         let target = { SHARED_MEMORY.lock().await.get_target_position() };
         actuator.set_target_position(target).unwrap();
 
