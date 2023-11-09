@@ -58,6 +58,7 @@ impl<const N: usize> SharedMemory<N> {
         };
     }
 
+    #[allow(dead_code)]
     pub fn snapshot(&self) -> Memory<N> {
         self.inner.borrow().clone()
     }
