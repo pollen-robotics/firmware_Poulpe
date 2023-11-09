@@ -78,8 +78,9 @@ async fn main(spawner: Spawner) {
     let p = embassy_stm32::init(stm32_conf);
 
     // Setup the actuator with the configured ventouses
+    #[cfg(feature = "orbita2d")]
     let mut actuator = Actuator::new([
-        VentouseKind::A(config::VentouseA::new(
+        VentouseKind::B(config::VentouseB::new(
             motor_control::VentouseConfig {
                 cs_foc: p.PE3,
                 cs_driver: p.PC15,
@@ -93,7 +94,52 @@ async fn main(spawner: Spawner) {
             },
             config::BrushlessMotor::ecx22(),
         )),
+        VentouseKind::C(config::VentouseC::new(
+            motor_control::VentouseConfig {
+                cs_foc: p.PD7,
+                cs_driver: p.PD6,
+                peri: p.SPI6,
+                sck: p.PB3,
+                mosi: p.PB5,
+                miso: p.PB4,
+                foc_enable: p.PD5,
+                foc_status: p.PD4,
+                driver_fault: p.PD3,
+            },
+            config::BrushlessMotor::ecx22(),
+        )),
+    ]);
+    #[cfg(feature = "orbita3d")]
+    let mut actuator = Actuator::new([
+        VentouseKind::A(config::VentouseA::new(
+            motor_control::VentouseConfig {
+                cs_foc: p.PA3,
+                cs_driver: p.PA2,
+                peri: p.SPI1,
+                sck: p.PA5,
+                mosi: p.PA7,
+                miso: p.PA6,
+                foc_enable: p.PC0,
+                foc_status: p.PA0,
+                driver_fault: p.PA1,
+            },
+            config::BrushlessMotor::ecx22(),
+        )),
         VentouseKind::B(config::VentouseB::new(
+            motor_control::VentouseConfig {
+                cs_foc: p.PE3,
+                cs_driver: p.PC15,
+                peri: p.SPI4,
+                sck: p.PE12,
+                mosi: p.PE6,
+                miso: p.PE5,
+                foc_enable: p.PE0,
+                foc_status: p.PC13,
+                driver_fault: p.PC14,
+            },
+            config::BrushlessMotor::ecx22(),
+        )),
+        VentouseKind::C(config::VentouseC::new(
             motor_control::VentouseConfig {
                 cs_foc: p.PD7,
                 cs_driver: p.PD6,
