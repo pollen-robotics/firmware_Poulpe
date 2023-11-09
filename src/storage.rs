@@ -8,6 +8,10 @@ use crate::config;
 
 const USER_DATA_ADDR: u32 = 0x8_0000;
 
+extern "C" {
+    static __config_start: u32;
+}
+
 pub struct Storage {
     bank: Option<Bank1Region<'static, Blocking>>,
 }
@@ -29,6 +33,8 @@ impl Storage {
     }
 
     pub fn init(&mut self, p: impl Peripheral<P = FLASH> + 'static) {
+        let config_start = unsafe { &__config_start as *const u32 as usize };
+
         self.bank = Some(Flash::new_blocking(p).into_blocking_regions().bank1_region);
     }
 
