@@ -5,7 +5,7 @@ use embassy_stm32::usart::Uart;
 
 pub const N_AXIS: usize = 2;
 
-pub static DXL_ID: u8 = 42;
+pub static DYNAMIXEL_DEFAULT_ID: u8 = 42;
 
 pub type DynamixelUart = Uart<'static, p::USART1, p::DMA1_CH0, p::DMA1_CH1>;
 

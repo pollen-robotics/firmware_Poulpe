@@ -44,6 +44,14 @@ where
         }
     }
 
+    pub fn get_id(&self) -> u8 {
+        self.id
+    }
+
+    pub fn set_new_id(&mut self, new_id: u8) {
+        self.id = new_id;
+    }
+
     pub async fn read(&mut self) -> Result<InstructionPacketKind, CommunicationError> {
         // We should always be in read mode when this method is called
 

@@ -15,11 +15,13 @@ use embassy_stm32::{bind_interrupts, peripherals, usart};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
+use storage::Storage;
 
 mod config;
 mod dynamixel;
 mod motor_control;
 mod shared_memory;
+mod storage;
 
 use crate::motor_control::{Actuator, VentouseKind};
 use crate::shared_memory::SharedMemory;
@@ -33,6 +35,7 @@ bind_interrupts!(struct Irqs {
 // TODO: Use a NoopMutex instead of a real mutex?
 static SHARED_MEMORY: Mutex<ThreadModeRawMutex, SharedMemory<{ config::N_AXIS }>> =
     Mutex::new(SharedMemory::default());
+static PERMANENT_STORAGE: Mutex<ThreadModeRawMutex, Storage> = Mutex::new(Storage::default());
 
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message
 // this prevents the panic message being printed *twice* when `defmt::panic` is invoked
@@ -76,6 +79,10 @@ async fn main(spawner: Spawner) {
     }
 
     let p = embassy_stm32::init(stm32_conf);
+    PERMANENT_STORAGE.lock().await.init(p.FLASH);
+
+    let id = PERMANENT_STORAGE.lock().await.get_id();
+    info!("Use dynamixel id: {}", id);
 
     // Setup the actuator with the configured ventouses
     let mut actuator = Actuator::new([

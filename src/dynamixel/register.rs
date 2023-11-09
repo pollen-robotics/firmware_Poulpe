@@ -1,4 +1,5 @@
 pub enum DynamixelRegister {
+    Id,
     TorqueEnable,
     CurrentPosition,
     // CurrentVelocity,
@@ -13,6 +14,7 @@ pub enum DynamixelRegister {
 impl DynamixelRegister {
     pub fn with_address(address: u8) -> Option<Self> {
         match address {
+            3 => Some(DynamixelRegister::Id),
             40 => Some(DynamixelRegister::TorqueEnable),
             50 => Some(DynamixelRegister::CurrentPosition),
             // 51 => Some(DynamixelRegister::CurrentVelocity),

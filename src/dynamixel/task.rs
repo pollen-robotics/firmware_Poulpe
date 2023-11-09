@@ -4,12 +4,12 @@ use embassy_stm32::gpio::AnyPin;
 use crate::{
     config,
     dynamixel::{conversion, DynamixelRegister, InstructionPacketKind, StatusPacket},
-    SHARED_MEMORY,
+    PERMANENT_STORAGE, SHARED_MEMORY,
 };
 
 #[embassy_executor::task]
 pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
-    let id = config::DXL_ID;
+    let id = PERMANENT_STORAGE.lock().await.get_id();
     let mut dxl = super::DynamixelUsartIO::new(usart, dir_pin, id);
 
     let dxl_error = 0;
@@ -37,6 +37,14 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                         let reg = reg.unwrap();
 
                         match reg {
+                            DynamixelRegister::Id => {
+                                let id: u8 = dxl.get_id();
+                                let sp = StatusPacket::with_value(id, dxl_error, [id]);
+                                debug!("Sending status packet: {:?}", sp);
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
                             DynamixelRegister::TorqueEnable => {
                                 // TODO: abstract those in any way possible
                                 let value = { SHARED_MEMORY.lock().await.get_torque_on() };
@@ -77,6 +85,11 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
 
                         match reg {
                             // TODO: Can we match only on Write registers?
+                            DynamixelRegister::Id => {
+                                let new_id = write_data_packet.data[0];
+                                dxl.set_new_id(new_id);
+                                PERMANENT_STORAGE.lock().await.set_id(new_id);
+                            }
                             DynamixelRegister::TorqueEnable => {
                                 let torque_on: [bool; config::N_AXIS] =
                                     conversion::bytes_to_bool(write_data_packet.data);
