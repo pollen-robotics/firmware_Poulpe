@@ -804,6 +804,7 @@ mod conversion {
 pub enum VentouseKind {
     A(config::VentouseA),
     B(config::VentouseB),
+    C(config::VentouseC),
 }
 
 impl VentouseKind {
@@ -811,6 +812,7 @@ impl VentouseKind {
         match self {
             VentouseKind::A(v) => v.init().await,
             VentouseKind::B(v) => v.init().await,
+            VentouseKind::C(v) => v.init().await,
         }
     }
 }
@@ -822,6 +824,7 @@ impl RawMotorsIO<1> for VentouseKind {
         match self {
             VentouseKind::A(v) => v.is_torque_on(),
             VentouseKind::B(v) => v.is_torque_on(),
+            VentouseKind::C(v) => v.is_torque_on(),
         }
     }
     /// Enable/Disable the torque
@@ -829,6 +832,7 @@ impl RawMotorsIO<1> for VentouseKind {
         match self {
             VentouseKind::A(v) => v.set_torque(on),
             VentouseKind::B(v) => v.set_torque(on),
+            VentouseKind::C(v) => v.set_torque(on),
         }
     }
 
@@ -837,6 +841,7 @@ impl RawMotorsIO<1> for VentouseKind {
         match self {
             VentouseKind::A(v) => v.get_current_position(),
             VentouseKind::B(v) => v.get_current_position(),
+            VentouseKind::C(v) => v.get_current_position(),
         }
     }
     /// Get the current velocity of the motors (in radians per second)
@@ -844,6 +849,7 @@ impl RawMotorsIO<1> for VentouseKind {
         match self {
             VentouseKind::A(v) => v.get_current_velocity(),
             VentouseKind::B(v) => v.get_current_velocity(),
+            VentouseKind::C(v) => v.get_current_velocity(),
         }
     }
     /// Get the current torque of the motors (in Nm)
@@ -851,6 +857,7 @@ impl RawMotorsIO<1> for VentouseKind {
         match self {
             VentouseKind::A(v) => v.get_current_torque(),
             VentouseKind::B(v) => v.get_current_torque(),
+            VentouseKind::C(v) => v.get_current_torque(),
         }
     }
 
@@ -859,6 +866,7 @@ impl RawMotorsIO<1> for VentouseKind {
         match self {
             VentouseKind::A(v) => v.get_target_position(),
             VentouseKind::B(v) => v.get_target_position(),
+            VentouseKind::C(v) => v.get_target_position(),
         }
     }
     /// Set the current target position of the motors (in radians)
@@ -866,6 +874,7 @@ impl RawMotorsIO<1> for VentouseKind {
         match self {
             VentouseKind::A(v) => v.set_target_position(position),
             VentouseKind::B(v) => v.set_target_position(position),
+            VentouseKind::C(v) => v.set_target_position(position),
         }
     }
 
@@ -874,6 +883,7 @@ impl RawMotorsIO<1> for VentouseKind {
         match self {
             VentouseKind::A(v) => v.get_velocity_limit(),
             VentouseKind::B(v) => v.get_velocity_limit(),
+            VentouseKind::C(v) => v.get_velocity_limit(),
         }
     }
     /// Set the velocity limit of the motors (in radians per second)
@@ -881,6 +891,7 @@ impl RawMotorsIO<1> for VentouseKind {
         match self {
             VentouseKind::A(v) => v.set_velocity_limit(velocity),
             VentouseKind::B(v) => v.set_velocity_limit(velocity),
+            VentouseKind::C(v) => v.set_velocity_limit(velocity),
         }
     }
 
@@ -889,6 +900,7 @@ impl RawMotorsIO<1> for VentouseKind {
         match self {
             VentouseKind::A(v) => v.get_torque_limit(),
             VentouseKind::B(v) => v.get_torque_limit(),
+            VentouseKind::C(v) => v.get_torque_limit(),
         }
     }
     /// Set the torque limit of the motors (in Nm)
@@ -896,6 +908,7 @@ impl RawMotorsIO<1> for VentouseKind {
         match self {
             VentouseKind::A(v) => v.set_torque_limit(torque),
             VentouseKind::B(v) => v.set_torque_limit(torque),
+            VentouseKind::C(v) => v.set_torque_limit(torque),
         }
     }
 
@@ -904,6 +917,7 @@ impl RawMotorsIO<1> for VentouseKind {
         match self {
             VentouseKind::A(v) => v.get_pid_gains(),
             VentouseKind::B(v) => v.get_pid_gains(),
+            VentouseKind::C(v) => v.get_pid_gains(),
         }
     }
     /// Set the current PID gains of the motors
@@ -911,6 +925,7 @@ impl RawMotorsIO<1> for VentouseKind {
         match self {
             VentouseKind::A(v) => v.set_pid_gains(pid),
             VentouseKind::B(v) => v.set_pid_gains(pid),
+            VentouseKind::C(v) => v.set_pid_gains(pid),
         }
     }
 }
