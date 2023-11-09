@@ -1,4 +1,3 @@
-// use super::axis::Axis;
 use crate::config;
 
 use defmt::*;
