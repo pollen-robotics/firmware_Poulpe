@@ -1,4 +1,4 @@
-use defmt::{debug, error};
+use defmt::{info,debug, error};
 use embassy_stm32::gpio::AnyPin;
 
 use crate::{
@@ -9,6 +9,8 @@ use crate::{
 
 #[embassy_executor::task]
 pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
+    info!("Starting Dynamixel message handler");
+
     let id = config::DXL_ID;
     let mut dxl = super::DynamixelUsartIO::new(usart, dir_pin, id);
 

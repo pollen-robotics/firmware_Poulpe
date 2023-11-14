@@ -14,7 +14,7 @@ use embassy_stm32::Config as stm32_config;
 use embassy_stm32::{bind_interrupts, peripherals, usart};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Timer, block_for};
 
 mod config;
 mod dynamixel;
@@ -78,6 +78,26 @@ async fn main(spawner: Spawner) {
     let p = embassy_stm32::init(stm32_conf);
 
     // Setup the actuator with the configured ventouses
+
+    #[cfg(feature = "bob")]
+    let mut actuator = Actuator::new([
+        VentouseKind::B(config::VentouseB::new(
+            motor_control::VentouseConfig {
+                cs_foc: p.PE3,
+                cs_driver: p.PC15,
+                peri: p.SPI4,
+                sck: p.PE12,
+                mosi: p.PE6,
+                miso: p.PE5,
+                foc_enable: p.PE0,
+                foc_status: p.PC13,
+                driver_fault: p.PC14,
+            },
+            config::BrushlessMotor::ec45(),
+        )),
+    ]);
+
+
     #[cfg(feature = "orbita2d")]
     let mut actuator = Actuator::new([
         VentouseKind::B(config::VentouseB::new(
@@ -155,11 +175,17 @@ async fn main(spawner: Spawner) {
         )),
     ]);
 
+    actuator.init().await;
+    block_for(Duration::from_secs(5));
+
     // Init SharedMemory with real values before actually running the control loop
     SHARED_MEMORY.lock().await.init(&mut actuator);
 
     // Spawn the control loop
+    info!("Starting control loop");
     unwrap!(spawner.spawn(motor_control::task::control_loop(actuator)));
+
+
 
     // Prepare and spawn the DXL communication task
     let mut usart_config = usart_config::default();

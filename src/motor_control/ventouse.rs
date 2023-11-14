@@ -14,7 +14,7 @@ const MOTOR_TYPE_N_POLE_PAIRS: u32 = 0x00030004; // BLDC, 4 pole-pairs ECXtorque
 // PWM configuration
 const PWM_POLARITIES: u32 = 0x00000000;
 const PWM_MAXCNT: u32 = 0x00000F9F; // PWM-freq
-const PWM_BBM_H_BBM_L: u32 = 0x00001919; // Break-Before-Make
+const PWM_BBM_H_BBM_L: u32 = 0x00002828; // Break-Before-Make 400ns (BOB)
 const PWM_SV_CHOP: u32 = 0x00000107;
 
 // ADC configuration
@@ -23,8 +23,6 @@ const DS_ADC_MCFG_B_MCFG_A: u32 = 0x00100010;
 const DS_ADC_MCLK_A: u32 = 0x20000000;
 const DS_ADC_MCLK_B: u32 = 0x00000000;
 const DS_ADC_MDEC_B_MDEC_A: u32 = 0x014E014E;
-const ADC_I0_SCALE_OFFSET: u32 = 0x002B822E; // gain is 43 and offset is centered on 2^32 (-> millis Amps)
-const ADC_I1_SCALE_OFFSET: u32 = 0x002B83CF; // gain is 43 and offset is centered on 2^32 (-> millis Amps)
 
 // ABN encoder settings
 const ABN_DECODER_MODE: u32 = 0x00000000;
@@ -279,13 +277,19 @@ where
     }
 
     pub async fn init(&mut self) -> Result<(), embassy_stm32::spi::Error> {
+	self.tmc4671_disable();
+	info!("Initializing register...");
         self.tmc4671_init_registers().await?;
-        info!("TMC4671 init done");
+        info!("Init done");
 
         self.ppr = Some(self.tmc4671_get_encoder_ppr()? as f32);
 
         self.tmc4671_align_motor().await?;
         info!("Motor align done");
+
+	let curpos = self.tmc4671_get_actual_position().unwrap();
+
+	self.tmc4671_set_target_position(curpos)?;
         self.tmc4671_set_mode(MotionMode::Position)?;
         info!("Motor set to position mode done");
 
@@ -410,16 +414,16 @@ where
 
     pub async fn tmc4671_init_registers(&mut self) -> Result<(), embassy_stm32::spi::Error> {
         // // /!\ Please note that the TMC6200 must be in Single-line mode (aka 6-PMW)
-        // self.tmc6200_checked_write(0x00u8, 0x00000000u32);
-
+        self.tmc6200_checked_write(0x00u8, 0x00000000u32);
+	self.tmc6200_checked_write(0x0au8, 0x00000000u32); // DRVSRENGTH=0 for BOB
         // Motor type & PWM configuration
         self.tmc4671_checked_write(
             Tmc4671Registers::MOTOR_TYPE_N_POLE_PAIRS as u8,
-            MOTOR_TYPE_N_POLE_PAIRS,
+            self.brushless_motor_config.motor_type_n_pole_pairs(),
         )?;
         self.tmc4671_checked_write(Tmc4671Registers::PWM_POLARITIES as u8, PWM_POLARITIES)?;
         self.tmc4671_checked_write(Tmc4671Registers::PWM_MAXCNT as u8, PWM_MAXCNT)?;
-        self.tmc4671_checked_write(Tmc4671Registers::PWM_BBM_H_BBM_L as u8, PWM_BBM_H_BBM_L)?;
+        self.tmc4671_checked_write(Tmc4671Registers::PWM_BBM_H_BBM_L as u8, PWM_BBM_H_BBM_L)?; // Break-Before-Make TODO
         self.tmc4671_checked_write(Tmc4671Registers::PWM_SV_CHOP as u8, PWM_SV_CHOP)?;
 
         // ADC configuration
@@ -436,12 +440,12 @@ where
         )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::ADC_I1_SCALE_OFFSET as u8,
-            ADC_I0_SCALE_OFFSET,
-        )?; // gain = 43
+            self.brushless_motor_config.adc_i1_scale_offset(),
+        )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::ADC_I0_SCALE_OFFSET as u8,
-            ADC_I1_SCALE_OFFSET,
-        )?; // gain = 43
+            self.brushless_motor_config.adc_i0_scale_offset(),
+        )?;
 
         // ABN encoder settings
         self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_MODE as u8, ABN_DECODER_MODE)?;
@@ -481,7 +485,7 @@ where
 
     pub async fn tmc4671_align_motor(&mut self) -> Result<(), embassy_stm32::spi::Error> {
         // /!\ Please note that the TMC6200 must be in Single-line mode (aka 6-PMW)
-        self.tmc6200_checked_write(0x00u8, 0x00000000u32)?;
+        // self.tmc6200_checked_write(0x00u8, 0x00000000u32)?;
 
         // Set openloop mode
         self.tmc4671_checked_write(Tmc4671Registers::OPENLOOP_MODE as u8, 0x00000000)?; // Positive Openloop phi e (OPENLOOP_MODE)
@@ -516,12 +520,12 @@ where
 
         // Rotate right
         info!("Rotate right...");
-        self.tmc4671_set_target_velocity(1000)?;
+        self.tmc4671_set_target_velocity(100)?;
         let _ = Timer::after(Duration::from_millis(1000)).await;
 
         // Rotate left
         info!("Rotate left...");
-        self.tmc4671_set_target_velocity(-1000)?;
+        self.tmc4671_set_target_velocity(-100)?;
         let _ = Timer::after(Duration::from_millis(1000)).await;
 
         // Stop
@@ -584,17 +588,19 @@ where
         ];
 
         // Sending data
+        block_for(Duration::from_micros(1));
         self.cs_foc.set_low();
+        block_for(Duration::from_micros(1));
         let result = self.spi.blocking_transfer_in_place(&mut transfer_data);
+        block_for(Duration::from_micros(1));
         self.cs_foc.set_high();
-
         result?;
-
+        block_for(Duration::from_micros(1));
         let mut read_data = transfer_data[4] as u32;
         read_data += (transfer_data[3] as u32) << 8;
         read_data += (transfer_data[2] as u32) << 16;
         read_data += (transfer_data[1] as u32) << 24;
-
+        block_for(Duration::from_micros(1));
         Ok(read_data)
     }
 
@@ -648,17 +654,20 @@ where
         ];
 
         // Sending data
+        block_for(Duration::from_micros(1));
         self.cs_driver.set_low();
+        block_for(Duration::from_micros(1));
         let result = self.spi.blocking_transfer_in_place(&mut transfer_data);
+        block_for(Duration::from_micros(1));
         self.cs_driver.set_high();
 
         result?;
-
+        block_for(Duration::from_micros(1));
         let mut read_data = transfer_data[4] as u32;
         read_data += (transfer_data[3] as u32) << 8;
         read_data += (transfer_data[2] as u32) << 16;
         read_data += (transfer_data[1] as u32) << 24;
-
+        block_for(Duration::from_micros(1));
         Ok(read_data)
     }
 
@@ -720,6 +729,9 @@ where
 
     /// Get the current position of the motors (in radians)
     fn get_current_position(&mut self) -> Result<[f32; 1], IOError> {
+
+
+
         let encoder = self
             .tmc4671_get_actual_position()
             .map_err(IOError::SpiError)?;

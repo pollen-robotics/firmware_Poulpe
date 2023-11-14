@@ -1,3 +1,4 @@
+use defmt::{error, info};
 use embassy_time::{Duration, Timer};
 
 use crate::{config, SHARED_MEMORY};
@@ -8,9 +9,13 @@ use super::{Actuator, RawMotorsIO};
 pub async fn control_loop(actuator: Actuator<{ config::N_AXIS }>) {
     let mut actuator = actuator;
 
-    actuator.init().await;
+    info!("control loop started");
+
+    // actuator.init().await;
 
     loop {
+
+
         let pos = actuator.get_current_position().unwrap();
         {
             SHARED_MEMORY.lock().await.set_current_position(pos)

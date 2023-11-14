@@ -7,6 +7,8 @@ use embassy_stm32::usart::Uart;
 pub const N_AXIS: usize = 2;
 #[cfg(feature = "orbita3d")]
 pub const N_AXIS: usize = 3;
+#[cfg(feature = "bob")]
+pub const N_AXIS: usize = 1;
 
 pub static DXL_ID: u8 = 42;
 
