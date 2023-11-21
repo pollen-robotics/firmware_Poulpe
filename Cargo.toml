@@ -6,7 +6,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 #motor specifig config
-default = ["bob"]
+default = ["orbita2d"]
 orbita2d = []
 orbita3d = []
 bob = []

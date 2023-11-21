@@ -112,7 +112,7 @@ async fn main(spawner: Spawner) {
                 foc_status: p.PC13,
                 driver_fault: p.PC14,
             },
-            config::BrushlessMotor::ecx22(),
+            config::BrushlessMotor::ec45(),
         )),
         VentouseKind::C(config::VentouseC::new(
             motor_control::VentouseConfig {
@@ -126,7 +126,7 @@ async fn main(spawner: Spawner) {
                 foc_status: p.PD4,
                 driver_fault: p.PD3,
             },
-            config::BrushlessMotor::ecx22(),
+            config::BrushlessMotor::ec45(),
         )),
     ]);
     #[cfg(feature = "orbita3d")]
