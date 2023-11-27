@@ -75,10 +75,12 @@ where
         ];
 
         // Sending data
-        let result = self.spi.transfer_in_place(&mut transfer_data);
-
-        // TODO: deal with error
-        // result?;
+        self.spi
+            .transfer_in_place(&mut transfer_data)
+            .map_err(|e| {
+                error!("!!! Error SPI {:?}!!!", e);
+                embassy_stm32::spi::Error::Framing
+            })?;
 
         let mut read_data = transfer_data[4] as u32;
         read_data += (transfer_data[3] as u32) << 8;
