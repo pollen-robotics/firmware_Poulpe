@@ -16,12 +16,13 @@ use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
 
+use crate::motor_control::task::{ActuatorConfig, VentouseConfig};
+
 mod config;
 mod dynamixel;
 mod motor_control;
 mod shared_memory;
 
-use crate::motor_control::{Actuator, VentouseKind};
 use crate::shared_memory::SharedMemory;
 
 use {defmt_rtt as _, panic_probe as _};
@@ -50,7 +51,7 @@ pub fn exit() -> ! {
 async fn main(spawner: Spawner) {
     info!("Hello World!");
 
-    //440MHz (without HSE)
+    // 440MHz (without HSE)
     let mut stm32_conf = stm32_config::default();
     {
         use embassy_stm32::rcc::*;
@@ -77,89 +78,29 @@ async fn main(spawner: Spawner) {
 
     let p = embassy_stm32::init(stm32_conf);
 
-    // Setup the actuator with the configured ventouses
-    #[cfg(feature = "orbita2d")]
-    let mut actuator = Actuator::new([
-        VentouseKind::B(config::VentouseB::new(
-            motor_control::VentouseConfig {
-                cs_foc: p.PE3,
-                cs_driver: p.PC15,
-                peri: p.SPI4,
-                sck: p.PE12,
-                mosi: p.PE6,
-                miso: p.PE5,
-                foc_enable: p.PE0,
-                foc_status: p.PC13,
-                driver_fault: p.PC14,
-            },
-            config::BrushlessMotor::ecx22(),
-        )),
-        VentouseKind::C(config::VentouseC::new(
-            motor_control::VentouseConfig {
-                cs_foc: p.PD7,
-                cs_driver: p.PD6,
-                peri: p.SPI6,
-                sck: p.PB3,
-                mosi: p.PB5,
-                miso: p.PB4,
-                foc_enable: p.PD5,
-                foc_status: p.PD4,
-                driver_fault: p.PD3,
-            },
-            config::BrushlessMotor::ecx22(),
-        )),
-    ]);
-    #[cfg(feature = "orbita3d")]
-    let mut actuator = Actuator::new([
-        VentouseKind::A(config::VentouseA::new(
-            motor_control::VentouseConfig {
-                cs_foc: p.PA3,
-                cs_driver: p.PA2,
-                peri: p.SPI1,
-                sck: p.PA5,
-                mosi: p.PA7,
-                miso: p.PA6,
-                foc_enable: p.PC0,
-                foc_status: p.PA0,
-                driver_fault: p.PA1,
-            },
-            config::BrushlessMotor::ecx22(),
-        )),
-        VentouseKind::B(config::VentouseB::new(
-            motor_control::VentouseConfig {
-                cs_foc: p.PE3,
-                cs_driver: p.PC15,
-                peri: p.SPI4,
-                sck: p.PE12,
-                mosi: p.PE6,
-                miso: p.PE5,
-                foc_enable: p.PE0,
-                foc_status: p.PC13,
-                driver_fault: p.PC14,
-            },
-            config::BrushlessMotor::ecx22(),
-        )),
-        VentouseKind::C(config::VentouseC::new(
-            motor_control::VentouseConfig {
-                cs_foc: p.PD7,
-                cs_driver: p.PD6,
-                peri: p.SPI6,
-                sck: p.PB3,
-                mosi: p.PB5,
-                miso: p.PB4,
-                foc_enable: p.PD5,
-                foc_status: p.PD4,
-                driver_fault: p.PD3,
-            },
-            config::BrushlessMotor::ecx22(),
-        )),
-    ]);
-
-    // Init SharedMemory with real values before actually running the control loop
-    SHARED_MEMORY.lock().await.init(&mut actuator);
-
     // Spawn the control loop
-    unwrap!(spawner.spawn(motor_control::task::control_loop(actuator)));
+    let actuator_config = ActuatorConfig {
+        b: VentouseConfig {
+            peri: p.SPI4,
+            sck: p.PE12,
+            mosi: p.PE6,
+            miso: p.PE5,
+            foc_cs: p.PE3,
+            foc_enable: p.PE0,
+            driver_cs: p.PC15,
+        },
+        c: VentouseConfig {
+            peri: p.SPI6,
+            sck: p.PB3,
+            mosi: p.PB5,
+            miso: p.PB4,
+            foc_cs: p.PD7,
+            foc_enable: p.PD5,
+            driver_cs: p.PD6,
+        },
+    };
+
+    unwrap!(spawner.spawn(motor_control::task::control_loop(actuator_config)));
 
     // Prepare and spawn the DXL communication task
     let mut usart_config = usart_config::default();

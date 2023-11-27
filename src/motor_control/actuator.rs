@@ -3,12 +3,12 @@ use embassy_futures::join;
 use super::motors_io::{Pid, RawMotorsIO, Result};
 use super::ventouse::VentouseKind;
 
-pub struct Actuator<const N: usize> {
-    axes: [VentouseKind; N],
+pub struct Actuator<'d, const N: usize> {
+    axes: [VentouseKind<'d>; N],
 }
 
-impl<const N: usize> Actuator<N> {
-    pub fn new(axes: [VentouseKind; N]) -> Self {
+impl<'d, const N: usize> Actuator<'d, N> {
+    pub fn new(axes: [VentouseKind<'d>; N]) -> Self {
         Self { axes }
     }
 
@@ -18,7 +18,7 @@ impl<const N: usize> Actuator<N> {
 }
 
 // TODO: make this generic (how?)
-impl<const N: usize> RawMotorsIO<N> for Actuator<N> {
+impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
     /// Check if the motors are ON or OFF
     fn is_torque_on(&mut self) -> Result<[bool; N]> {
         let mut res = [false; N];

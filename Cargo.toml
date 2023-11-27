@@ -6,7 +6,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 #motor specifig config
-default = ["orbita3d"]
+default = ["orbita2d"]
 orbita2d = []
 orbita3d = []
 
@@ -27,6 +27,7 @@ orbita3d = []
 embassy-stm32 = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy", rev="74683c7", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x", "unstable-pac", "unstable-traits"] }
 embassy-sync = { version = "0.4.0", git = "https://github.com/embassy-rs/embassy", rev="74683c7", features = ["defmt"] }
 embassy-executor = { version = "0.3.0", git = "https://github.com/embassy-rs/embassy", rev="74683c7", features = ["nightly", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers"] }
+embassy-embedded-hal = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy", rev="74683c7" }
 embassy-time = { version = "0.1.5", git = "https://github.com/embassy-rs/embassy", rev="74683c7", features = ["defmt", "defmt-timestamp-uptime", "unstable-traits", "tick-hz-32_768"] }
 embassy-net = { version = "0.2.1", git = "https://github.com/embassy-rs/embassy", rev="74683c7", features = ["defmt", "nightly", "tcp", "dhcpv4", "medium-ethernet", "proto-ipv6"] }
 embedded-io-async = { version = "0.5.0" }
