@@ -18,6 +18,13 @@ use super::{
 };
 
 pub struct ActuatorConfig<
+    TA,
+    SCKA,
+    MOSIA,
+    MISOA,
+    FocCsA,
+    FocEnbA,
+    DrvCsA,
     TB,
     SCKB,
     MOSIB,
@@ -33,6 +40,13 @@ pub struct ActuatorConfig<
     FocEnbC,
     DrvCsC,
 > where
+    TA: spi::Instance,
+    SCKA: SckPin<TA>,
+    MOSIA: spi::MosiPin<TA>,
+    MISOA: spi::MisoPin<TA>,
+    FocCsA: Pin,
+    FocEnbA: Pin,
+    DrvCsA: Pin,
     TB: spi::Instance,
     SCKB: SckPin<TB>,
     MOSIB: spi::MosiPin<TB>,
@@ -48,6 +62,7 @@ pub struct ActuatorConfig<
     FocEnbC: Pin,
     DrvCsC: Pin,
 {
+    pub a: VentouseConfig<TA, SCKA, MOSIA, MISOA, FocCsA, FocEnbA, DrvCsA>,
     pub b: VentouseConfig<TB, SCKB, MOSIB, MISOB, FocCsB, FocEnbB, DrvCsB>,
     pub c: VentouseConfig<TC, SCKC, MOSIC, MISOC, FocCsC, FocEnbC, DrvCsC>,
 }
@@ -76,6 +91,13 @@ where
 #[embassy_executor::task]
 pub async fn control_loop(
     config: ActuatorConfig<
+        p::SPI1,
+        p::PA5,
+        p::PA7,
+        p::PA6,
+        p::PA3,
+        p::PC0,
+        p::PA2,
         p::SPI4,
         p::PE12,
         p::PE6,
@@ -96,6 +118,39 @@ pub async fn control_loop(
     let mut foc_spi_config = spi::Config::default();
     foc_spi_config.mode = spi::MODE_3;
     let driver_spi_config = spi::Config::default();
+
+    // Ventouse A
+    let spi = spi::Spi::new(
+        config.a.peri,
+        config.a.sck,
+        config.a.mosi,
+        config.a.miso,
+        NoDma,
+        NoDma,
+        spi_config,
+    );
+    let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi));
+
+    let foc_spi = SpiDeviceWithConfig::new(
+        &spi_bus,
+        Output::new(config.a.foc_cs, Level::High, Speed::Medium),
+        foc_spi_config,
+    );
+    let foc = Foc::new(
+        foc_spi,
+        config.a.foc_enable,
+        config::BrushlessMotor::ecx22(),
+    );
+
+    let driver_spi = SpiDeviceWithConfig::new(
+        &spi_bus,
+        Output::new(config.a.driver_cs, Level::High, Speed::Medium),
+        driver_spi_config,
+    );
+    let driver = Driver::new(driver_spi);
+
+    let ventouse_a = Ventouse::new(foc, driver);
+    let ventouse_a = VentouseKind::A(ventouse_a);
 
     // Ventouse B
     let spi = spi::Spi::new(

@@ -202,6 +202,7 @@ where
 }
 
 pub enum VentouseKind<'d> {
+    A(config::VentouseA<'d>),
     B(config::VentouseB<'d>),
     C(config::VentouseC<'d>),
 }
@@ -209,6 +210,7 @@ pub enum VentouseKind<'d> {
 impl<'d> VentouseKind<'d> {
     pub async fn init(&mut self) -> Result<(), embassy_stm32::spi::Error> {
         match self {
+            VentouseKind::A(va) => va.init().await,
             VentouseKind::B(vb) => vb.init().await,
             VentouseKind::C(vc) => vc.init().await,
         }
@@ -219,6 +221,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     /// Check if the motors are ON or OFF
     fn is_torque_on(&mut self) -> Result<[bool; 1], IOError> {
         match self {
+            VentouseKind::A(va) => va.is_torque_on(),
             VentouseKind::B(vb) => vb.is_torque_on(),
             VentouseKind::C(vc) => vc.is_torque_on(),
         }
@@ -226,6 +229,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     /// Enable/Disable the torque
     fn set_torque(&mut self, on: [bool; 1]) -> Result<(), IOError> {
         match self {
+            VentouseKind::A(va) => va.set_torque(on),
             VentouseKind::B(vb) => vb.set_torque(on),
             VentouseKind::C(vc) => vc.set_torque(on),
         }
@@ -234,6 +238,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     /// Get the current position of the motors (in radians)
     fn get_current_position(&mut self) -> Result<[f32; 1], IOError> {
         match self {
+            VentouseKind::A(va) => va.get_current_position(),
             VentouseKind::B(vb) => vb.get_current_position(),
             VentouseKind::C(vc) => vc.get_current_position(),
         }
@@ -241,6 +246,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     /// Get the current velocity of the motors (in radians per second)
     fn get_current_velocity(&mut self) -> Result<[f32; 1], IOError> {
         match self {
+            VentouseKind::A(va) => va.get_current_velocity(),
             VentouseKind::B(vb) => vb.get_current_velocity(),
             VentouseKind::C(vc) => vc.get_current_velocity(),
         }
@@ -248,6 +254,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     /// Get the current torque of the motors (in Nm)
     fn get_current_torque(&mut self) -> Result<[f32; 1], IOError> {
         match self {
+            VentouseKind::A(va) => va.get_current_torque(),
             VentouseKind::B(vb) => vb.get_current_torque(),
             VentouseKind::C(vc) => vc.get_current_torque(),
         }
@@ -256,6 +263,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     /// Get the current target position of the motors (in radians)
     fn get_target_position(&mut self) -> Result<[f32; 1], IOError> {
         match self {
+            VentouseKind::A(va) => va.get_target_position(),
             VentouseKind::B(vb) => vb.get_target_position(),
             VentouseKind::C(vc) => vc.get_target_position(),
         }
@@ -263,6 +271,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     /// Set the current target position of the motors (in radians)
     fn set_target_position(&mut self, position: [f32; 1]) -> Result<(), IOError> {
         match self {
+            VentouseKind::A(va) => va.set_target_position(position),
             VentouseKind::B(vb) => vb.set_target_position(position),
             VentouseKind::C(vc) => vc.set_target_position(position),
         }
@@ -271,6 +280,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     /// Get the velocity limit of the motors (in radians per second)
     fn get_velocity_limit(&mut self) -> Result<[f32; 1], IOError> {
         match self {
+            VentouseKind::A(va) => va.get_velocity_limit(),
             VentouseKind::B(vb) => vb.get_velocity_limit(),
             VentouseKind::C(vc) => vc.get_velocity_limit(),
         }
@@ -278,6 +288,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     /// Set the velocity limit of the motors (in radians per second)
     fn set_velocity_limit(&mut self, velocity: [f32; 1]) -> Result<(), IOError> {
         match self {
+            VentouseKind::A(va) => va.set_velocity_limit(velocity),
             VentouseKind::B(vb) => vb.set_velocity_limit(velocity),
             VentouseKind::C(vc) => vc.set_velocity_limit(velocity),
         }
@@ -286,6 +297,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     /// Get the torque limit of the motors (in Nm)
     fn get_torque_limit(&mut self) -> Result<[f32; 1], IOError> {
         match self {
+            VentouseKind::A(va) => va.get_torque_limit(),
             VentouseKind::B(vb) => vb.get_torque_limit(),
             VentouseKind::C(vc) => vc.get_torque_limit(),
         }
@@ -293,6 +305,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     /// Set the torque limit of the motors (in Nm)
     fn set_torque_limit(&mut self, torque: [f32; 1]) -> Result<(), IOError> {
         match self {
+            VentouseKind::A(va) => va.set_torque_limit(torque),
             VentouseKind::B(vb) => vb.set_torque_limit(torque),
             VentouseKind::C(vc) => vc.set_torque_limit(torque),
         }
@@ -301,6 +314,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     /// Get the current PID gains of the motors
     fn get_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
         match self {
+            VentouseKind::A(va) => va.get_pid_gains(),
             VentouseKind::B(vb) => vb.get_pid_gains(),
             VentouseKind::C(vc) => vc.get_pid_gains(),
         }
@@ -308,6 +322,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     /// Set the current PID gains of the motors
     fn set_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
         match self {
+            VentouseKind::A(va) => va.set_pid_gains(pid),
             VentouseKind::B(vb) => vb.set_pid_gains(pid),
             VentouseKind::C(vc) => vc.set_pid_gains(pid),
         }

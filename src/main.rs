@@ -80,6 +80,15 @@ async fn main(spawner: Spawner) {
 
     // Spawn the control loop
     let actuator_config = ActuatorConfig {
+        a: VentouseConfig {
+            peri: p.SPI1,
+            sck: p.PA5,
+            mosi: p.PA7,
+            miso: p.PA6,
+            foc_cs: p.PA3,
+            foc_enable: p.PC0,
+            driver_cs: p.PA2,
+        },
         b: VentouseConfig {
             peri: p.SPI4,
             sck: p.PE12,

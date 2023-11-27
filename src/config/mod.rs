@@ -14,7 +14,7 @@ pub type DynamixelUart = Uart<'static, p::USART1, p::DMA1_CH0, p::DMA1_CH1>;
 
 use crate::motor_control::ventouse::Ventouse;
 
-// pub type VentouseA = Ventouse<'static, p::SPI1, p::PA3, p::PA2, p::PC0, p::PA0, p::PA1>;
+pub type VentouseA<'d> = Ventouse<'d, 'static, 'static, 'static, p::SPI1, p::PA3, p::PC0, p::PA2>;
 pub type VentouseB<'d> = Ventouse<'d, 'static, 'static, 'static, p::SPI4, p::PE3, p::PE0, p::PC15>;
 pub type VentouseC<'d> = Ventouse<'d, 'static, 'static, 'static, p::SPI6, p::PD7, p::PD5, p::PD6>;
 
