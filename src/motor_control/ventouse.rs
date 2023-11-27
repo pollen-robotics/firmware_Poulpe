@@ -1,8 +1,5 @@
 use defmt::info;
-use embassy_stm32::{
-    gpio::Pin,
-    spi::{self, SckPin},
-};
+use embassy_stm32::{gpio::Pin, spi};
 use embassy_time::{Duration, Timer};
 
 use crate::{

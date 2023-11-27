@@ -226,6 +226,7 @@ where
         self.tmc4671_write_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data)
     }
 
+    #[allow(dead_code)]
     pub fn tmc4671_get_mode(&mut self) -> Result<MotionMode, embassy_stm32::spi::Error> {
         if let Ok(read) = self.tmc4671_read_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8)
         {

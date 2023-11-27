@@ -3,9 +3,8 @@ use core::cell::RefCell;
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_stm32::{
     dma::NoDma,
-    gpio::{Level, Output, Pin, Speed},
-    peripherals as p,
-    spi::{self, SckPin},
+    gpio::{Level, Output, Speed},
+    spi,
 };
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex};
 use embassy_time::{Duration, Timer};
