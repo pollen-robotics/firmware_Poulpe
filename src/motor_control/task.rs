@@ -10,110 +10,18 @@ use embassy_stm32::{
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex};
 use embassy_time::{Duration, Timer};
 
-use crate::{config, SHARED_MEMORY};
+use crate::{
+    config::{self, ActuatorConfig},
+    SHARED_MEMORY,
+};
 
 use super::{
     ventouse::{Ventouse, VentouseKind},
     Actuator, Driver, Foc, RawMotorsIO,
 };
 
-pub struct ActuatorConfig<
-    TA,
-    SCKA,
-    MOSIA,
-    MISOA,
-    FocCsA,
-    FocEnbA,
-    DrvCsA,
-    TB,
-    SCKB,
-    MOSIB,
-    MISOB,
-    FocCsB,
-    FocEnbB,
-    DrvCsB,
-    TC,
-    SCKC,
-    MOSIC,
-    MISOC,
-    FocCsC,
-    FocEnbC,
-    DrvCsC,
-> where
-    TA: spi::Instance,
-    SCKA: SckPin<TA>,
-    MOSIA: spi::MosiPin<TA>,
-    MISOA: spi::MisoPin<TA>,
-    FocCsA: Pin,
-    FocEnbA: Pin,
-    DrvCsA: Pin,
-    TB: spi::Instance,
-    SCKB: SckPin<TB>,
-    MOSIB: spi::MosiPin<TB>,
-    MISOB: spi::MisoPin<TB>,
-    FocCsB: Pin,
-    FocEnbB: Pin,
-    DrvCsB: Pin,
-    TC: spi::Instance,
-    SCKC: SckPin<TC>,
-    MOSIC: spi::MosiPin<TC>,
-    MISOC: spi::MisoPin<TC>,
-    FocCsC: Pin,
-    FocEnbC: Pin,
-    DrvCsC: Pin,
-{
-    pub a: VentouseConfig<TA, SCKA, MOSIA, MISOA, FocCsA, FocEnbA, DrvCsA>,
-    pub b: VentouseConfig<TB, SCKB, MOSIB, MISOB, FocCsB, FocEnbB, DrvCsB>,
-    pub c: VentouseConfig<TC, SCKC, MOSIC, MISOC, FocCsC, FocEnbC, DrvCsC>,
-}
-
-pub struct VentouseConfig<T, SCK, MOSI, MISO, FocCs, FocEnb, DrvCs>
-where
-    T: spi::Instance,
-    SCK: SckPin<T>,
-    MOSI: spi::MosiPin<T>,
-    MISO: spi::MisoPin<T>,
-    FocCs: Pin,
-    FocEnb: Pin,
-    DrvCs: Pin,
-{
-    pub peri: T,
-    pub sck: SCK,
-    pub mosi: MOSI,
-    pub miso: MISO,
-
-    pub foc_cs: FocCs,
-    pub foc_enable: FocEnb,
-
-    pub driver_cs: DrvCs,
-}
-
 #[embassy_executor::task]
-pub async fn control_loop(
-    config: ActuatorConfig<
-        p::SPI1,
-        p::PA5,
-        p::PA7,
-        p::PA6,
-        p::PA3,
-        p::PC0,
-        p::PA2,
-        p::SPI4,
-        p::PE12,
-        p::PE6,
-        p::PE5,
-        p::PE3,
-        p::PE0,
-        p::PC15,
-        p::SPI6,
-        p::PB3,
-        p::PB5,
-        p::PB4,
-        p::PD7,
-        p::PD5,
-        p::PD6,
-    >,
-) {
+pub async fn control_loop(config: ActuatorConfig) {
     let spi_config = spi::Config::default();
     let mut foc_spi_config = spi::Config::default();
     foc_spi_config.mode = spi::MODE_3;

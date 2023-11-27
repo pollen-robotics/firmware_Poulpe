@@ -16,13 +16,13 @@ use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
 
-use crate::motor_control::task::{ActuatorConfig, VentouseConfig};
-
 mod config;
 mod dynamixel;
 mod motor_control;
 mod shared_memory;
 
+use crate::config::ActuatorConfig;
+use crate::motor_control::ventouse::VentouseConfig;
 use crate::shared_memory::SharedMemory;
 
 use {defmt_rtt as _, panic_probe as _};

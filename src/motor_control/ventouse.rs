@@ -1,5 +1,8 @@
 use defmt::info;
-use embassy_stm32::{gpio::Pin, spi};
+use embassy_stm32::{
+    gpio::Pin,
+    spi::{self, SckPin},
+};
 use embassy_time::{Duration, Timer};
 
 use crate::{
@@ -22,6 +25,27 @@ where
 {
     foc: Foc<'d, 'e, 'f, 'g, T, FocP, FocEnb>,
     driver: Driver<'d, 'e, 'f, T, DrvP>,
+}
+
+pub struct VentouseConfig<T, SCK, MOSI, MISO, FocCs, FocEnb, DrvCs>
+where
+    T: spi::Instance,
+    SCK: spi::SckPin<T>,
+    MOSI: spi::MosiPin<T>,
+    MISO: spi::MisoPin<T>,
+    FocCs: Pin,
+    FocEnb: Pin,
+    DrvCs: Pin,
+{
+    pub peri: T,
+    pub sck: SCK,
+    pub mosi: MOSI,
+    pub miso: MISO,
+
+    pub foc_cs: FocCs,
+    pub foc_enable: FocEnb,
+
+    pub driver_cs: DrvCs,
 }
 
 impl<'d, 'e, 'f, 'g, T, FocP, FocEnb, DrvP> Ventouse<'d, 'e, 'f, 'g, T, FocP, FocEnb, DrvP>
