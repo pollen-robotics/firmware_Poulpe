@@ -27,6 +27,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     let driver_spi_config = spi::Config::default();
 
     // Ventouse A
+    #[cfg(feature = "orbita3d")]
     let spi = spi::Spi::new(
         config.a.peri,
         config.a.sck,
@@ -36,27 +37,31 @@ pub async fn control_loop(config: ActuatorConfig) {
         NoDma,
         spi_config,
     );
+    #[cfg(feature = "orbita3d")]
     let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi));
-
+    #[cfg(feature = "orbita3d")]
     let foc_spi = SpiDeviceWithConfig::new(
         &spi_bus,
         Output::new(config.a.foc_cs, Level::High, Speed::Medium),
         foc_spi_config,
     );
+    #[cfg(feature = "orbita3d")]
     let foc = Foc::new(
         foc_spi,
         config.a.foc_enable,
         config::BrushlessMotor::ecx22(),
     );
-
+    #[cfg(feature = "orbita3d")]
     let driver_spi = SpiDeviceWithConfig::new(
         &spi_bus,
         Output::new(config.a.driver_cs, Level::High, Speed::Medium),
         driver_spi_config,
     );
+    #[cfg(feature = "orbita3d")]
     let driver = Driver::new(driver_spi);
-
+    #[cfg(feature = "orbita3d")]
     let ventouse_a = Ventouse::new(foc, driver);
+    #[cfg(feature = "orbita3d")]
     let ventouse_a = VentouseKind::A(ventouse_a);
 
     // Ventouse B

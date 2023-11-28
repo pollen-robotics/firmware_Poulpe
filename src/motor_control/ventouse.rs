@@ -1,21 +1,14 @@
-use core::cell::RefCell;
-
 use defmt::info;
-use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
-use embassy_stm32::{
-    dma::NoDma,
-    gpio::{Level, Output, Pin, Speed},
-    spi,
-};
-use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex};
+use embassy_stm32::{gpio::Pin, spi};
 use embassy_time::{Duration, Timer};
 
 use crate::{
-    config::{self, VentouseAConfig},
+    config,
     motor_control::foc::{MotionMode, Tmc4671Registers, OPENLOOP_ACCELERATION, UQ_UD_EXT},
 };
 
 use super::{
+    axis_sensor::AxisSensor,
     driver::Driver,
     foc::Foc,
     motors_io::{IOError, Pid, RawMotorsIO},
@@ -227,6 +220,7 @@ where
 }
 
 pub enum VentouseKind<'d> {
+    #[allow(dead_code)]
     A(config::VentouseA<'d>),
     B(config::VentouseB<'d>),
     C(config::VentouseC<'d>),
