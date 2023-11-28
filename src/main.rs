@@ -80,6 +80,7 @@ async fn main(spawner: Spawner) {
 
     // Spawn the control loop
     let actuator_config = ActuatorConfig {
+        #[cfg(feature = "orbita3d")]
         a: VentouseConfig {
             peri: p.SPI1,
             sck: p.PA5,
