@@ -6,21 +6,26 @@ use embassy_stm32::spi::{Instance, Spi};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embedded_hal_1::spi::SpiDevice;
 
-pub struct Driver<'d, 'e, 'f, T, P>
+pub struct Driver<'d, T, P>
 where
     T: Instance,
     P: Pin,
 {
-    spi: SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'e, T, NoDma, NoDma>, Output<'f, P>>,
+    spi: SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'static, T, NoDma, NoDma>, Output<'static, P>>,
 }
 
-impl<'d, 'e, 'f, T, P> Driver<'d, 'e, 'f, T, P>
+impl<'d, T, P> Driver<'d, T, P>
 where
     T: Instance,
     P: Pin,
 {
     pub fn new(
-        spi: SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'e, T, NoDma, NoDma>, Output<'f, P>>,
+        spi: SpiDeviceWithConfig<
+            'd,
+            NoopRawMutex,
+            Spi<'static, T, NoDma, NoDma>,
+            Output<'static, P>,
+        >,
     ) -> Self {
         Self { spi }
     }

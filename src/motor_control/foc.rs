@@ -172,29 +172,34 @@ impl MotionMode {
     }
 }
 
-pub struct Foc<'d, 'e, 'f, 'g, T, P, EnablePin>
+pub struct Foc<'d, T, P, EnablePin>
 where
     T: Instance,
     P: Pin,
     EnablePin: Pin,
 {
-    spi: SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'e, T, NoDma, NoDma>, Output<'f, P>>,
+    spi: SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'static, T, NoDma, NoDma>, Output<'static, P>>,
 
-    pub(crate) enable: Output<'g, EnablePin>,
+    pub(crate) enable: Output<'static, EnablePin>,
     //     #[allow(dead_code)]
     //     foc_status: Input<'d, FocStat>,
     brushless_motor_config: config::BrushlessMotor,
     pub(crate) ppr: Option<f32>,
 }
 
-impl<'d, 'e, 'f, 'g, T, P, EnablePin> Foc<'d, 'e, 'f, 'g, T, P, EnablePin>
+impl<'d, T, P, EnablePin> Foc<'d, T, P, EnablePin>
 where
     T: Instance,
     P: Pin,
     EnablePin: Pin,
 {
     pub fn new(
-        spi: SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'e, T, NoDma, NoDma>, Output<'f, P>>,
+        spi: SpiDeviceWithConfig<
+            'd,
+            NoopRawMutex,
+            Spi<'static, T, NoDma, NoDma>,
+            Output<'static, P>,
+        >,
         enable: EnablePin,
         brushless_motor_config: config::BrushlessMotor,
     ) -> Self {

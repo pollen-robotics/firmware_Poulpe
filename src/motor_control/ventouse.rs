@@ -1,9 +1,17 @@
+use core::cell::RefCell;
+
 use defmt::info;
-use embassy_stm32::{gpio::Pin, spi};
+use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
+use embassy_stm32::{
+    dma::NoDma,
+    gpio::{Level, Output, Pin, Speed},
+    spi,
+};
+use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex};
 use embassy_time::{Duration, Timer};
 
 use crate::{
-    config,
+    config::{self, VentouseAConfig},
     motor_control::foc::{MotionMode, Tmc4671Registers, OPENLOOP_ACCELERATION, UQ_UD_EXT},
 };
 
@@ -13,15 +21,15 @@ use super::{
     motors_io::{IOError, Pid, RawMotorsIO},
 };
 
-pub struct Ventouse<'d, 'e, 'f, 'g, T, FocP, FocEnb, DrvP>
+pub struct Ventouse<'d, T, FocP, FocEnb, DrvP>
 where
     T: spi::Instance,
     FocP: Pin,
     FocEnb: Pin,
     DrvP: Pin,
 {
-    foc: Foc<'d, 'e, 'f, 'g, T, FocP, FocEnb>,
-    driver: Driver<'d, 'e, 'f, T, DrvP>,
+    foc: Foc<'d, T, FocP, FocEnb>,
+    driver: Driver<'d, T, DrvP>,
 }
 
 pub struct VentouseConfig<T, SCK, MOSI, MISO, FocCs, FocEnb, DrvCs>
@@ -45,17 +53,14 @@ where
     pub driver_cs: DrvCs,
 }
 
-impl<'d, 'e, 'f, 'g, T, FocP, FocEnb, DrvP> Ventouse<'d, 'e, 'f, 'g, T, FocP, FocEnb, DrvP>
+impl<'d, T, FocP, FocEnb, DrvP> Ventouse<'d, T, FocP, FocEnb, DrvP>
 where
     T: spi::Instance,
     FocP: Pin,
     FocEnb: Pin,
     DrvP: Pin,
 {
-    pub fn new(
-        foc: Foc<'d, 'e, 'f, 'g, T, FocP, FocEnb>,
-        driver: Driver<'d, 'e, 'f, T, DrvP>,
-    ) -> Self {
+    pub fn new(foc: Foc<'d, T, FocP, FocEnb>, driver: Driver<'d, T, DrvP>) -> Self {
         Self { foc, driver }
     }
 
@@ -135,8 +140,7 @@ where
     }
 }
 
-impl<'d, 'e, 'f, 'g, T, FocP, FocEnb, DrvP> RawMotorsIO<1>
-    for Ventouse<'d, 'e, 'f, 'g, T, FocP, FocEnb, DrvP>
+impl<'d, T, FocP, FocEnb, DrvP> RawMotorsIO<1> for Ventouse<'d, T, FocP, FocEnb, DrvP>
 where
     T: spi::Instance,
     FocP: Pin,
