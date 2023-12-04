@@ -24,6 +24,15 @@ impl BrushlessMotor {
             pid_position_p_position_i: 0x00500000,
         }
     }
+    #[allow(dead_code)]
+    pub fn ec45() -> Self { //TODO
+        Self {
+            pid_flux_p_flux_i: 0x03200000,
+            pid_torque_p_torque_i: 0x03200000,
+            pid_velocity_p_velocity_i: 0x01F401C2,
+            pid_position_p_position_i: 0x00500000,
+        }
+    }
 }
 
 impl BrushlessMotor {

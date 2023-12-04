@@ -21,7 +21,7 @@ mod dynamixel;
 mod motor_control;
 mod shared_memory;
 
-use crate::config::ActuatorConfig;
+use crate::config::{ActuatorConfig, AksimConfig};
 use crate::motor_control::ventouse::VentouseConfig;
 use crate::shared_memory::SharedMemory;
 
@@ -79,8 +79,9 @@ async fn main(spawner: Spawner) {
     let p = embassy_stm32::init(stm32_conf);
 
     // Spawn the control loop
+    #[cfg(feature = "orbita3d")]
     let actuator_config = ActuatorConfig {
-        #[cfg(feature = "orbita3d")]
+
         a: VentouseConfig {
             peri: p.SPI1,
             sck: p.PA5,
@@ -108,7 +109,72 @@ async fn main(spawner: Spawner) {
             foc_enable: p.PD5,
             driver_cs: p.PD6,
         },
+
     };
+    #[cfg(feature = "orbita2d")]
+    let actuator_config = ActuatorConfig {
+
+        b: VentouseConfig {
+            peri: p.SPI4,
+            sck: p.PE12,
+            mosi: p.PE6,
+            miso: p.PE5,
+            foc_cs: p.PE3,
+            foc_enable: p.PE0,
+            driver_cs: p.PC15,
+        },
+        c: VentouseConfig {
+            peri: p.SPI6,
+            sck: p.PB3,
+            mosi: p.PB5,
+            miso: p.PB4,
+            foc_cs: p.PD7,
+            foc_enable: p.PD5,
+            driver_cs: p.PD6,
+        },
+
+        aksim: AksimConfig {
+            // peri: p.SPI4,
+            // sck: p.PE12,
+            // mosi: p.PE6,
+            // miso: p.PE5,
+            cs: p.PE4,
+
+
+        },
+    };
+
+// #[cfg(feature = "orbita2d")]
+//     let mut actuator = Actuator::new([
+//         VentouseKind::B(config::VentouseB::new(
+//             motor_control::VentouseConfig {
+//                 cs_foc: p.PE3,
+//                 cs_driver: p.PC15,
+//                 peri: p.SPI4,
+//                 sck: p.PE12,
+//                 mosi: p.PE6,
+//                 miso: p.PE5,
+//                 foc_enable: p.PE0,
+//                 foc_status: p.PC13,
+//                 driver_fault: p.PC14,
+//             },
+//             config::BrushlessMotor::ecx22(),
+//         )),
+//         VentouseKind::C(config::VentouseC::new(
+//             motor_control::VentouseConfig {
+//                 cs_foc: p.PD7,
+//                 cs_driver: p.PD6,
+//                 peri: p.SPI6,
+//                 sck: p.PB3,
+//                 mosi: p.PB5,
+//                 miso: p.PB4,
+//                 foc_enable: p.PD5,
+//                 foc_status: p.PD4,
+//                 driver_fault: p.PD3,
+//             },
+//             config::BrushlessMotor::ecx22(),
+//         )),
+//     ]);
 
     unwrap!(spawner.spawn(motor_control::task::control_loop(actuator_config)));
 

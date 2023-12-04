@@ -1,4 +1,5 @@
 mod actuator;
+pub mod sensors;
 pub use actuator::Actuator;
 mod axis_sensor;
 mod driver;

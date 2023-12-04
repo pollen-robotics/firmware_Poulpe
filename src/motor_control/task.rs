@@ -1,5 +1,6 @@
 use core::cell::RefCell;
 
+use defmt::info;
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_stm32::{
     dma::NoDma,
@@ -16,7 +17,7 @@ use crate::{
 
 use super::{
     ventouse::{Ventouse, VentouseKind},
-    Actuator, Driver, Foc, RawMotorsIO,
+    Actuator, Driver, Foc, RawMotorsIO, sensors::AksimSensor,
 };
 
 #[embassy_executor::task]
@@ -26,6 +27,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     foc_spi_config.mode = spi::MODE_3;
     let driver_spi_config = spi::Config::default();
 
+    /*
     // Ventouse A
     #[cfg(feature = "orbita3d")]
     let spi = spi::Spi::new(
@@ -63,6 +65,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     let ventouse_a = Ventouse::new(foc, driver);
     #[cfg(feature = "orbita3d")]
     let ventouse_a = VentouseKind::A(ventouse_a);
+    */
 
     // Ventouse B
     let spi = spi::Spi::new(
@@ -84,7 +87,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     let foc = Foc::new(
         foc_spi,
         config.b.foc_enable,
-        config::BrushlessMotor::ecx22(),
+        config::BrushlessMotor::ec45(),
     );
 
     let driver_spi = SpiDeviceWithConfig::new(
@@ -117,7 +120,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     let foc = Foc::new(
         foc_spi,
         config.c.foc_enable,
-        config::BrushlessMotor::ecx22(),
+        config::BrushlessMotor::ec45(),
     );
 
     let driver_spi = SpiDeviceWithConfig::new(
@@ -129,6 +132,16 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     let ventouse_c = Ventouse::new(foc, driver);
     let ventouse_c = VentouseKind::C(ventouse_c);
+
+
+    let aksim_spi = SpiDeviceWithConfig::new(
+        &spi_bus,
+        Output::new(config.aksim.cs, Level::High, Speed::Medium),
+        foc_spi_config,
+    );
+
+    let mut aksim=AksimSensor::new(aksim_spi);
+
 
     // Setup the actuator with the configured ventouses
     #[cfg(feature = "orbita2d")]
@@ -152,6 +165,20 @@ pub async fn control_loop(config: ActuatorConfig) {
 
         let target = { SHARED_MEMORY.lock().await.get_target_position() };
         actuator.set_target_position(target).unwrap();
+
+	let aksim_angle=aksim.read_angle().await;
+	match aksim_angle {
+	    Ok(angle) => {
+		info!("aksim angle: {}", angle);
+
+	    },
+	    Err(e) => {
+		info!("aksim error: {:?}", e);
+	    }
+	}
+
+
+
 
         Timer::after(Duration::from_millis(1)).await;
     }
