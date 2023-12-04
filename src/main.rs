@@ -176,6 +176,7 @@ async fn main(spawner: Spawner) {
 //         )),
 //     ]);
 
+
     unwrap!(spawner.spawn(motor_control::task::control_loop(actuator_config)));
 
     // Prepare and spawn the DXL communication task
