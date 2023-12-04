@@ -6,15 +6,26 @@
 #![feature(async_fn_in_trait)]
 #![feature(array_methods)]
 
+use core::cell::RefCell;
+
 use defmt::{info, unwrap};
 use embassy_executor::Spawner;
+use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{Level, Output, Speed};
+use embassy_stm32::peripherals::SPI4;
+use embassy_stm32::spi::{Spi, self};
 use embassy_stm32::usart::Config as usart_config;
 use embassy_stm32::Config as stm32_config;
 use embassy_stm32::{bind_interrupts, peripherals, usart};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer, block_for};
+
+use embassy_sync::blocking_mutex::{NoopMutex, raw::NoopRawMutex};
+use static_cell::StaticCell;
+
+use embassy_embedded_hal::shared_bus::blocking::spi::{SpiDevice, SpiDeviceWithConfig};
+static SPI4_BUS: StaticCell<NoopMutex<RefCell<Spi<'static, SPI4, NoDma, NoDma> >>> = StaticCell::new();
 
 mod config;
 mod dynamixel;
@@ -77,8 +88,25 @@ async fn main(spawner: Spawner) {
 
     let p = embassy_stm32::init(stm32_conf);
 
-    // Setup the actuator with the configured ventouses
+    //setup shared spi
+    let spi4 = Spi::new(
+        p.SPI4,
+        p.PE12,
+	p.PE6,
+	p.PE5,
+        NoDma,
+        NoDma,
+        spi::Config::default(),
+    );
 
+    let spi4_bus = NoopMutex::new(RefCell::new(spi4));
+    let spi4_bus = SPI4_BUS.init(spi4_bus);
+    let spi4_dev_ventouseB_foc = SpiDeviceWithConfig::new(spi4_bus, Output::new(p.PE3, Level::High, Speed::High),spi::Config::default());
+    let spi4_dev_ventouseB_driver = SpiDeviceWithConfig::new(spi4_bus, Output::new(p.PC15, Level::High, Speed::High),spi::Config::default());
+    let spi4_dev_ringsensor = SpiDeviceWithConfig::new(spi4_bus, Output::new(p.PE4, Level::High, Speed::High),spi::Config::default());
+
+
+    // Setup the actuator with the configured ventouses
     #[cfg(feature = "bob")]
     let mut actuator = Actuator::new([
         VentouseKind::B(config::VentouseB::new(
@@ -213,6 +241,19 @@ async fn main(spawner: Spawner) {
     led_error.set_low();
     led_hello.set_low();
 
+    /*
+    let ring=config::RingSensor::new(
+            motor_control::AksimSensorConfig {
+                peri: p.SPI4,
+                cs: p.PE4,
+                sck: p.PE12,
+                mosi: p.PE6,
+                miso: p.PE5,
+
+            },
+
+    );
+*/
     loop {
         // Robots should dance, LED should blink.
         led_hello.set_high();

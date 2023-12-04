@@ -9,7 +9,7 @@ use embassy_time::*;
 use super::motors_io::IOError;
 use super::{Pid, RawMotorsIO};
 
-const MOTOR_TYPE_N_POLE_PAIRS: u32 = 0x00030004; // BLDC, 4 pole-pairs ECXtorque
+
 
 // PWM configuration
 const PWM_POLARITIES: u32 = 0x00000000;
