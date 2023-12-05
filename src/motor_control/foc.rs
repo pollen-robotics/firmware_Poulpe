@@ -338,7 +338,7 @@ where
         // Motor type & PWM configuration
         self.tmc4671_checked_write(
             Tmc4671Registers::MOTOR_TYPE_N_POLE_PAIRS as u8,
-            MOTOR_TYPE_N_POLE_PAIRS,
+            self.brushless_motor_config.motor_type_n_pole_pairs(),
         )?;
         self.tmc4671_checked_write(Tmc4671Registers::PWM_POLARITIES as u8, PWM_POLARITIES)?;
         self.tmc4671_checked_write(Tmc4671Registers::PWM_MAXCNT as u8, PWM_MAXCNT)?;
@@ -359,11 +359,11 @@ where
         )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::ADC_I1_SCALE_OFFSET as u8,
-            ADC_I0_SCALE_OFFSET,
+            self.brushless_motor_config.adc_i1_scale_offset(),
         )?; // gain = 43
         self.tmc4671_checked_write(
             Tmc4671Registers::ADC_I0_SCALE_OFFSET as u8,
-            ADC_I1_SCALE_OFFSET,
+            self.brushless_motor_config.adc_i0_scale_offset(),
         )?; // gain = 43
 
         // ABN encoder settings
@@ -412,7 +412,7 @@ where
         if data_r == data_w {
             Ok(())
         } else {
-            info!("!!! Error INIT {:#x}_r / {:#x}_w !!!", data_r, data_w);
+            info!("!!! Error checked write addr: {:#x} {:#x}_r / {:#x}_w !!!", reg,data_r, data_w);
             Err(embassy_stm32::spi::Error::Framing)
         }
     }
@@ -452,6 +452,7 @@ where
             data_u8_array[1],
             data_u8_array[0],
         ];
+
 
         // Sending data
         self.spi

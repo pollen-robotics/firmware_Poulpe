@@ -22,11 +22,16 @@ use super::{
 
 #[embassy_executor::task]
 pub async fn control_loop(config: ActuatorConfig) {
-    let spi_config = spi::Config::default();
-    let mut foc_spi_config = spi::Config::default();
-    foc_spi_config.mode = spi::MODE_3;
-    let driver_spi_config = spi::Config::default();
+    let mut spi_config = spi::Config::default();
+    spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
+    spi_config.mode = spi::MODE_3;
 
+    let mut foc_spi_config = spi::Config::default();
+    foc_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
+    foc_spi_config.mode = spi::MODE_3;
+    let mut driver_spi_config = spi::Config::default();
+    driver_spi_config.mode = spi::MODE_3;
+    driver_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
     /*
     // Ventouse A
     #[cfg(feature = "orbita3d")]
@@ -134,6 +139,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     let ventouse_c = VentouseKind::C(ventouse_c);
 
 
+
     let aksim_spi = SpiDeviceWithConfig::new(
         &spi_bus,
         Output::new(config.aksim.cs, Level::High, Speed::Medium),
@@ -169,6 +175,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 
         let target = { SHARED_MEMORY.lock().await.get_target_position() };
         actuator.set_target_position(target).unwrap();
+
 
 	let aksim_angle=aksim.read_angle().await;
 	match aksim_angle {

@@ -1,4 +1,8 @@
 pub struct BrushlessMotor {
+    motor_type_n_pole_pairs: u32,
+    adc_i0_scale_offset: u32,
+    adc_i1_scale_offset: u32,
+
     pid_flux_p_flux_i: u32,
     pid_torque_p_torque_i: u32,
     pid_velocity_p_velocity_i: u32,
@@ -9,6 +13,13 @@ impl BrushlessMotor {
     #[allow(dead_code)]
     pub fn ecx22() -> Self {
         Self {
+	    motor_type_n_pole_pairs: 0x00030004,
+
+	    //TODO!
+	    adc_i0_scale_offset: 0x010081FA,
+	    adc_i1_scale_offset: 0x0100826C,
+
+
             pid_flux_p_flux_i: 0x03200080,
             pid_torque_p_torque_i: 0x03200000,
             pid_velocity_p_velocity_i: 0x01000080,
@@ -18,6 +29,12 @@ impl BrushlessMotor {
     #[allow(dead_code)]
     pub fn ec60() -> Self {
         Self {
+	    motor_type_n_pole_pairs: 0x00030007,
+
+	    //TODO!
+	    adc_i0_scale_offset: 0x010081FA,
+	    adc_i1_scale_offset: 0x0100826C,
+
             pid_flux_p_flux_i: 0x03200000,
             pid_torque_p_torque_i: 0x03200000,
             pid_velocity_p_velocity_i: 0x01F401C2,
@@ -27,15 +44,32 @@ impl BrushlessMotor {
     #[allow(dead_code)]
     pub fn ec45() -> Self { //TODO
         Self {
-            pid_flux_p_flux_i: 0x03200000,
-            pid_torque_p_torque_i: 0x03200000,
-            pid_velocity_p_velocity_i: 0x01F401C2,
-            pid_position_p_position_i: 0x00500000,
+	    motor_type_n_pole_pairs: 0x00030008,
+	    adc_i0_scale_offset: 0x010081FA,
+	    adc_i1_scale_offset: 0x0100826C,
+
+
+            pid_flux_p_flux_i: 0x01000000,
+            pid_torque_p_torque_i: 0x01000000,
+            pid_velocity_p_velocity_i: 0x01000400,
+            pid_position_p_position_i: 0x00800010,
+
         }
     }
 }
 
 impl BrushlessMotor {
+    pub fn motor_type_n_pole_pairs(&self) -> u32 {
+		self.motor_type_n_pole_pairs
+    }
+    pub fn adc_i0_scale_offset(&self) -> u32 {
+	self.adc_i0_scale_offset
+    }
+    pub fn adc_i1_scale_offset(&self) -> u32 {
+	self.adc_i1_scale_offset
+    }
+
+
     pub fn pid_flux_p_flux_i(&self) -> u32 {
         self.pid_flux_p_flux_i
     }

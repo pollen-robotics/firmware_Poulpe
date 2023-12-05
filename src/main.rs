@@ -139,9 +139,8 @@ async fn main(spawner: Spawner) {
             // mosi: p.PE6,
             // miso: p.PE5,
             cs: p.PE4,
-
-
         },
+
     };
 
 // #[cfg(feature = "orbita2d")]
@@ -197,7 +196,8 @@ async fn main(spawner: Spawner) {
         usart_config,
     )
     .unwrap();
-    unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
+
+    // unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
 
     // Prepare and spawn the main task
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
