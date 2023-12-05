@@ -8,7 +8,7 @@ use embassy_stm32::{
     spi,
 };
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex};
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Timer, block_for};
 
 use crate::{
     config::{self, ActuatorConfig},
@@ -149,12 +149,16 @@ pub async fn control_loop(config: ActuatorConfig) {
     #[cfg(feature = "orbita3d")]
     let mut actuator = Actuator::new([ventouse_a, ventouse_b, ventouse_c]);
 
+    actuator.init().await;
+    block_for(Duration::from_secs(5));
+    info!("init done");
     // Init SharedMemory with real values before actually running the control loop
     SHARED_MEMORY.lock().await.init(&mut actuator);
 
-    actuator.init().await;
+
 
     loop {
+
         let pos = actuator.get_current_position().unwrap();
         {
             SHARED_MEMORY.lock().await.set_current_position(pos)
