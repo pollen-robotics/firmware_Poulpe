@@ -58,6 +58,11 @@ where
     }
 
     pub async fn init(&mut self) -> Result<(), embassy_stm32::spi::Error> {
+	self.foc.tmc4671_disable();
+	info!("Initializing register...");
+	self.driver.tmc6200_checked_write(0x00u8, 0x00000000u32)?;
+	self.driver.tmc6200_checked_write(0x0au8, 0x00000000u32)?; // DRVSRENGTH=0 for BOB
+
         self.foc.tmc4671_init_registers().await?;
         info!("TMC4671 init done");
 
@@ -116,12 +121,12 @@ where
 
         // Rotate right
         info!("Rotate right...");
-        self.foc.tmc4671_set_target_velocity(1000)?;
+        self.foc.tmc4671_set_target_velocity(100)?;
         let _ = Timer::after(Duration::from_millis(1000)).await;
 
         // Rotate left
         info!("Rotate left...");
-        self.foc.tmc4671_set_target_velocity(-1000)?;
+        self.foc.tmc4671_set_target_velocity(-100)?;
         let _ = Timer::after(Duration::from_millis(1000)).await;
 
         // Stop

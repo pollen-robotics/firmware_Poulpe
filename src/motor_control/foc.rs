@@ -8,12 +8,12 @@ use embedded_hal_1::spi::SpiDevice;
 
 use crate::config;
 
-const MOTOR_TYPE_N_POLE_PAIRS: u32 = 0x00030004; // BLDC, 4 pole-pairs ECXtorque
+
 
 // PWM configuration
 const PWM_POLARITIES: u32 = 0x00000000;
 const PWM_MAXCNT: u32 = 0x00000F9F; // PWM-freq
-const PWM_BBM_H_BBM_L: u32 = 0x00001919; // Break-Before-Make
+const PWM_BBM_H_BBM_L: u32 = 0x00002828; // Break-Before-Make
 const PWM_SV_CHOP: u32 = 0x00000107;
 
 // ADC configuration
@@ -22,8 +22,6 @@ const DS_ADC_MCFG_B_MCFG_A: u32 = 0x00100010;
 const DS_ADC_MCLK_A: u32 = 0x20000000;
 const DS_ADC_MCLK_B: u32 = 0x00000000;
 const DS_ADC_MDEC_B_MDEC_A: u32 = 0x014E014E;
-const ADC_I0_SCALE_OFFSET: u32 = 0x002B822E; // gain is 43 and offset is centered on 2^32 (-> millis Amps)
-const ADC_I1_SCALE_OFFSET: u32 = 0x002B83CF; // gain is 43 and offset is centered on 2^32 (-> millis Amps)
 
 // ABN encoder settings
 const ABN_DECODER_MODE: u32 = 0x00000000;
@@ -335,6 +333,7 @@ where
         // // /!\ Please note that the TMC6200 must be in Single-line mode (aka 6-PMW)
         // self.tmc6200_checked_write(0x00u8, 0x00000000u32);
 
+
         // Motor type & PWM configuration
         self.tmc4671_checked_write(
             Tmc4671Registers::MOTOR_TYPE_N_POLE_PAIRS as u8,
@@ -412,7 +411,7 @@ where
         if data_r == data_w {
             Ok(())
         } else {
-            info!("!!! Error checked write addr: {:#x} {:#x}_r / {:#x}_w !!!", reg,data_r, data_w);
+            info!("!!! TMC4671 Error checked write addr: {:#x} {:#x}_r / {:#x}_w !!!", reg,data_r, data_w);
             Err(embassy_stm32::spi::Error::Framing)
         }
     }

@@ -40,7 +40,7 @@ where
         if data_r == data_w {
             Ok(())
         } else {
-            info!("!!! Error INIT {:#x}_r / {:#x}_w !!!", data_r, data_w);
+            info!("!!! TMC6200 Error checked write addr {:#x} {:#x}_r / {:#x}_w !!!", reg,data_r, data_w);
             Err(embassy_stm32::spi::Error::Framing)
         }
     }

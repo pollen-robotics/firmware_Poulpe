@@ -80,7 +80,8 @@ pub async fn control_loop(config: ActuatorConfig) {
         config.b.miso,
         NoDma,
         NoDma,
-        spi_config,
+        // spi::Config::default(),
+	spi_config,
     );
     let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi));
 
@@ -113,7 +114,8 @@ pub async fn control_loop(config: ActuatorConfig) {
         config.c.miso,
         NoDma,
         NoDma,
-        spi_config,
+        // spi::Config::default(),
+	spi_config,
     );
     let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi));
 
@@ -139,11 +141,14 @@ pub async fn control_loop(config: ActuatorConfig) {
     let ventouse_c = VentouseKind::C(ventouse_c);
 
 
-
+    //Aksim Ring sensor
+    let mut aksim_spi_config = spi::Config::default();
+    aksim_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
+    aksim_spi_config.mode = spi::MODE_1;
     let aksim_spi = SpiDeviceWithConfig::new(
         &spi_bus,
         Output::new(config.aksim.cs, Level::High, Speed::Medium),
-        foc_spi_config,
+        aksim_spi_config,
     );
 
     let mut aksim=AksimSensor::new(aksim_spi);
@@ -156,7 +161,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     let mut actuator = Actuator::new([ventouse_a, ventouse_b, ventouse_c]);
 
     actuator.init().await;
-    block_for(Duration::from_secs(5));
+    block_for(Duration::from_secs(1));
     info!("init done");
     // Init SharedMemory with real values before actually running the control loop
     SHARED_MEMORY.lock().await.init(&mut actuator);
@@ -176,7 +181,7 @@ pub async fn control_loop(config: ActuatorConfig) {
         let target = { SHARED_MEMORY.lock().await.get_target_position() };
         actuator.set_target_position(target).unwrap();
 
-
+	/*
 	let aksim_angle=aksim.read_angle().await;
 	match aksim_angle {
 	    Ok(angle) => {
@@ -187,7 +192,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 		info!("aksim error: {:?}", e);
 	    }
 	}
-
+	 */
 
 
 
