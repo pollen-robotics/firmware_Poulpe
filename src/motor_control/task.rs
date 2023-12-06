@@ -24,14 +24,19 @@ use super::{
 pub async fn control_loop(config: ActuatorConfig) {
     let mut spi_config = spi::Config::default();
     spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
-    spi_config.mode = spi::MODE_3;
+    spi_config.bit_order = spi::BitOrder::MsbFirst;
+
+    spi_config.mode = spi::MODE_1;
 
     let mut foc_spi_config = spi::Config::default();
     foc_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
     foc_spi_config.mode = spi::MODE_3;
+    foc_spi_config.bit_order = spi::BitOrder::MsbFirst;
     let mut driver_spi_config = spi::Config::default();
     driver_spi_config.mode = spi::MODE_3;
     driver_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
+    driver_spi_config.bit_order = spi::BitOrder::MsbFirst;
+
     /*
     // Ventouse A
     #[cfg(feature = "orbita3d")]
@@ -80,10 +85,28 @@ pub async fn control_loop(config: ActuatorConfig) {
         config.b.miso,
         NoDma,
         NoDma,
-        // spi::Config::default(),
-	spi_config,
+        spi::Config::default(),
+	// spi_config,
     );
     let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi));
+
+
+
+    //Aksim Ring sensor BUS B
+    let mut aksim_spi_config = spi::Config::default();
+    aksim_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
+    aksim_spi_config.mode = spi::MODE_1;
+    aksim_spi_config.bit_order = spi::BitOrder::MsbFirst;
+
+    let aksim_spi = SpiDeviceWithConfig::new(
+        &spi_bus,
+        Output::new(config.aksim.cs, Level::High, Speed::Medium),
+        aksim_spi_config,
+    );
+
+    let mut aksim=AksimSensor::new(aksim_spi);
+
+
 
     let foc_spi = SpiDeviceWithConfig::new(
         &spi_bus,
@@ -141,17 +164,6 @@ pub async fn control_loop(config: ActuatorConfig) {
     let ventouse_c = VentouseKind::C(ventouse_c);
 
 
-    //Aksim Ring sensor
-    let mut aksim_spi_config = spi::Config::default();
-    aksim_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
-    aksim_spi_config.mode = spi::MODE_1;
-    let aksim_spi = SpiDeviceWithConfig::new(
-        &spi_bus,
-        Output::new(config.aksim.cs, Level::High, Speed::Medium),
-        aksim_spi_config,
-    );
-
-    let mut aksim=AksimSensor::new(aksim_spi);
 
 
     // Setup the actuator with the configured ventouses
@@ -181,18 +193,18 @@ pub async fn control_loop(config: ActuatorConfig) {
         let target = { SHARED_MEMORY.lock().await.get_target_position() };
         actuator.set_target_position(target).unwrap();
 
-	/*
+
 	let aksim_angle=aksim.read_angle().await;
 	match aksim_angle {
 	    Ok(angle) => {
-		info!("aksim angle: {}", angle);
+		// info!("aksim angle: {}", angle);
 
 	    },
 	    Err(e) => {
 		info!("aksim error: {:?}", e);
 	    }
 	}
-	 */
+
 
 
 

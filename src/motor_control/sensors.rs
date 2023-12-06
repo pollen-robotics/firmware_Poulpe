@@ -364,18 +364,29 @@ where T:Instance,
                                 ((data_read[2] as u64) << 8)  |
                                  (data_read[3] as u64);
         // For single-turn
-        // b31:b10 - Encoder position + zero padding bits. Left aligned, MSB first.
+        // b31:b10 - Encoder position + zero padding bits. Left aligned, MSB first. b12:b10 are zero padding bits.
         // b9      - Error: if low, the position data is not valid.
         // b8      - Warning: if low, the position data is valid, but
         //                    some operating conditions are close to limits.
         // b7:b0   - Inverted CRC, 0x97 polynomial
 
-        let mut encoder_position = encoder_data & 0x00000000ffffe000; // 19 bits on MB049
-        encoder_position >>= 13; // 19 + 13 = 31 (MSB position of data)
+        let encoder_position:u32= ((encoder_data & 0x00000000ffffe000)>>13) as u32; // 19 bits on MB049
+        // encoder_position >>= 13; // 19 + 13 = 31 (MSB position of data)
         // Nota: 2^19 = 524288
+	let error:bool = ((encoder_data & 0x0000000000000200)>>9) != 0x1; // 9th bit, active low
+	// error >>= 9;
+	let warning:bool = ((encoder_data & 0x0000000000000100)>>8) != 0x1; // 8th bit, active low
+	// warning >>= 8;
+	let _crc:u8 = (encoder_data & 0x00000000000000ff) as u8; // 7-0 bits //TODO
+
 
         let angle = (encoder_position as f64 / 524288.0) * Self::ANGLE_RANGE;
-        info!("Angle: {} degrees", angle);
+	if error{
+	    error!("Angle: raw: {}  deg: {} error: {} warn: {}", encoder_position,angle, error, warning);
+	}else{
+            info!("Angle: raw: {}  deg: {} error: {} warn: {}", encoder_position,angle, error, warning);
+	}
+
 
 	Ok(angle)
 
@@ -498,7 +509,7 @@ where
         combined_value &= 0x3FFF;
 
         let angle = (combined_value as f64 / 16383.0) * Self::ANGLE_RANGE;
-        info!("Angle: {} degrees", angle);
+        // info!("Angle: {} degrees", angle);
 
 	Ok(angle)
 
