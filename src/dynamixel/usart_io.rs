@@ -11,6 +11,9 @@ const MAX_BUFFER_LENGTH: usize = 256;
 //Seems ok at 115200 with LOG=Info
 const UART_SLEEP_US_DIRLOW: u64 = 200;
 const UART_SLEEP_US_DIRHIGH: u64 = 300;
+
+
+
 const MAX_READ_BUFFER_LENGTH: usize = 16;
 
 pub struct DynamixelUsartIO<'d, T, TxDma, RxDma>

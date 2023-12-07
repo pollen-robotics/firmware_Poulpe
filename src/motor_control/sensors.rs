@@ -339,9 +339,7 @@ where T:Instance,
     {
 	 // RLS Aksim2
         let mut data_read = [0x00u8, 0x00u8, 0x00u8, 0x00u8];
-        // self.cs.set_low();
 
-	// let result = self.spi.blocking_read(&mut data_read);
 	SpiDevice::transfer_in_place(&mut self.spi, &mut data_read)
 	    .map_err(|e| {
                 error!("!!! Error SPI {:?}!!!", e);
@@ -349,15 +347,7 @@ where T:Instance,
             })?;
 
 
-
-
-
-        // if result.is_err() {
-        //     defmt::error!("Bad spi read (Ring sensor)");
-	//     return Err(result.err().unwrap());
-        // }
-        // self.cs.set_high();
-        info!("read via spi: {:#02x}  {:#02x}  {:#02x} {:#02x}.", &data_read[0], &data_read[1], &data_read[2], &data_read[3]);
+        // debug!("read via spi: {:#02x}  {:#02x}  {:#02x} {:#02x}.", &data_read[0], &data_read[1], &data_read[2], &data_read[3]);
 
         let encoder_data: u64 = ((data_read[0] as u64) << 24) |
                                 ((data_read[1] as u64) << 16) |
@@ -381,13 +371,14 @@ where T:Instance,
 
 
         let angle = (encoder_position as f64 / 524288.0) * Self::ANGLE_RANGE;
+	//debug
 	if error{
-	    error!("Angle: raw: {}  deg: {} error: {} warn: {}", encoder_position,angle, error, warning);
+	    error!("Ring Angle: raw: {}  deg: {} error: {} warn: {}", encoder_position,angle, error, warning);
 	}else{
-            info!("Angle: raw: {}  deg: {} error: {} warn: {}", encoder_position,angle, error, warning);
+            debug!("Ring Angle: raw: {}  deg: {} error: {} warn: {}", encoder_position,angle, error, warning);
 	}
 
-
+	//Return result
 	Ok(angle)
 
 
@@ -406,25 +397,28 @@ where
     T: Instance,
     Cs: Pin,
 {
-    spi: Spi<'d, T, NoDma, NoDma>,
-    cs: Output<'d, Cs>,
 
+    spi: SpiDeviceWithConfig<'d,
+	    NoopRawMutex,
+        Spi<'static, T, NoDma, NoDma>,
+        Output<'static, Cs>,
+        >,
 }
 
-pub struct AD5047SensorConfig<
-    T: Instance,
-    Cs: Pin,
-    Sck: SckPin<T>,
-    Mosi: MosiPin<T>,
-    Miso: MisoPin<T>,
+// pub struct AD5047SensorConfig<
+//     T: Instance,
+//     Cs: Pin,
+//     Sck: SckPin<T>,
+//     Mosi: MosiPin<T>,
+//     Miso: MisoPin<T>,
 
-> {
-    pub cs: Cs,
-    pub peri: T,
-    pub sck: Sck,
-    pub mosi: Mosi,
-    pub miso: Miso,
-}
+// > {
+//     pub cs: Cs,
+//     pub peri: T,
+//     pub sck: Sck,
+//     pub mosi: Mosi,
+//     pub miso: Miso,
+// }
 
 #[allow(dead_code)]
 impl<'d, T, Cs>
@@ -436,38 +430,21 @@ where
     const ANGLE_RANGE: f64 = 360.0;
 
     pub fn new(
-        center_sensor_config: AD5047SensorConfig<
-            T,
-            Cs,
-            impl SckPin<T>,
-            impl MosiPin<T>,
-            impl MisoPin<T>,
+
+	spi: SpiDeviceWithConfig<'d,
+		NoopRawMutex,
+            Spi<'static, T, NoDma, NoDma>,
+            Output<'static, Cs>,
         >,
     ) -> Self {
-        let mut spi_config = Config::default();
-        spi_config.mode = embassy_stm32::spi::MODE_1; //Center=MODE1? 1MHz
-	// Center sensor is 3V3-powered and runs on SPI6 (J4)
-        let spi = Spi::new(
-            center_sensor_config.peri,
-            center_sensor_config.sck,
-            center_sensor_config.mosi,
-            center_sensor_config.miso,
-            NoDma,
-            NoDma,
-            spi_config,
-        );
-
-        // IOs
-        let cs = Output::new(center_sensor_config.cs, Level::High, Speed::Medium);
 
         Self {
-            cs,
             spi,
         }
     }
 
+
     pub async fn init(&mut self) -> Result<(), embassy_stm32::spi::Error> {
-	self.cs.set_high();
 
         Ok(())
     }
@@ -486,30 +463,50 @@ where
 	// 0x3FFF ANGLECOM 0x0000    Measured angle
 
 
-        self.cs.set_low();
-	let data_write = [0x7fu8, 0xfeu8]; // read angle
-        let result = self.spi.blocking_write(&data_write);
-        if result.is_err() {
-            defmt::error!("Error writing to Center sensor");
-	    return Err(result.err().unwrap());
-        }
-        self.cs.set_high();
-        Timer::after(Duration::from_micros(1)).await; // actually > 350 ns
-        self.cs.set_low();
+
+	let mut data_write = [0x7fu8, 0xfeu8]; // read angle
+
+        // let result = self.spi.blocking_write(&data_write);
+        // if result.is_err() {
+        //     defmt::error!("Error writing to Center sensor");
+	//     return Err(result.err().unwrap());
+        // }
+
+
+	SpiDevice::transfer_in_place(&mut self.spi, &mut data_write)
+	    .map_err(|e| {
+                error!("!!! Error SPI {:?}!!!", e);
+                embassy_stm32::spi::Error::Framing
+            })?;
+
+
+
+	// block_for(Duration::from_micros(1));
+
+
         let mut data_read = [0x00u8, 0x00u8];
-        let result = self.spi.blocking_read(&mut data_read);
-        if result.is_err() {
-            defmt::error!("Error reading Center sensor");
-	    return Err(result.err().unwrap());
-        }
-        self.cs.set_high();
+
+	SpiDevice::transfer_in_place(&mut self.spi, &mut data_read)
+	    .map_err(|e| {
+                error!("!!! Error SPI {:?}!!!", e);
+                embassy_stm32::spi::Error::Framing
+            })?;
+
+
+
+        // let result = self.spi.blocking_read(&mut data_read);
+        // if result.is_err() {
+        //     defmt::error!("Error reading Center sensor");
+	//     return Err(result.err().unwrap());
+        // }
+
 
 	  // Combine the two u8 values into a 16-bit integer
         let mut combined_value: u16 = ((data_read[0] as u16) << 8) | (data_read[1] as u16);
         combined_value &= 0x3FFF;
 
         let angle = (combined_value as f64 / 16383.0) * Self::ANGLE_RANGE;
-        // info!("Angle: {} degrees", angle);
+        debug!("Center Angle: {} degrees", angle);
 
 	Ok(angle)
 

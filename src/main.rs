@@ -21,7 +21,7 @@ mod dynamixel;
 mod motor_control;
 mod shared_memory;
 
-use crate::config::{ActuatorConfig, AksimConfig};
+use crate::config::{ActuatorConfig, AksimConfig, AD5047Config};
 use crate::motor_control::ventouse::VentouseConfig;
 use crate::shared_memory::SharedMemory;
 
@@ -134,11 +134,10 @@ async fn main(spawner: Spawner) {
         },
 
         aksim: AksimConfig {
-            // peri: p.SPI4,
-            // sck: p.PE12,
-            // mosi: p.PE6,
-            // miso: p.PE5,
             cs: p.PE4,
+        },
+        ad5047: AD5047Config {
+            cs: p.PA15,
         },
 
     };
@@ -197,7 +196,7 @@ async fn main(spawner: Spawner) {
     )
     .unwrap();
 
-    // unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
+    unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
 
     // Prepare and spawn the main task
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);

@@ -12,7 +12,7 @@ use embassy_time::{Duration, Timer, block_for};
 
 use crate::{
     config::{self, ActuatorConfig},
-    SHARED_MEMORY,
+    SHARED_MEMORY, motor_control::sensors::AD5047Sensor,
 };
 
 use super::{
@@ -163,6 +163,20 @@ pub async fn control_loop(config: ActuatorConfig) {
     let ventouse_c = Ventouse::new(foc, driver);
     let ventouse_c = VentouseKind::C(ventouse_c);
 
+    //ad5047 sensor BUS C
+    let mut ad5047_spi_config = spi::Config::default();
+    ad5047_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
+    ad5047_spi_config.mode = spi::MODE_1;
+    ad5047_spi_config.bit_order = spi::BitOrder::MsbFirst;
+
+    let ad5047_spi = SpiDeviceWithConfig::new(
+        &spi_bus,
+        Output::new(config.ad5047.cs, Level::High, Speed::Medium),
+        ad5047_spi_config,
+    );
+
+    let mut ad5047=AD5047Sensor::new(ad5047_spi);
+
 
 
 
@@ -189,11 +203,11 @@ pub async fn control_loop(config: ActuatorConfig) {
 
         let torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
         actuator.set_torque(torque_on).unwrap();
-
+	// block_for(Duration::from_micros(10));
         let target = { SHARED_MEMORY.lock().await.get_target_position() };
         actuator.set_target_position(target).unwrap();
-
-
+	// block_for(Duration::from_micros(10));
+/*
 	let aksim_angle=aksim.read_angle().await;
 	match aksim_angle {
 	    Ok(angle) => {
@@ -204,10 +218,21 @@ pub async fn control_loop(config: ActuatorConfig) {
 		info!("aksim error: {:?}", e);
 	    }
 	}
+	//block_for(Duration::from_micros(10));
+	let ad5047_angle=ad5047.read_angle().await;
+	match ad5047_angle {
+	    Ok(angle) => {
+		// info!("aksim angle: {}", angle);
+
+	    },
+	    Err(e) => {
+		info!("ad5047 error: {:?}", e);
+	    }
+	}
+*/
 
 
-
-
+	// block_for(Duration::from_micros(1000));
         Timer::after(Duration::from_millis(1)).await;
     }
 }

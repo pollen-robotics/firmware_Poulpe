@@ -25,6 +25,7 @@ pub type VentouseBConfig =
 pub type VentouseCConfig = VentouseConfig<p::SPI6, p::PB3, p::PB5, p::PB4, p::PD7, p::PD5, p::PD6>;
 
 pub type AksimConfig = SensorConfig<p::PE4>;
+pub type AD5047Config = SensorConfig<p::PA15>;
 
 
 pub struct ActuatorConfig {
@@ -33,6 +34,8 @@ pub struct ActuatorConfig {
     pub b: VentouseBConfig,
     pub c: VentouseCConfig,
     pub aksim: AksimConfig,
+    pub ad5047: AD5047Config,
+
 
 }
 

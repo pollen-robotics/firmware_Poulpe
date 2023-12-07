@@ -30,7 +30,8 @@ const ABN_DECODER_PHI_E_PHI_M_OFFSET: u32 = 0x00000000;
 
 // Limits
 const PID_TORQUE_FLUX_LIMITS: u32 = 0x00001000; // 4000
-
+// const PID_TORQUE_FLUX_LIMITS: u32 = 0x00000100;
+const PID_VELOCITY_LIMIT: u32 = 0x0000_FFFF;
 // Motor alignment
 pub const OPENLOOP_ACCELERATION: u32 = 0x0000003c; // Wizard default
 pub const UQ_UD_EXT: u32 = 0x000007D0; // Openloop "torque_target"
@@ -397,6 +398,15 @@ where
             Tmc4671Registers::PID_POSITION_P_POSITION_I as u8,
             self.brushless_motor_config.pid_position_p_position_i(),
         )?;
+
+	//Limite the vel
+        self.tmc4671_checked_write(
+            Tmc4671Registers::PID_VELOCITY_LIMIT as u8,
+            PID_VELOCITY_LIMIT,
+        )?;
+
+
+
 
         Ok(())
     }
