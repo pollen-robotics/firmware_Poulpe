@@ -207,11 +207,11 @@ pub async fn control_loop(config: ActuatorConfig) {
         let target = { SHARED_MEMORY.lock().await.get_target_position() };
         actuator.set_target_position(target).unwrap();
 	// block_for(Duration::from_micros(10));
-/*
+
 	let aksim_angle=aksim.read_angle().await;
 	match aksim_angle {
 	    Ok(angle) => {
-		// info!("aksim angle: {}", angle);
+		info!("aksim angle: {}", angle);
 
 	    },
 	    Err(e) => {
@@ -222,14 +222,14 @@ pub async fn control_loop(config: ActuatorConfig) {
 	let ad5047_angle=ad5047.read_angle().await;
 	match ad5047_angle {
 	    Ok(angle) => {
-		// info!("aksim angle: {}", angle);
+		info!("aksim angle: {}", angle);
 
 	    },
 	    Err(e) => {
 		info!("ad5047 error: {:?}", e);
 	    }
 	}
-*/
+
 
 
 	// block_for(Duration::from_micros(1000));
