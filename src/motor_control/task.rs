@@ -193,6 +193,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     SHARED_MEMORY.lock().await.init(&mut actuator);
 
 
+    // actuator.set_torque([false,false]).unwrap();
 
     loop {
 
@@ -200,6 +201,7 @@ pub async fn control_loop(config: ActuatorConfig) {
         {
             SHARED_MEMORY.lock().await.set_current_position(pos)
         }
+
 
         let torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
         actuator.set_torque(torque_on).unwrap();
@@ -211,7 +213,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 	let aksim_angle=aksim.read_angle().await;
 	match aksim_angle {
 	    Ok(angle) => {
-		info!("aksim angle: {}", angle);
+		// info!("aksim angle: {}", angle);
 
 	    },
 	    Err(e) => {
@@ -222,7 +224,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 	let ad5047_angle=ad5047.read_angle().await;
 	match ad5047_angle {
 	    Ok(angle) => {
-		info!("aksim angle: {}", angle);
+		// info!("aksim angle: {}", angle);
 
 	    },
 	    Err(e) => {

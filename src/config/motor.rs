@@ -45,14 +45,19 @@ impl BrushlessMotor {
     pub fn ec45() -> Self { //TODO
         Self {
 	    motor_type_n_pole_pairs: 0x00030008,
-	    adc_i0_scale_offset: 0x010081FA,
-	    adc_i1_scale_offset: 0x0100826C,
+	    adc_i0_scale_offset: 0x002A819E,
+	    adc_i1_scale_offset: 0x002A821C,
 
 
-            pid_flux_p_flux_i: 0x01000000,
-            pid_torque_p_torque_i: 0x01000000,
-            pid_velocity_p_velocity_i: 0x01000400,
-            pid_position_p_position_i: 0x00800010,
+            // pid_flux_p_flux_i: 0x04000400,
+            // pid_torque_p_torque_i: 0x04000400,
+            pid_flux_p_flux_i: 0x02000200,
+            pid_torque_p_torque_i: 0x02000200,
+
+            pid_velocity_p_velocity_i: 0x02000020,
+            pid_position_p_position_i: 0x00400000,
+
+
 
         }
     }

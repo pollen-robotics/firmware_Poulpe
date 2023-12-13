@@ -13,11 +13,13 @@ use crate::config;
 // PWM configuration
 const PWM_POLARITIES: u32 = 0x00000000;
 const PWM_MAXCNT: u32 = 0x00000F9F; // PWM-freq
-const PWM_BBM_H_BBM_L: u32 = 0x00002828; // Break-Before-Make
-const PWM_SV_CHOP: u32 = 0x00000107;
+const PWM_BBM_H_BBM_L: u32 = 0x00001919; // Break-Before-Make
+// const PWM_SV_CHOP: u32 = 0x00000107; //Space vector On + PWM centered
+const PWM_SV_CHOP: u32 = 0x00000007; //Space vector On + PWM centered
 
 // ADC configuration
-const ADC_I_SELECT: u32 = 0x24000100;
+// const ADC_I_SELECT: u32 = 0x24000100;
+const ADC_I_SELECT: u32 = 0x18000100;
 const DS_ADC_MCFG_B_MCFG_A: u32 = 0x00100010;
 const DS_ADC_MCLK_A: u32 = 0x20000000;
 const DS_ADC_MCLK_B: u32 = 0x00000000;
@@ -29,12 +31,19 @@ const ABN_DECODER_PPR: u32 = 0x00001000;
 const ABN_DECODER_PHI_E_PHI_M_OFFSET: u32 = 0x00000000;
 
 // Limits
-const PID_TORQUE_FLUX_LIMITS: u32 = 0x00001000; // 4000
-// const PID_TORQUE_FLUX_LIMITS: u32 = 0x00000100;
-const PID_VELOCITY_LIMIT: u32 = 0x0000_FFFF;
+// const PID_TORQUE_FLUX_LIMITS: u32 = 0x00001000; // 4000
+const PID_TORQUE_FLUX_LIMITS: u32 = 0x00005a81;
+
+// const PID_VELOCITY_LIMIT: u32 = 0x0000_FFFF;
+const PID_VELOCITY_LIMIT: u32 = 0x0000_7D00;
+
+
 // Motor alignment
 pub const OPENLOOP_ACCELERATION: u32 = 0x0000003c; // Wizard default
-pub const UQ_UD_EXT: u32 = 0x000007D0; // Openloop "torque_target"
+// pub const UQ_UD_EXT: u32 = 0x000007D0; // Openloop "torque_target" 2000
+pub const UQ_UD_EXT: u32 = 0x000001000; // Openloop "torque_target" 2000
+
+
 
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]

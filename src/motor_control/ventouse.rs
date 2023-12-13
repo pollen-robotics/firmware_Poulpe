@@ -121,18 +121,22 @@ where
 
         // Rotate right
         info!("Rotate right...");
-        self.foc.tmc4671_set_target_velocity(100)?;
+        self.foc.tmc4671_set_target_velocity(50)?;
         let _ = Timer::after(Duration::from_millis(1000)).await;
 
         // Rotate left
         info!("Rotate left...");
-        self.foc.tmc4671_set_target_velocity(-100)?;
+        self.foc.tmc4671_set_target_velocity(-50)?;
         let _ = Timer::after(Duration::from_millis(1000)).await;
 
         // Stop
         info!("Stop...");
         self.foc.tmc4671_set_target_velocity(0)?;
         self.foc.tmc4671_set_mode(MotionMode::Stopped)?;
+	// self.foc.tmc4671_disable();
+	let pos=self.foc.tmc4671_get_actual_position()?;
+	self.foc.tmc4671_set_target_position(pos)?;
+
 
         Ok(())
     }
