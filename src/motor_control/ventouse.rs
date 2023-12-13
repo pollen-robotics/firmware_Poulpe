@@ -66,7 +66,10 @@ where
         self.foc.tmc4671_init_registers().await?;
         info!("TMC4671 init done");
 
-        self.foc.ppr = Some(self.foc.tmc4671_get_encoder_ppr()? as f32);
+        // self.foc.ppr = Some(self.foc.tmc4671_get_encoder_ppr()? as f32);
+	self.foc.ppr=Some(524288.0/(2.0*3.141592)); //It seems that 524288=360° motor (0x80000)
+
+
 
         self.align_motor().await?;
         info!("Motor align done");
