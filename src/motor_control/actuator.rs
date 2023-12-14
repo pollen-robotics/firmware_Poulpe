@@ -1,5 +1,6 @@
 use embassy_futures::join;
 
+use super::foc::MotionMode;
 use super::motors_io::{Pid, RawMotorsIO, Result};
 use super::ventouse::VentouseKind;
 
@@ -37,6 +38,26 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
         Ok(())
     }
 
+    /// Get the control mode
+    fn get_control_mode(&mut self) -> Result<[MotionMode; N]> {
+        let mut res = [MotionMode::Stopped; N];
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            res[i] = axis.get_control_mode()?[0];
+        }
+
+        Ok(res)
+    }
+
+    /// Set the control mode
+    fn set_control_mode(&mut self, mode:MotionMode) -> Result<()> {
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+	    axis.set_control_mode(mode)?;
+        }
+        Ok(())
+    }
+
+
+
     /// Get the current position of the motors (in radians)
     fn get_current_position(&mut self) -> Result<[f32; N]> {
         let mut res = [0.0; N];
@@ -73,6 +94,7 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
         }
 
         Ok(res)
+
     }
     /// Set the current target position of the motors (in radians)
     fn set_target_position(&mut self, position: [f32; N]) -> Result<()> {
@@ -82,6 +104,52 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
 
         Ok(())
     }
+
+
+
+
+    /// Get the current target velocity of the motors (in rpm)
+    fn get_target_velocity(&mut self) -> Result<[f32; N]> {
+        let mut res = [0.0; N];
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            res[i] = axis.get_target_velocity()?[0];
+        }
+
+        Ok(res)
+
+    }
+    /// Set the current target velocity of the motors (in rpm)
+    fn set_target_velocity(&mut self, velocity: [f32; N]) -> Result<()> {
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            axis.set_target_velocity([velocity[i]])?;
+        }
+
+        Ok(())
+    }
+
+
+    /// Get the current target torque of the motors (in ?? mA)
+    fn get_target_torque(&mut self) -> Result<[f32; N]> {
+        let mut res = [0.0; N];
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            res[i] = axis.get_target_torque()?[0];
+        }
+
+        Ok(res)
+
+    }
+    /// Set the current target torque of the motors (in ?? mA)
+    fn set_target_torque(&mut self, torque: [f32; N]) -> Result<()> {
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            axis.set_target_torque([torque[i]])?;
+        }
+
+        Ok(())
+    }
+
+
+
+
 
     /// Get the velocity limit of the motors (in radians per second)
     fn get_velocity_limit(&mut self) -> Result<[f32; N]> {
@@ -124,7 +192,7 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
         let mut res = [Pid {
             p: 0.0,
             i: 0.0,
-            d: 0.0,
+            // d: 0.0,
         }; N];
         for (i, axis) in self.axes.iter_mut().enumerate() {
             res[i] = axis.get_pid_gains()?[0];

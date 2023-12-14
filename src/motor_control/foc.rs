@@ -135,7 +135,7 @@ pub enum Tmc4671Registers {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Format)]
 pub enum MotionMode {
     // From register MODE_RAMP_MODE_MOTION
     Stopped,
@@ -239,7 +239,7 @@ where
         self.tmc4671_write_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data)
     }
 
-    #[allow(dead_code)]
+
     pub fn tmc4671_get_mode(&mut self) -> Result<MotionMode, embassy_stm32::spi::Error> {
         if let Ok(read) = self.tmc4671_read_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8)
         {
@@ -309,8 +309,38 @@ where
         self.tmc4671_get_i32(Tmc4671Registers::PID_VELOCITY_TARGET as u8)
     }
 
+
+    pub fn tmc4671_set_target_torque(
+        &mut self,
+        torque_target: i32,
+    ) -> Result<u32, embassy_stm32::spi::Error> {
+        self.tmc4671_write_register(
+            Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8,
+            torque_target as u32,
+        )
+    }
+
+    pub fn tmc4671_get_target_torque(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
+        self.tmc4671_get_i32(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8)
+    }
+
+
+
+
+
     pub fn tmc4671_get_actual_velocity(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
         self.tmc4671_get_i32(Tmc4671Registers::PID_VELOCITY_ACTUAL as u8)
+    }
+
+    //Mainly for init
+    pub fn tmc4671_set_actual_position(
+        &mut self,
+        position_actual: i32,
+    ) -> Result<u32, embassy_stm32::spi::Error> {
+        self.tmc4671_write_register(
+            Tmc4671Registers::PID_POSITION_ACTUAL as u8,
+            position_actual as u32,
+        )
     }
 
     pub fn tmc4671_set_target_position(
@@ -321,6 +351,10 @@ where
             Tmc4671Registers::PID_POSITION_TARGET as u8,
             position_target as u32,
         )
+    }
+
+    pub fn tmc4671_get_target_position(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
+        self.tmc4671_get_i32(Tmc4671Registers::PID_POSITION_TARGET as u8)  //TODO should probably check INTERIM_DATA
     }
 
     pub fn tmc4671_get_actual_position(&mut self) -> Result<i32, embassy_stm32::spi::Error> {

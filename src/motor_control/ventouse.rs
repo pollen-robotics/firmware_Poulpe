@@ -137,8 +137,11 @@ where
         self.foc.tmc4671_set_target_velocity(0)?;
         self.foc.tmc4671_set_mode(MotionMode::Stopped)?;
 	// self.foc.tmc4671_disable();
-	let pos=self.foc.tmc4671_get_actual_position()?;
-	self.foc.tmc4671_set_target_position(pos)?;
+	// let pos=self.foc.tmc4671_get_actual_position()?;
+
+	//Start everything at 0
+	self.foc.tmc4671_set_actual_position(0)?;
+	self.foc.tmc4671_set_target_position(0)?;
 
 
         Ok(())
@@ -166,6 +169,23 @@ where
         Ok(())
     }
 
+
+    // Get control mode
+    fn get_control_mode(&mut self) -> Result<[MotionMode;1], IOError> {
+	let mode =self
+	    .foc
+	    .tmc4671_get_mode()
+	    .map_err(IOError::SpiError)?;
+	Ok([mode])
+    }
+
+    // Set control mode
+    fn set_control_mode(&mut self, mode: MotionMode) -> Result<(), IOError> {
+	self.foc.tmc4671_set_mode(mode).map_err(IOError::SpiError)?;
+	Ok(())
+    }
+
+
     /// Get the current position of the motors (in radians)
     fn get_current_position(&mut self) -> Result<[f32; 1], IOError> {
         let encoder = self
@@ -177,16 +197,32 @@ where
     }
     /// Get the current velocity of the motors (in radians per second)
     fn get_current_velocity(&mut self) -> Result<[f32; 1], IOError> {
-        Ok([0.0])
+        let vel=self.
+	    foc.
+	    tmc4671_get_actual_velocity()
+	    .map_err(IOError::SpiError)?;
+	Ok([vel as f32]) //Should be rpm
+
     }
     /// Get the current torque of the motors (in Nm)
     fn get_current_torque(&mut self) -> Result<[f32; 1], IOError> {
-        Ok([0.0])
+	let torque=self.
+	    foc.
+	    tmc4671_get_torque_actual()
+	    .map_err(IOError::SpiError)?;
+	Ok([torque as f32]) //TODO is there a conversion to do?
+
     }
 
     /// Get the current target position of the motors (in radians)
     fn get_target_position(&mut self) -> Result<[f32; 1], IOError> {
-        Ok([0.0])
+        let pos=self.
+	    foc.
+	    tmc4671_get_target_position()
+	    .map_err(IOError::SpiError)?;
+	Ok([pos as f32])
+	// Ok([0.0])
+
     }
     /// Set the current target position of the motors (in radians)
     fn set_target_position(&mut self, position: [f32; 1]) -> Result<(), IOError> {
@@ -198,6 +234,46 @@ where
             .map(|_| ())
             .map_err(IOError::SpiError)
     }
+
+
+
+    fn get_target_velocity(&mut self) -> Result<[f32; 1], IOError> {
+        let vel=self.
+	    foc.
+	    tmc4671_get_target_velocity()
+	    .map_err(IOError::SpiError)?;
+	Ok([vel as f32]) //TODO convert to rad/s
+
+
+    }
+
+    fn set_target_velocity(&mut self, velocity: [f32; 1]) -> Result<(), IOError> {
+        self.foc
+            .tmc4671_set_target_velocity(
+                velocity[0] as i32) // TODO convert to rpm
+            .map(|_| ())
+            .map_err(IOError::SpiError)
+    }
+
+
+    fn get_target_torque(&mut self) -> Result<[f32; 1], IOError> {
+        let pos=self.
+	    foc.
+	    tmc4671_get_target_torque()
+	    .map_err(IOError::SpiError)?;
+	Ok([pos as f32])
+
+
+    }
+
+    fn set_target_torque(&mut self, torque: [f32; 1]) -> Result<(), IOError> {
+        self.foc
+            .tmc4671_set_target_torque(
+                torque[0] as i32)// TODO convert to mA
+            .map(|_| ())
+            .map_err(IOError::SpiError)
+    }
+
 
     /// Get the velocity limit of the motors (in radians per second)
     fn get_velocity_limit(&mut self) -> Result<[f32; 1], IOError> {
@@ -222,7 +298,7 @@ where
         Ok([Pid {
             p: 0.0,
             i: 0.0,
-            d: 0.0,
+            // d: 0.0,
         }])
     }
     /// Set the current PID gains of the motors
@@ -266,6 +342,27 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
 
+
+    /// Get control mode
+    fn get_control_mode(&mut self) -> super::Result<[MotionMode; 1]> {
+		match self {
+			VentouseKind::A(va) => va.get_control_mode(),
+			VentouseKind::B(vb) => vb.get_control_mode(),
+			VentouseKind::C(vc) => vc.get_control_mode(),
+		}
+	}
+
+    ///set control mode
+
+    fn set_control_mode(&mut self, mode: MotionMode) -> super::Result<()> {
+		match self {
+			VentouseKind::A(va) => va.set_control_mode(mode),
+			VentouseKind::B(vb) => vb.set_control_mode(mode),
+			VentouseKind::C(vc) => vc.set_control_mode(mode),
+		}
+	}
+
+
     /// Get the current position of the motors (in radians)
     fn get_current_position(&mut self) -> Result<[f32; 1], IOError> {
         match self {
@@ -307,6 +404,47 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
             VentouseKind::C(vc) => vc.set_target_position(position),
         }
     }
+
+
+
+
+
+    fn get_target_velocity(&mut self) -> Result<[f32; 1], IOError> {
+        match self {
+            VentouseKind::A(va) => va.get_target_velocity(),
+            VentouseKind::B(vb) => vb.get_target_velocity(),
+            VentouseKind::C(vc) => vc.get_target_velocity(),
+        }
+    }
+
+    fn set_target_velocity(&mut self, velocity: [f32; 1]) -> Result<(), IOError> {
+        match self {
+            VentouseKind::A(va) => va.set_target_velocity(velocity),
+            VentouseKind::B(vb) => vb.set_target_velocity(velocity),
+            VentouseKind::C(vc) => vc.set_target_velocity(velocity),
+        }
+    }
+
+
+
+
+    fn get_target_torque(&mut self) -> Result<[f32; 1], IOError> {
+        match self {
+            VentouseKind::A(va) => va.get_target_torque(),
+            VentouseKind::B(vb) => vb.get_target_torque(),
+            VentouseKind::C(vc) => vc.get_target_torque(),
+        }
+    }
+
+    fn set_target_torque(&mut self, torque: [f32; 1]) -> Result<(), IOError> {
+        match self {
+            VentouseKind::A(va) => va.set_target_torque(torque),
+            VentouseKind::B(vb) => vb.set_target_torque(torque),
+            VentouseKind::C(vc) => vc.set_target_torque(torque),
+        }
+    }
+
+
 
     /// Get the velocity limit of the motors (in radians per second)
     fn get_velocity_limit(&mut self) -> Result<[f32; 1], IOError> {

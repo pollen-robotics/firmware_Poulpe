@@ -210,6 +210,13 @@ pub async fn control_loop(config: ActuatorConfig) {
         actuator.set_target_position(target).unwrap();
 	// block_for(Duration::from_micros(10));
 
+	// let torque=actuator.get_current_torque().unwrap();
+	// let vel=actuator.get_current_velocity().unwrap();
+	// let post=actuator.get_target_position().unwrap();
+
+	// info!("torque: {:?} vel: {:?} tpos: {:?}", torque, vel, post);
+
+
 	let aksim_angle=aksim.read_angle().await;
 	match aksim_angle {
 	    Ok(angle) => {

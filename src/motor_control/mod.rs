@@ -4,7 +4,7 @@ pub use actuator::Actuator;
 mod axis_sensor;
 mod driver;
 pub use driver::Driver;
-mod foc;
+pub(crate) mod foc;
 pub use foc::Foc;
 mod motors_io;
 pub use motors_io::{Pid, RawMotorsIO, Result};
