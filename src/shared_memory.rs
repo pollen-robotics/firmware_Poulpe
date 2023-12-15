@@ -2,7 +2,7 @@ use core::cell::RefCell;
 
 use defmt::Format;
 
-use crate::motor_control::{Actuator, RawMotorsIO};
+use crate::motor_control::{Actuator, RawMotorsIO, RawSensorsIO};
 use crate::{motor_control::foc::MotionMode};
 
 #[derive(Clone, Format)]
@@ -17,6 +17,9 @@ pub struct Memory<const N: usize> {
     target_position: [f32; N],
     target_velocity: [f32; N],
     target_torque: [f32; N],
+
+    axis_sensor: [f32; N],
+
 
 }
 
@@ -87,6 +90,14 @@ impl<const N: usize> SharedMemory<N> {
         self.inner.borrow_mut().target_torque = torque;
     }
 
+    pub fn get_axis_sensor(&self) -> [f32; N] {
+	self.inner.borrow().axis_sensor
+    }
+
+    pub fn set_axis_sensor(&self, sensor: [f32;N]) {
+	self.inner.borrow_mut().axis_sensor=sensor;
+    }
+
 
 
 
@@ -105,6 +116,8 @@ impl<const N: usize> SharedMemory<N> {
                 target_position: [0.0; N],
                 target_velocity: [0.0; N],
                 target_torque: [0.0; N],
+		axis_sensor: [0.0; N],
+
             }),
         }
     }
@@ -121,6 +134,10 @@ impl<const N: usize> SharedMemory<N> {
             target_position: actuator.get_target_position().unwrap(),
             target_velocity: actuator.get_target_velocity().unwrap(),
             target_torque: actuator.get_target_torque().unwrap(),
+
+	    axis_sensor: actuator.get_axis_sensors().unwrap_or_else(|_| [9999.9; N]),
+
+
         };
     }
 

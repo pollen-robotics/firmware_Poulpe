@@ -65,6 +65,18 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                     error!("Error: {:?}", e);
                                 }
                             }
+
+
+                            DynamixelRegister::AxisSensor => {
+                                let value = { SHARED_MEMORY.lock().await.get_axis_sensor() };
+                                let value = conversion::float_to_bytes(value);
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                debug!("Sending status packet: {:?}", sp);
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
                         }
                     }
                     InstructionPacketKind::WriteData(write_data_packet) => {

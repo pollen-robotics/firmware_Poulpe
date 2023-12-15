@@ -2,15 +2,19 @@ use embassy_futures::join;
 
 use super::foc::MotionMode;
 use super::motors_io::{Pid, RawMotorsIO, Result};
+use super::sensors_io::{RawSensorsIO};
+
+use super::sensors::{SensorKind};
 use super::ventouse::VentouseKind;
 
 pub struct Actuator<'d, const N: usize> {
     axes: [VentouseKind<'d>; N],
+    sensors: [SensorKind<'d>; N],
 }
 
 impl<'d, const N: usize> Actuator<'d, N> {
-    pub fn new(axes: [VentouseKind<'d>; N]) -> Self {
-        Self { axes }
+    pub fn new(axes: [VentouseKind<'d>; N], sensors: [SensorKind<'d>;N]) -> Self {
+        Self { axes, sensors }
     }
 
     pub async fn init(&mut self) {
@@ -207,4 +211,19 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
 
         Ok(())
     }
+
+}
+
+
+impl<'d, const N: usize> RawSensorsIO<N> for Actuator<'d, N> {
+   /// The axis sensor
+    fn get_axis_sensors(&mut self) -> Result<[f32; N]> {
+        let mut res = [0.0; N];
+        for (i, sensor) in self.sensors.iter_mut().enumerate() {
+            res[i] = sensor.get_axis_sensors()?[0] as f32;
+        }
+
+        Ok(res)
+    }
+
 }

@@ -7,6 +7,8 @@ pub type Result<T> = core::result::Result<T, IOError>;
 #[derive(Debug)]
 pub enum IOError {
     SpiError(spi::Error),
+    InvalidData,
+
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

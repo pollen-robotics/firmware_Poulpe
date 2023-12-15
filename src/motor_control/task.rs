@@ -1,6 +1,6 @@
 use core::cell::RefCell;
 
-use defmt::info;
+use defmt::{info, error};
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_stm32::{
     dma::NoDma,
@@ -12,7 +12,7 @@ use embassy_time::{Duration, Timer, block_for};
 
 use crate::{
     config::{self, ActuatorConfig},
-    SHARED_MEMORY, motor_control::sensors::AD5047Sensor,
+    SHARED_MEMORY, motor_control::{sensors::{AD5047Sensor, SensorKind}, RawSensorsIO},
 };
 
 use super::{
@@ -104,8 +104,8 @@ pub async fn control_loop(config: ActuatorConfig) {
         aksim_spi_config,
     );
 
-    let mut aksim=AksimSensor::new(aksim_spi);
-
+    let aksim=AksimSensor::new(aksim_spi);
+    let aksim=SensorKind::Ring(aksim);
 
 
     let foc_spi = SpiDeviceWithConfig::new(
@@ -175,14 +175,15 @@ pub async fn control_loop(config: ActuatorConfig) {
         ad5047_spi_config,
     );
 
-    let mut ad5047=AD5047Sensor::new(ad5047_spi);
+    let ad5047=AD5047Sensor::new(ad5047_spi);
+    let ad5047=SensorKind::Center(ad5047);
 
 
 
 
     // Setup the actuator with the configured ventouses
     #[cfg(feature = "orbita2d")]
-    let mut actuator = Actuator::new([ventouse_b, ventouse_c]);
+    let mut actuator = Actuator::new([ventouse_b, ventouse_c], [aksim, ad5047]);
     #[cfg(feature = "orbita3d")]
     let mut actuator = Actuator::new([ventouse_a, ventouse_b, ventouse_c]);
 
@@ -209,6 +210,20 @@ pub async fn control_loop(config: ActuatorConfig) {
         let target = { SHARED_MEMORY.lock().await.get_target_position() };
         actuator.set_target_position(target).unwrap();
 	// block_for(Duration::from_micros(10));
+	let sensors=actuator.get_axis_sensors();
+	match sensors {
+	    Ok(sensors) => {
+		SHARED_MEMORY.lock().await.set_axis_sensor(sensors);
+		// info!("sensors: {:?}", sensors);
+	    },
+	    Err(_e) => {
+		// SHARED_MEMORY.lock().await.set_axis_sensor([999999.0, 999999.0]);
+		// error!("sensors error");
+	    }
+	}
+
+
+
 
 	// let torque=actuator.get_current_torque().unwrap();
 	// let vel=actuator.get_current_velocity().unwrap();
@@ -216,11 +231,11 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 	// info!("torque: {:?} vel: {:?} tpos: {:?}", torque, vel, post);
 
-
+	/*
 	let aksim_angle=aksim.read_angle().await;
 	match aksim_angle {
 	    Ok(angle) => {
-		// info!("aksim angle: {}", angle);
+		info!("aksim angle: {}", angle);
 
 	    },
 	    Err(e) => {
@@ -231,14 +246,14 @@ pub async fn control_loop(config: ActuatorConfig) {
 	let ad5047_angle=ad5047.read_angle().await;
 	match ad5047_angle {
 	    Ok(angle) => {
-		// info!("aksim angle: {}", angle);
+		info!("aksim angle: {}", angle);
 
 	    },
 	    Err(e) => {
 		info!("ad5047 error: {:?}", e);
 	    }
 	}
-
+	 */
 
 
 	// block_for(Duration::from_micros(1000));

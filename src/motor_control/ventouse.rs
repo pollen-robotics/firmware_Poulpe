@@ -8,7 +8,7 @@ use crate::{
 };
 
 use super::{
-    axis_sensor::AxisSensor,
+    // axis_sensor::AxisSensor,
     driver::Driver,
     foc::Foc,
     motors_io::{IOError, Pid, RawMotorsIO},

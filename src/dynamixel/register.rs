@@ -8,6 +8,7 @@ pub enum DynamixelRegister {
     // TorqueLimit,
 
     // PIDGains,
+    AxisSensor
 }
 
 impl DynamixelRegister {
@@ -23,7 +24,10 @@ impl DynamixelRegister {
             // 71 => Some(DynamixelRegister::TorqueLimit),
 
             // 80 => Some(DynamixelRegister::PIDGains),
-            _ => None,
+	    90 => Some(DynamixelRegister::AxisSensor),
+
+			_ => None,
+
         }
     }
 }

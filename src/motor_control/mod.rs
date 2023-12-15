@@ -8,5 +8,8 @@ pub(crate) mod foc;
 pub use foc::Foc;
 mod motors_io;
 pub use motors_io::{Pid, RawMotorsIO, Result};
+mod sensors_io;
+pub use sensors_io::RawSensorsIO;
+
 pub mod task;
 pub mod ventouse;
