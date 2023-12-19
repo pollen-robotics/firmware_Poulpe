@@ -153,17 +153,30 @@ async fn main(spawner: Spawner) {
     usart_config.parity = embassy_stm32::usart::Parity::ParityNone;
     usart_config.detect_previous_overrun = false;
 
+    //Poule A1
+    // let usart = config::DynamixelUart::new(
+    //     p.USART1,
+    //     p.PB15, //RX
+    //     p.PB14, //TX
+    //     Irqs,
+    //     p.DMA1_CH0,
+    //     p.DMA1_CH1,
+    //     usart_config,
+    // )
+    // .unwrap();
+    // unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
+
+    // Poulpe B1
     let usart = config::DynamixelUart::new(
         p.USART1,
-        p.PB15,
-        p.PB14,
+        p.PB15, //RX
+        p.PA9, //TX
         Irqs,
         p.DMA1_CH0,
         p.DMA1_CH1,
         usart_config,
     )
     .unwrap();
-
     unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
 
     // Prepare and spawn the main task

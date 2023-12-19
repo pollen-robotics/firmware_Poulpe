@@ -1,4 +1,4 @@
-use defmt::{debug, error};
+use defmt::{debug, error, trace};
 use embassy_stm32::gpio::AnyPin;
 
 use crate::{
@@ -23,7 +23,7 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                 match packet {
                     InstructionPacketKind::Ping(_) => {
                         let sp = StatusPacket::ack(id, dxl_error);
-                        debug!("Sending status packet: {:?}", sp);
+                        trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
                         if let Some(e) = dxl.write(&sp).await.err() {
                             error!("Error: {:?}", e);
                         }
@@ -42,7 +42,7 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                 let value = { SHARED_MEMORY.lock().await.get_torque_on() };
                                 let value = conversion::bool_to_bytes(value);
                                 let sp = StatusPacket::with_value(id, dxl_error, value);
-                                debug!("Sending status packet: {:?}", sp);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
                                 if let Some(e) = dxl.write(&sp).await.err() {
                                     error!("Error: {:?}", e);
                                 }
@@ -51,16 +51,37 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                 let value = { SHARED_MEMORY.lock().await.get_current_position() };
                                 let value = conversion::float_to_bytes(value);
                                 let sp = StatusPacket::with_value(id, dxl_error, value);
-                                debug!("Sending status packet: {:?}", sp);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
                                 if let Some(e) = dxl.write(&sp).await.err() {
                                     error!("Error: {:?}", e);
                                 }
                             }
+
+                            DynamixelRegister::CurrentVelocity => {
+                                let value = { SHARED_MEMORY.lock().await.get_current_velocity() };
+                                let value = conversion::float_to_bytes(value);
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
+                            DynamixelRegister::CurrentTorque => {
+                                let value = { SHARED_MEMORY.lock().await.get_current_torque() };
+                                let value = conversion::float_to_bytes(value);
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
                             DynamixelRegister::TargetPosition => {
                                 let value = { SHARED_MEMORY.lock().await.get_target_position() };
                                 let value = conversion::float_to_bytes(value);
                                 let sp = StatusPacket::with_value(id, dxl_error, value);
-                                debug!("Sending status packet: {:?}", sp);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
                                 if let Some(e) = dxl.write(&sp).await.err() {
                                     error!("Error: {:?}", e);
                                 }
@@ -71,7 +92,7 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                 let value = { SHARED_MEMORY.lock().await.get_axis_sensor() };
                                 let value = conversion::float_to_bytes(value);
                                 let sp = StatusPacket::with_value(id, dxl_error, value);
-                                debug!("Sending status packet: {:?}", sp);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
                                 if let Some(e) = dxl.write(&sp).await.err() {
                                     error!("Error: {:?}", e);
                                 }
@@ -107,7 +128,7 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                         }
 
                         let sp = StatusPacket::ack(id, dxl_error);
-                        debug!("Sending status packet: {:?}", sp);
+                        debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
                         if let Some(e) = dxl.write(&sp).await.err() {
                             error!("Error: {:?}", e);
                         }

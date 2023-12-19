@@ -12,7 +12,10 @@ use crate::config;
 
 // PWM configuration
 const PWM_POLARITIES: u32 = 0x00000000;
-const PWM_MAXCNT: u32 = 0x00000F9F; // PWM-freq
+// const PWM_MAXCNT: u32 = 0x00000F9F; // PWM-freq 3999 = > 25KHz
+const PWM_MAXCNT: u32 = 0x000007CF; // PWM-freq 1999 = > 50KHz slightly less noisy
+// const PWM_MAXCNT: u32 = 0x000003E7; // PWM-freq 999 = > 100KHz
+
 const PWM_BBM_H_BBM_L: u32 = 0x00001919; // Break-Before-Make
 // const PWM_SV_CHOP: u32 = 0x00000107; //Space vector On + PWM centered
 const PWM_SV_CHOP: u32 = 0x00000007; //Space vector On + PWM centered
@@ -240,6 +243,24 @@ where
     }
 
 
+    pub fn tmc4671_set_pid_down(&mut self, down: u8) -> Result<u32, embassy_stm32::spi::Error> {
+        let mut data = 0x00000000u32;
+        // read current state first
+        self.tmc4671_transmit_raw_data(false, Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data)?;
+        data &= 0x80FFFFFFu32;
+        data |= down as u32;
+        self.tmc4671_write_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data)
+    }
+    pub fn tmc4671_set_pid_type(&mut self, pidtype: u8) -> Result<u32, embassy_stm32::spi::Error> {
+        let mut data = 0x00000000u32;
+        // read current state first
+        self.tmc4671_transmit_raw_data(false, Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data)?;
+        data &= 0x7FFFFFFFu32;
+        data |= pidtype as u32;
+        self.tmc4671_write_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data)
+    }
+
+
     pub fn tmc4671_get_mode(&mut self) -> Result<MotionMode, embassy_stm32::spi::Error> {
         if let Ok(read) = self.tmc4671_read_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8)
         {
@@ -387,6 +408,11 @@ where
         self.tmc4671_checked_write(Tmc4671Registers::PWM_MAXCNT as u8, PWM_MAXCNT)?;
         self.tmc4671_checked_write(Tmc4671Registers::PWM_BBM_H_BBM_L as u8, PWM_BBM_H_BBM_L)?;
         self.tmc4671_checked_write(Tmc4671Registers::PWM_SV_CHOP as u8, PWM_SV_CHOP)?;
+
+	//PID
+	// self.tmc4671_set_pid_down(2)?;
+
+
 
         // ADC configuration
         self.tmc4671_checked_write(Tmc4671Registers::ADC_I_SELECT as u8, ADC_I_SELECT)?;

@@ -1,8 +1,8 @@
 pub enum DynamixelRegister {
     TorqueEnable,
     CurrentPosition,
-    // CurrentVelocity,
-    // CurrentTorque,
+    CurrentVelocity,
+    CurrentTorque,
     TargetPosition,
     // VelocityLimit,
     // TorqueLimit,
@@ -16,8 +16,8 @@ impl DynamixelRegister {
         match address {
             40 => Some(DynamixelRegister::TorqueEnable),
             50 => Some(DynamixelRegister::CurrentPosition),
-            // 51 => Some(DynamixelRegister::CurrentVelocity),
-            // 52 => Some(DynamixelRegister::CurrentTorque),
+            51 => Some(DynamixelRegister::CurrentVelocity),
+            52 => Some(DynamixelRegister::CurrentTorque),
             60 => Some(DynamixelRegister::TargetPosition),
 
             // 70 => Some(DynamixelRegister::VelocityLimit),
@@ -26,7 +26,8 @@ impl DynamixelRegister {
             // 80 => Some(DynamixelRegister::PIDGains),
 	    90 => Some(DynamixelRegister::AxisSensor),
 
-			_ => None,
+	    _ => None
+
 
         }
     }

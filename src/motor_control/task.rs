@@ -210,6 +210,8 @@ pub async fn control_loop(config: ActuatorConfig) {
         let target = { SHARED_MEMORY.lock().await.get_target_position() };
         actuator.set_target_position(target).unwrap();
 	// block_for(Duration::from_micros(10));
+
+
 	let sensors=actuator.get_axis_sensors();
 	match sensors {
 	    Ok(sensors) => {
@@ -225,9 +227,15 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 
 
-	// let torque=actuator.get_current_torque().unwrap();
-	// let vel=actuator.get_current_velocity().unwrap();
-	// let post=actuator.get_target_position().unwrap();
+	let torque=actuator.get_current_torque().unwrap();
+	let vel=actuator.get_current_velocity().unwrap();
+	let pos=actuator.get_current_position().unwrap();
+
+	SHARED_MEMORY.lock().await.set_current_torque(torque);
+	SHARED_MEMORY.lock().await.set_current_velocity(vel);
+	SHARED_MEMORY.lock().await.set_current_position(pos);
+
+
 
 	// info!("torque: {:?} vel: {:?} tpos: {:?}", torque, vel, post);
 

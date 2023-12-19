@@ -165,7 +165,7 @@ where T:Instance,
 	// error >>= 9;
 
 	if error{
-	    // error!("Ring sensor error",);
+	    error!("Ring sensor error",);
 	    Err(IOError::InvalidData)
 	}
 
@@ -177,12 +177,12 @@ where T:Instance,
 	    let calculated_crc = !CRC_SPI_97_64bit(datapacket) ;
 
 	    if calculated_crc != _crc{
-		// error!("Ring sensor CRC error  {:#02x} {:#02x}", _crc, calculated_crc);
+		error!("Ring sensor CRC error  {:#02x} {:#02x}", _crc, calculated_crc);
 		Err(IOError::InvalidData)
 	    }
 	    else {
 		let angle = ((encoder_position as f64 / 524288.0) * Self::ANGLE_RANGE) as f32;
-		debug!("encoder position: {:?} angle {:?} ]warn {:?}",encoder_position,angle, _warning);
+		// debug!("encoder position: {:?} angle {:?} ]warn {:?}",encoder_position,angle, _warning);
 		//debug
 		/*
 		if error{
