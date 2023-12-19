@@ -98,6 +98,9 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                 }
                             }
 
+			    _ => {}
+
+
                         }
                     }
                     InstructionPacketKind::WriteData(write_data_packet) => {

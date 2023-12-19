@@ -26,18 +26,35 @@ pub type VentouseCConfig = VentouseConfig<p::SPI6, p::PB3, p::PB5, p::PB4, p::PD
 
 pub type AksimConfig = SensorConfig<p::PE4>;
 pub type AD5047Config = SensorConfig<p::PA15>;
+pub type AD5047ConfigTop = SensorConfig<p::PA4>; //TODO
+pub type AD5047ConfigMid = SensorConfig<p::PE4>; //TODO
+pub type AD5047ConfigBot = SensorConfig<p::PA15>; //TODO
 
 pub type Aksim<'d> = AksimSensor<'d,p::SPI4, p::PE4>;
 pub type AD5047<'d> = AD5047Sensor<'d, p::SPI6,p::PA15>;
+
+pub type AD5047Top<'d> = AD5047Sensor<'d, p::SPI4,p::PA4>;
+pub type AD5047Mid<'d> = AD5047Sensor<'d, p::SPI4,p::PE4>;
+pub type AD5047Bot<'d> = AD5047Sensor<'d, p::SPI4,p::PA15>;
 
 
 pub struct ActuatorConfig {
     #[cfg(feature = "orbita3d")]
     pub a: VentouseAConfig,
+
     pub b: VentouseBConfig,
     pub c: VentouseCConfig,
+    #[cfg(feature = "orbita2d")]
     pub aksim: AksimConfig,
+    #[cfg(feature = "orbita2d")]
     pub ad5047: AD5047Config,
+
+    #[cfg(feature = "orbita3d")]
+    pub ad5047top: AD5047ConfigTop,
+    #[cfg(feature = "orbita3d")]
+    pub ad5047mid: AD5047ConfigMid,
+    #[cfg(feature = "orbita3d")]
+    pub ad5047bot: AD5047ConfigBot,
 
 
 }

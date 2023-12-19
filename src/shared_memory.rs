@@ -135,8 +135,7 @@ impl<const N: usize> SharedMemory<N> {
             target_velocity: actuator.get_target_velocity().unwrap(),
             target_torque: actuator.get_target_torque().unwrap(),
 
-	    // axis_sensor: actuator.get_axis_sensors().unwrap_or_else(|_| [9999.9; N]),
-	    axis_sensor: actuator.get_axis_sensors().unwrap_or([f32::NAN; N]), //doesn't work??
+	    axis_sensor: actuator.get_axis_sensors().unwrap_or([f32::NAN; N]),
 
 
         };

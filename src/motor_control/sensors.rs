@@ -23,7 +23,9 @@ use super::RawSensorsIO;
 use super::motors_io::IOError;
 
 
+// CRC Code from: https://www.rls.si/media/custom/upload/CRCD01_03.pdf
 //Lookup table for polynome = 0x97
+// P(x) = x8 + x7 + x4 + x2 + x1 + 1
 const ab_CRC8_LUT: [u8;256] = [
     0x00, 0x97, 0xB9, 0x2E, 0xE5, 0x72, 0x5C, 0xCB, 0x5D, 0xCA, 0xE4, 0x73, 0xB8, 0x2F, 0x01, 0x96,
     0xBA, 0x2D, 0x03, 0x94, 0x5F, 0xC8, 0xE6, 0x71, 0xE7, 0x70, 0x5E, 0xC9, 0x02, 0x95, 0xBB, 0x2C,
@@ -72,6 +74,9 @@ pub enum SensorKind<'d>{
     #[allow(dead_code)]
     Ring(config::Aksim<'d>),
     Center(config::AD5047<'d>),
+    DonutTop(config::AD5047Top<'d>),
+    DonutMid(config::AD5047Mid<'d>),
+    DonutBot(config::AD5047Bot<'d>),
 
 }
 
@@ -86,6 +91,10 @@ where
     pub cs: Cs,
 
 }
+
+
+
+
 
 pub struct AksimSensor<'d,T,P>
     where
@@ -163,24 +172,24 @@ where T:Instance,
         // Nota: 2^19 = 524288
 	let error:bool = ((encoder_data & 0x0000000000000200)>>9) != 0x1; // 9th bit, active low
 	// error >>= 9;
-
-	if error{
+	let _warning:bool = ((encoder_data & 0x0000000000000100)>>8) != 0x1; // 8th bit, active low
+	if error {
 	    error!("Ring sensor error",);
 	    Err(IOError::InvalidData)
 	}
 
 	else{
-	    let _warning:bool = ((encoder_data & 0x0000000000000100)>>8) != 0x1; // 8th bit, active low
-	    // warning >>= 8;
-	    let _crc:u8 = (encoder_data & 0x00000000000000ff) as u8; // 7-0 bits //TODO
+
+	    let crc:u8 = (encoder_data & 0x00000000000000ff) as u8; // 7-0 bits //TODO
 	    let datapacket:u64 = (encoder_data >> 8) & 0x0000000000ffffff;
 	    let calculated_crc = !CRC_SPI_97_64bit(datapacket) ;
 
-	    if calculated_crc != _crc{
-		error!("Ring sensor CRC error  {:#02x} {:#02x}", _crc, calculated_crc);
+	    if calculated_crc != crc{
+		error!("Ring sensor CRC error. crc: {:#02x} computed: {:#02x} data: {:#x} datapacket: {:#x}", crc, calculated_crc, encoder_data, datapacket);
 		Err(IOError::InvalidData)
 	    }
 	    else {
+		// debug!("CRC {:#02x} computed {:#02x} data {:#x} datapacket {:#x}", crc, calculated_crc, encoder_data, datapacket);
 		let angle = ((encoder_position as f64 / 524288.0) * Self::ANGLE_RANGE) as f32;
 		// debug!("encoder position: {:?} angle {:?} ]warn {:?}",encoder_position,angle, _warning);
 		//debug
@@ -345,6 +354,10 @@ impl<'d> RawSensorsIO<1> for SensorKind<'d> {
         match self {
             SensorKind::Ring(ring) => ring.get_axis_sensor(),
 	    SensorKind::Center(center) => center.get_axis_sensor(),
+	    SensorKind::DonutTop(top) => top.get_axis_sensor(),
+	    SensorKind::DonutMid(mid) => mid.get_axis_sensor(),
+	    SensorKind::DonutBot(bot) => bot.get_axis_sensor(),
+
 
         }
     }

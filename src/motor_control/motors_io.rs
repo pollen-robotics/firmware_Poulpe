@@ -13,9 +13,9 @@ pub enum IOError {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Pid {
-    pub p: f32,
-    pub i: f32,
-    // pub d: f32,
+    pub p: i16,
+    pub i: i16,
+
 }
 
 pub trait RawMotorsIO<const N: usize> {

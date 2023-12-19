@@ -21,7 +21,7 @@ mod dynamixel;
 mod motor_control;
 mod shared_memory;
 
-use crate::config::{ActuatorConfig, AksimConfig, AD5047Config};
+use crate::config::{ActuatorConfig, AksimConfig, AD5047Config, AD5047ConfigTop, AD5047ConfigMid, AD5047ConfigBot};
 use crate::motor_control::ventouse::VentouseConfig;
 use crate::shared_memory::SharedMemory;
 
@@ -108,6 +108,16 @@ async fn main(spawner: Spawner) {
             foc_cs: p.PD7,
             foc_enable: p.PD5,
             driver_cs: p.PD6,
+        },
+
+        ad5047top: AD5047ConfigTop {
+            cs: p.PA4,
+        },
+        ad5047mid: AD5047ConfigMid {
+            cs: p.PE4,
+        },
+        ad5047bot: AD5047ConfigBot {
+            cs: p.PA15,
         },
 
     };

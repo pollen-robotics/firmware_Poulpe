@@ -37,45 +37,45 @@ pub async fn control_loop(config: ActuatorConfig) {
     driver_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
     driver_spi_config.bit_order = spi::BitOrder::MsbFirst;
 
-    /*
+
     // Ventouse A
     #[cfg(feature = "orbita3d")]
     let spi = spi::Spi::new(
-        config.a.peri,
-        config.a.sck,
-        config.a.mosi,
-        config.a.miso,
-        NoDma,
-        NoDma,
-        spi_config,
-    );
+            config.a.peri,
+            config.a.sck,
+            config.a.mosi,
+            config.a.miso,
+            NoDma,
+            NoDma,
+            spi_config,
+	);
     #[cfg(feature = "orbita3d")]
-    let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi));
+	let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi));
     #[cfg(feature = "orbita3d")]
-    let foc_spi = SpiDeviceWithConfig::new(
-        &spi_bus,
-        Output::new(config.a.foc_cs, Level::High, Speed::Medium),
-        foc_spi_config,
-    );
+	let foc_spi = SpiDeviceWithConfig::new(
+            &spi_bus,
+            Output::new(config.a.foc_cs, Level::High, Speed::Medium),
+            foc_spi_config,
+	);
     #[cfg(feature = "orbita3d")]
-    let foc = Foc::new(
-        foc_spi,
-        config.a.foc_enable,
-        config::BrushlessMotor::ecx22(),
-    );
+	let foc = Foc::new(
+            foc_spi,
+            config.a.foc_enable,
+            config::BrushlessMotor::ecx22(),
+	);
     #[cfg(feature = "orbita3d")]
-    let driver_spi = SpiDeviceWithConfig::new(
-        &spi_bus,
-        Output::new(config.a.driver_cs, Level::High, Speed::Medium),
-        driver_spi_config,
-    );
+	let driver_spi = SpiDeviceWithConfig::new(
+            &spi_bus,
+            Output::new(config.a.driver_cs, Level::High, Speed::Medium),
+            driver_spi_config,
+	);
     #[cfg(feature = "orbita3d")]
-    let driver = Driver::new(driver_spi);
+	let driver = Driver::new(driver_spi);
     #[cfg(feature = "orbita3d")]
-    let ventouse_a = Ventouse::new(foc, driver);
+	let ventouse_a = Ventouse::new(foc, driver);
     #[cfg(feature = "orbita3d")]
-    let ventouse_a = VentouseKind::A(ventouse_a);
-    */
+	let ventouse_a = VentouseKind::A(ventouse_a);
+
 
     // Ventouse B
     let spi = spi::Spi::new(
@@ -93,19 +93,93 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 
     //Aksim Ring sensor BUS B
-    let mut aksim_spi_config = spi::Config::default();
-    aksim_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
-    aksim_spi_config.mode = spi::MODE_1;
-    aksim_spi_config.bit_order = spi::BitOrder::MsbFirst;
+    /////////////
+	let mut aksim_spi_config = spi::Config::default();
 
-    let aksim_spi = SpiDeviceWithConfig::new(
-        &spi_bus,
-        Output::new(config.aksim.cs, Level::High, Speed::Medium),
-        aksim_spi_config,
-    );
+	aksim_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
 
-    let aksim=AksimSensor::new(aksim_spi);
-    let aksim=SensorKind::Ring(aksim);
+	aksim_spi_config.mode = spi::MODE_1;
+
+	aksim_spi_config.bit_order = spi::BitOrder::MsbFirst;
+
+
+    #[cfg(feature = "orbita2d")]
+	let aksim_spi = SpiDeviceWithConfig::new(
+            &spi_bus,
+            Output::new(config.aksim.cs, Level::High, Speed::Medium),
+            aksim_spi_config,
+	);
+    #[cfg(feature = "orbita2d")]
+
+	let aksim=AksimSensor::new(aksim_spi);
+    #[cfg(feature = "orbita2d")]
+
+	let aksim=SensorKind::Ring(aksim);
+    //////////
+
+
+    //Donut sensor BUS B TODO
+
+
+	let mut ad5047top_spi_config = spi::Config::default();
+
+	ad5047top_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
+
+	ad5047top_spi_config.mode = spi::MODE_1;
+
+	ad5047top_spi_config.bit_order = spi::BitOrder::MsbFirst;
+    #[cfg(feature = "orbita3d")]
+	let ad5047top_spi = SpiDeviceWithConfig::new(
+            &spi_bus,
+            Output::new(config.ad5047top.cs, Level::High, Speed::Medium),
+            ad5047top_spi_config,
+	);
+    #[cfg(feature = "orbita3d")]
+	let ad5047top=AD5047Sensor::new(ad5047top_spi);
+    #[cfg(feature = "orbita3d")]
+	let ad5047top=SensorKind::DonutTop(ad5047top);
+
+
+	let mut ad5047mid_spi_config = spi::Config::default();
+
+	ad5047mid_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
+
+	ad5047mid_spi_config.mode = spi::MODE_1;
+
+	ad5047mid_spi_config.bit_order = spi::BitOrder::MsbFirst;
+    #[cfg(feature = "orbita3d")]
+	let ad5047mid_spi = SpiDeviceWithConfig::new(
+            &spi_bus,
+            Output::new(config.ad5047mid.cs, Level::High, Speed::Medium),
+            ad5047mid_spi_config,
+	);
+    #[cfg(feature = "orbita3d")]
+	let ad5047mid=AD5047Sensor::new(ad5047mid_spi);
+    #[cfg(feature = "orbita3d")]
+	let ad5047mid=SensorKind::DonutMid(ad5047mid);
+
+	let mut ad5047bot_spi_config = spi::Config::default();
+
+	ad5047bot_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
+
+	ad5047bot_spi_config.mode = spi::MODE_1;
+
+	ad5047bot_spi_config.bit_order = spi::BitOrder::MsbFirst;
+    #[cfg(feature = "orbita3d")]
+	let ad5047bot_spi = SpiDeviceWithConfig::new(
+            &spi_bus,
+            Output::new(config.ad5047bot.cs, Level::High, Speed::Medium),
+            ad5047bot_spi_config,
+	);
+    #[cfg(feature = "orbita3d")]
+	let ad5047bot=AD5047Sensor::new(ad5047bot_spi);
+    #[cfg(feature = "orbita3d")]
+	let ad5047bot=SensorKind::DonutBot(ad5047bot);
+///////////////
+
+
+
+
 
 
     let foc_spi = SpiDeviceWithConfig::new(
@@ -116,7 +190,11 @@ pub async fn control_loop(config: ActuatorConfig) {
     let foc = Foc::new(
         foc_spi,
         config.b.foc_enable,
+	#[cfg(feature = "orbita2d")]
         config::BrushlessMotor::ec45(),
+	#[cfg(feature = "orbita3d")]
+        config::BrushlessMotor::ecx22(),
+
     );
 
     let driver_spi = SpiDeviceWithConfig::new(
@@ -150,7 +228,10 @@ pub async fn control_loop(config: ActuatorConfig) {
     let foc = Foc::new(
         foc_spi,
         config.c.foc_enable,
+	#[cfg(feature = "orbita2d")]
         config::BrushlessMotor::ec45(),
+	#[cfg(feature = "orbita3d")]
+        config::BrushlessMotor::ecx22(),
     );
 
     let driver_spi = SpiDeviceWithConfig::new(
@@ -163,21 +244,25 @@ pub async fn control_loop(config: ActuatorConfig) {
     let ventouse_c = Ventouse::new(foc, driver);
     let ventouse_c = VentouseKind::C(ventouse_c);
 
+
+
     //ad5047 sensor BUS C
     let mut ad5047_spi_config = spi::Config::default();
     ad5047_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
     ad5047_spi_config.mode = spi::MODE_1;
-    ad5047_spi_config.bit_order = spi::BitOrder::MsbFirst;
 
+    ad5047_spi_config.bit_order = spi::BitOrder::MsbFirst;
+    #[cfg(feature = "orbita2d")]
     let ad5047_spi = SpiDeviceWithConfig::new(
         &spi_bus,
         Output::new(config.ad5047.cs, Level::High, Speed::Medium),
         ad5047_spi_config,
     );
-
+    #[cfg(feature = "orbita2d")]
     let ad5047=AD5047Sensor::new(ad5047_spi);
+    #[cfg(feature = "orbita2d")]
     let ad5047=SensorKind::Center(ad5047);
-
+    /////////
 
 
 
@@ -185,7 +270,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     #[cfg(feature = "orbita2d")]
     let mut actuator = Actuator::new([ventouse_b, ventouse_c], [aksim, ad5047]);
     #[cfg(feature = "orbita3d")]
-    let mut actuator = Actuator::new([ventouse_a, ventouse_b, ventouse_c]);
+    let mut actuator = Actuator::new([ventouse_a, ventouse_b, ventouse_c], [ad5047top, ad5047mid, ad5047bot]);
 
     actuator.init().await;
     block_for(Duration::from_secs(1));
@@ -212,6 +297,8 @@ pub async fn control_loop(config: ActuatorConfig) {
 	// block_for(Duration::from_micros(10));
 
 
+	/*
+
 	let sensors=actuator.get_axis_sensors();
 	match sensors {
 	    Ok(sensors) => {
@@ -234,35 +321,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 	SHARED_MEMORY.lock().await.set_current_torque(torque);
 	SHARED_MEMORY.lock().await.set_current_velocity(vel);
 	SHARED_MEMORY.lock().await.set_current_position(pos);
-
-
-
-	// info!("torque: {:?} vel: {:?} tpos: {:?}", torque, vel, post);
-
-	/*
-	let aksim_angle=aksim.read_angle().await;
-	match aksim_angle {
-	    Ok(angle) => {
-		info!("aksim angle: {}", angle);
-
-	    },
-	    Err(e) => {
-		info!("aksim error: {:?}", e);
-	    }
-	}
-	//block_for(Duration::from_micros(10));
-	let ad5047_angle=ad5047.read_angle().await;
-	match ad5047_angle {
-	    Ok(angle) => {
-		info!("aksim angle: {}", angle);
-
-	    },
-	    Err(e) => {
-		info!("ad5047 error: {:?}", e);
-	    }
-	}
 	 */
-
 
 	// block_for(Duration::from_micros(1000));
         Timer::after(Duration::from_millis(1)).await;

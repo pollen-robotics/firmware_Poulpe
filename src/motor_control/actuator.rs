@@ -194,8 +194,8 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
     /// Get the current PID gains of the motors
     fn get_pid_gains(&mut self) -> Result<[Pid; N]> {
         let mut res = [Pid {
-            p: 0.0,
-            i: 0.0,
+            p: 0,
+            i: 0,
             // d: 0.0,
         }; N];
         for (i, axis) in self.axes.iter_mut().enumerate() {
