@@ -12,6 +12,7 @@ use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_stm32::usart::Config as usart_config;
 use embassy_stm32::Config as stm32_config;
 use embassy_stm32::{bind_interrupts, peripherals, usart};
+use embassy_stm32::dma::NoDma;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer, block_for};
@@ -158,6 +159,7 @@ async fn main(spawner: Spawner) {
     // Prepare and spawn the DXL communication task
     let mut usart_config = usart_config::default();
     usart_config.baudrate = 1_000_000;
+    // usart_config.baudrate = 115_200;
     usart_config.stop_bits = embassy_stm32::usart::StopBits::STOP1;
     usart_config.data_bits = embassy_stm32::usart::DataBits::DataBits8;
     usart_config.parity = embassy_stm32::usart::Parity::ParityNone;
@@ -176,6 +178,7 @@ async fn main(spawner: Spawner) {
     // .unwrap();
     // unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
 
+
     // Poulpe B1
     let usart = config::DynamixelUart::new(
         p.USART1,
@@ -187,6 +190,8 @@ async fn main(spawner: Spawner) {
         usart_config,
     )
     .unwrap();
+
+
     unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
 
     // Prepare and spawn the main task

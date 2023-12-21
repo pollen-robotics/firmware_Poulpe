@@ -16,14 +16,14 @@ impl BrushlessMotor {
 	    motor_type_n_pole_pairs: 0x00030004,
 
 	    //TODO!
-	    adc_i0_scale_offset: 0x010081FA,
-	    adc_i1_scale_offset: 0x0100826C,
+	    adc_i0_scale_offset: 0x010081D3,
+	    adc_i1_scale_offset: 0x0100825B,
 
 
-            pid_flux_p_flux_i: 0x03200080,
-            pid_torque_p_torque_i: 0x03200000,
-            pid_velocity_p_velocity_i: 0x01000080,
-            pid_position_p_position_i: 0x00400010,
+            pid_flux_p_flux_i: 0x02000200,
+            pid_torque_p_torque_i: 0x02000200,
+            pid_velocity_p_velocity_i: 0x02000008,
+            pid_position_p_position_i: 0x02000000,
         }
     }
     #[allow(dead_code)]
@@ -42,9 +42,9 @@ impl BrushlessMotor {
         }
     }
     #[allow(dead_code)]
-    pub fn ec45() -> Self { //TODO
+    pub fn ec45() -> Self {
         Self {
-	    motor_type_n_pole_pairs: 0x00030008,
+	    motor_type_n_pole_pairs: 0x00030004,
 	    // adc_i0_scale_offset: 0x002A819E, //Ventouse?
 	    // adc_i1_scale_offset: 0x002A821C,
 	    adc_i0_scale_offset: 0x0100819E,

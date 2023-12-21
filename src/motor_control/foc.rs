@@ -429,11 +429,11 @@ where
         self.tmc4671_checked_write(
             Tmc4671Registers::ADC_I1_SCALE_OFFSET as u8,
             self.brushless_motor_config.adc_i1_scale_offset(),
-        )?; // gain = 43
+        )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::ADC_I0_SCALE_OFFSET as u8,
             self.brushless_motor_config.adc_i0_scale_offset(),
-        )?; // gain = 43
+        )?;
 
         // ABN encoder settings
         self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_MODE as u8, ABN_DECODER_MODE)?;
@@ -448,7 +448,7 @@ where
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8,
             PID_TORQUE_FLUX_LIMITS,
-        )?; // ~4000
+        )?;
 
         // PI settings
         self.tmc4671_checked_write(

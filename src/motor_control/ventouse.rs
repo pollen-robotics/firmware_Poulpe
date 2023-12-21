@@ -1,4 +1,4 @@
-use defmt::info;
+use defmt::{info, error};
 use embassy_stm32::{gpio::Pin, spi};
 use embassy_time::{Duration, Timer};
 
@@ -23,6 +23,7 @@ where
 {
     foc: Foc<'d, T, FocP, FocEnb>,
     driver: Driver<'d, T, DrvP>,
+    pub kind: char,
 }
 
 pub struct VentouseConfig<T, SCK, MOSI, MISO, FocCs, FocEnb, DrvCs>
@@ -44,6 +45,7 @@ where
     pub foc_enable: FocEnb,
 
     pub driver_cs: DrvCs,
+
 }
 
 impl<'d, T, FocP, FocEnb, DrvP> Ventouse<'d, T, FocP, FocEnb, DrvP>
@@ -54,25 +56,48 @@ where
     DrvP: Pin,
 {
     pub fn new(foc: Foc<'d, T, FocP, FocEnb>, driver: Driver<'d, T, DrvP>) -> Self {
-        Self { foc, driver }
+        Self { foc, driver, kind:'?' }
     }
 
-    pub async fn init(&mut self) -> Result<(), embassy_stm32::spi::Error> {
+    pub async fn init(&mut self, kind:char) -> Result<(), embassy_stm32::spi::Error> {
+	self.kind=kind;
 	self.foc.tmc4671_disable();
 	info!("Initializing register...");
-	self.driver.tmc6200_checked_write(0x00u8, 0x00000000u32)?;
-	self.driver.tmc6200_checked_write(0x0au8, 0x00000000u32)?; // DRVSRENGTH=0 for BOB
 
-        self.foc.tmc4671_init_registers().await?;
-        info!("TMC4671 init done");
+	match self.driver.tmc6200_checked_write(0x00u8, 0x00000000u32)
+	{
+	    Ok(_) => info!("[Ventouse{:?}] TMC6200 init done",self.kind),
+	    Err(e) => error!("[Ventouse{:?}] TMC6200 init failed: {:?}", self.kind,e),
+
+	}
+	match self.driver.tmc6200_checked_write(0x0au8, 0x00000000u32) // DRVSRENGTH=0 for BOB
+	{
+	    Ok(_) => info!("[Ventouse{:?}] TMC6200 init done",self.kind),
+	    Err(e) => error!("[Ventouse{:?}] TMC6200 init failed: {:?}", self.kind,e),
+
+	}
+
+        match self.foc.tmc4671_init_registers().await
+	{
+	    Ok(_) => info!("[Ventouse{:?}] TMC4671 init done",self.kind),
+	    Err(e) => error!("[Ventouse{:?}] TMC467100 init failed: {:?}", self.kind,e),
+
+	}
+
 
         // self.foc.ppr = Some(self.foc.tmc4671_get_encoder_ppr()? as f32);
 	self.foc.ppr=Some(524288.0/(2.0*3.141592)); //It seems that 524288=360° motor (0x80000)
 
 
 
-        self.align_motor().await?;
-        info!("Motor align done");
+        match self.align_motor().await
+	{
+	    Ok(_) => info!("[Ventouse{:?}] align done",self.kind),
+	    Err(e) => error!("[Ventouse{:?}] align failed: {:?}", self.kind,e),
+
+	}
+
+
         self.foc.tmc4671_set_mode(MotionMode::Position)?;
         info!("Motor set to position mode done");
 
@@ -124,12 +149,18 @@ where
 
         // Rotate right
         info!("Rotate right...");
+	#[cfg(feature = "orbita2d")]
         self.foc.tmc4671_set_target_velocity(50)?;
+	#[cfg(feature = "orbita3d")]
+        self.foc.tmc4671_set_target_velocity(500)?;
         let _ = Timer::after(Duration::from_millis(1000)).await;
 
         // Rotate left
         info!("Rotate left...");
+	#[cfg(feature = "orbita2d")]
         self.foc.tmc4671_set_target_velocity(-50)?;
+	#[cfg(feature = "orbita3d")]
+        self.foc.tmc4671_set_target_velocity(-500)?;
         let _ = Timer::after(Duration::from_millis(1000)).await;
 
         // Stop
@@ -317,9 +348,9 @@ pub enum VentouseKind<'d> {
 impl<'d> VentouseKind<'d> {
     pub async fn init(&mut self) -> Result<(), embassy_stm32::spi::Error> {
         match self {
-            VentouseKind::A(va) => va.init().await,
-            VentouseKind::B(vb) => vb.init().await,
-            VentouseKind::C(vc) => vc.init().await,
+            VentouseKind::A(va) => va.init('A').await,
+            VentouseKind::B(vb) => vb.init('B').await,
+            VentouseKind::C(vc) => vc.init('C').await,
         }
     }
 }

@@ -2,6 +2,7 @@
 
 use embassy_stm32::peripherals as p;
 use embassy_stm32::usart::Uart;
+use embassy_stm32::dma::NoDma;
 
 #[cfg(feature = "orbita2d")]
 pub const N_AXIS: usize = 2;
@@ -11,6 +12,7 @@ pub const N_AXIS: usize = 3;
 pub static DXL_ID: u8 = 42;
 
 pub type DynamixelUart = Uart<'static, p::USART1, p::DMA1_CH0, p::DMA1_CH1>;
+
 
 use crate::motor_control::{ventouse::{Ventouse, VentouseConfig}, sensors::SensorConfig, sensors::{AksimSensor, AD5047Sensor}};
 
