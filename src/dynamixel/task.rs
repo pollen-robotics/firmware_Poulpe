@@ -1,5 +1,6 @@
 use defmt::{debug, error, trace};
 use embassy_stm32::gpio::AnyPin;
+use embassy_time::{Timer, Duration};
 
 use crate::{
     config,
@@ -121,11 +122,13 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                 }
                             }
                             DynamixelRegister::TargetPosition => {
+
                                 let target: [f32; config::N_AXIS] =
                                     conversion::bytes_to_float(write_data_packet.data);
                                 {
                                     SHARED_MEMORY.lock().await.set_target_position(target);
                                 }
+
                             }
                             _ => {}
                         }
@@ -142,5 +145,8 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                 error!("Error: {:?}", e);
             }
         }
+
+        // Timer::after(Duration::from_micros(1)).await;
+
     }
 }

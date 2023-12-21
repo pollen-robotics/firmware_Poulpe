@@ -1,4 +1,4 @@
-use defmt::Format;
+use defmt::{Format, trace};
 
 use super::{crc, ParsingError};
 
@@ -15,6 +15,8 @@ impl<'d> InstructionPacketKind<'d> {
         if bytes.len() < 6 {
             return Err(ParsingError::InvalidPacket);
         }
+
+/*
         if bytes[0] != 0xFF || bytes[1] != 0xFF {
             return Err(ParsingError::InvalidPacket);
         }
@@ -35,6 +37,35 @@ impl<'d> InstructionPacketKind<'d> {
 
         let received_crc = *bytes.last().unwrap();
         let calculated_crc = crc(&bytes[2..bytes.len() - 1]);
+*/
+
+	//At least it is easy to find a complete packet inside a buffer
+	let mut idx:usize = 0;
+
+	while  !(bytes[idx] == 0xFF && bytes[idx+1] == 0xFF)
+	{
+	    idx+=1;
+	    if bytes.len() - idx < 6 {
+		return Err(ParsingError::InvalidPacket);
+	    }
+
+	}
+
+        let id = bytes[idx+2];
+        if id != receiver_id {
+            return Err(ParsingError::IgnorePacket(receiver_id, id));
+        }
+
+        let length = bytes[idx+3];
+        if length as usize != bytes.len()-idx - 4 {
+            return Err(ParsingError::InvalidPacket);
+        }
+
+        let instruction = bytes[idx+4];
+        let params = &bytes[idx+5..idx+5+(length as usize) -2];
+	let received_crc = bytes[idx+5+(length as usize) -2];
+        let calculated_crc = crc(&bytes[idx+2..idx+5+(length as usize) - 2]);
+
         if received_crc != calculated_crc {
             return Err(ParsingError::InvalidChecksum);
         }

@@ -273,7 +273,12 @@ pub async fn control_loop(config: ActuatorConfig) {
     let mut actuator = Actuator::new([ventouse_a, ventouse_b, ventouse_c], [ad5047top, ad5047mid, ad5047bot]);
 
     actuator.init().await;
+
     block_for(Duration::from_secs(1));
+    #[cfg(feature = "orbita2d")]
+    actuator.set_torque([false,false]).unwrap();
+    #[cfg(feature = "orbita3d")]
+    actuator.set_torque([false,false,false]).unwrap();
     info!("init done");
     // Init SharedMemory with real values before actually running the control loop
     SHARED_MEMORY.lock().await.init(&mut actuator);
@@ -297,7 +302,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 	// block_for(Duration::from_micros(10));
 
 
-	/*
+
 
 	let sensors=actuator.get_axis_sensors();
 	match sensors {
@@ -307,13 +312,13 @@ pub async fn control_loop(config: ActuatorConfig) {
 	    },
 	    Err(_e) => {
 		// SHARED_MEMORY.lock().await.set_axis_sensor([999999.0, 999999.0]);
-		// error!("sensors error");
+		error!("sensors error");
 	    }
 	}
 
 
 
-
+	/*
 	let torque=actuator.get_current_torque().unwrap();
 	let vel=actuator.get_current_velocity().unwrap();
 	let pos=actuator.get_current_position().unwrap();

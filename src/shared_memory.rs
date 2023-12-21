@@ -124,16 +124,16 @@ impl<const N: usize> SharedMemory<N> {
 
     pub fn init(&self, actuator: &mut Actuator<N>) {
         *self.inner.borrow_mut() = Memory {
-            torque_on: actuator.is_torque_on().unwrap(),
-	    control_mode: actuator.get_control_mode().unwrap(),
+            torque_on: actuator.is_torque_on().unwrap_or([false; N]),
+	    control_mode: actuator.get_control_mode().unwrap_or([MotionMode::Stopped; N]),
 
-            current_position: actuator.get_current_position().unwrap(),
-            current_velocity: actuator.get_current_velocity().unwrap(),
-            current_torque: actuator.get_current_torque().unwrap(),
+            current_position: actuator.get_current_position().unwrap_or([f32::NAN; N]),
+            current_velocity: actuator.get_current_velocity().unwrap_or([f32::NAN; N]),
+            current_torque: actuator.get_current_torque().unwrap_or([f32::NAN; N]),
 
-            target_position: actuator.get_target_position().unwrap(),
-            target_velocity: actuator.get_target_velocity().unwrap(),
-            target_torque: actuator.get_target_torque().unwrap(),
+            target_position: actuator.get_target_position().unwrap_or([f32::NAN; N]),
+            target_velocity: actuator.get_target_velocity().unwrap_or([f32::NAN; N]),
+            target_torque: actuator.get_target_torque().unwrap_or([f32::NAN; N]),
 
 	    axis_sensor: actuator.get_axis_sensors().unwrap_or([f32::NAN; N]),
 
