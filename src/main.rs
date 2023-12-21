@@ -12,16 +12,18 @@ use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_stm32::usart::Config as usart_config;
 use embassy_stm32::Config as stm32_config;
 use embassy_stm32::{bind_interrupts, peripherals, usart};
+use embassy_stm32::dma::NoDma;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Timer, block_for};
 
 mod config;
 mod dynamixel;
 mod motor_control;
 mod shared_memory;
 
-use crate::motor_control::{Actuator, VentouseKind};
+use crate::config::{ActuatorConfig, AksimConfig, AD5047Config, AD5047ConfigTop, AD5047ConfigMid, AD5047ConfigBot};
+use crate::motor_control::ventouse::VentouseConfig;
 use crate::shared_memory::SharedMemory;
 
 use {defmt_rtt as _, panic_probe as _};
@@ -50,7 +52,7 @@ pub fn exit() -> ! {
 async fn main(spawner: Spawner) {
     info!("Hello World!");
 
-    //440MHz (without HSE)
+    // 440MHz (without HSE)
     let mut stm32_conf = stm32_config::default();
     {
         use embassy_stm32::rcc::*;
@@ -77,108 +79,119 @@ async fn main(spawner: Spawner) {
 
     let p = embassy_stm32::init(stm32_conf);
 
-    // Setup the actuator with the configured ventouses
-    #[cfg(feature = "orbita2d")]
-    let mut actuator = Actuator::new([
-        VentouseKind::B(config::VentouseB::new(
-            motor_control::VentouseConfig {
-                cs_foc: p.PE3,
-                cs_driver: p.PC15,
-                peri: p.SPI4,
-                sck: p.PE12,
-                mosi: p.PE6,
-                miso: p.PE5,
-                foc_enable: p.PE0,
-                foc_status: p.PC13,
-                driver_fault: p.PC14,
-            },
-            config::BrushlessMotor::ecx22(),
-        )),
-        VentouseKind::C(config::VentouseC::new(
-            motor_control::VentouseConfig {
-                cs_foc: p.PD7,
-                cs_driver: p.PD6,
-                peri: p.SPI6,
-                sck: p.PB3,
-                mosi: p.PB5,
-                miso: p.PB4,
-                foc_enable: p.PD5,
-                foc_status: p.PD4,
-                driver_fault: p.PD3,
-            },
-            config::BrushlessMotor::ecx22(),
-        )),
-    ]);
-    #[cfg(feature = "orbita3d")]
-    let mut actuator = Actuator::new([
-        VentouseKind::A(config::VentouseA::new(
-            motor_control::VentouseConfig {
-                cs_foc: p.PA3,
-                cs_driver: p.PA2,
-                peri: p.SPI1,
-                sck: p.PA5,
-                mosi: p.PA7,
-                miso: p.PA6,
-                foc_enable: p.PC0,
-                foc_status: p.PA0,
-                driver_fault: p.PA1,
-            },
-            config::BrushlessMotor::ecx22(),
-        )),
-        VentouseKind::B(config::VentouseB::new(
-            motor_control::VentouseConfig {
-                cs_foc: p.PE3,
-                cs_driver: p.PC15,
-                peri: p.SPI4,
-                sck: p.PE12,
-                mosi: p.PE6,
-                miso: p.PE5,
-                foc_enable: p.PE0,
-                foc_status: p.PC13,
-                driver_fault: p.PC14,
-            },
-            config::BrushlessMotor::ecx22(),
-        )),
-        VentouseKind::C(config::VentouseC::new(
-            motor_control::VentouseConfig {
-                cs_foc: p.PD7,
-                cs_driver: p.PD6,
-                peri: p.SPI6,
-                sck: p.PB3,
-                mosi: p.PB5,
-                miso: p.PB4,
-                foc_enable: p.PD5,
-                foc_status: p.PD4,
-                driver_fault: p.PD3,
-            },
-            config::BrushlessMotor::ecx22(),
-        )),
-    ]);
-
-    // Init SharedMemory with real values before actually running the control loop
-    SHARED_MEMORY.lock().await.init(&mut actuator);
-
     // Spawn the control loop
-    unwrap!(spawner.spawn(motor_control::task::control_loop(actuator)));
+    #[cfg(feature = "orbita3d")]
+    let actuator_config = ActuatorConfig {
+
+        a: VentouseConfig {
+            peri: p.SPI1,
+            sck: p.PA5,
+            mosi: p.PA7,
+            miso: p.PA6,
+            foc_cs: p.PA3,
+            foc_enable: p.PC0,
+            driver_cs: p.PA2,
+        },
+        b: VentouseConfig {
+            peri: p.SPI4,
+            sck: p.PE12,
+            mosi: p.PE6,
+            miso: p.PE5,
+            foc_cs: p.PE3,
+            foc_enable: p.PE0,
+            driver_cs: p.PC15,
+        },
+        c: VentouseConfig {
+            peri: p.SPI6,
+            sck: p.PB3,
+            mosi: p.PB5,
+            miso: p.PB4,
+            foc_cs: p.PD7,
+            foc_enable: p.PD5,
+            driver_cs: p.PD6,
+        },
+
+        ad5047top: AD5047ConfigTop {
+            cs: p.PA4,
+        },
+        ad5047mid: AD5047ConfigMid {
+            cs: p.PE4,
+        },
+        ad5047bot: AD5047ConfigBot {
+            cs: p.PA15,
+        },
+
+    };
+    #[cfg(feature = "orbita2d")]
+    let actuator_config = ActuatorConfig {
+
+        b: VentouseConfig {
+            peri: p.SPI4,
+            sck: p.PE12,
+            mosi: p.PE6,
+            miso: p.PE5,
+            foc_cs: p.PE3,
+            foc_enable: p.PE0,
+            driver_cs: p.PC15,
+        },
+        c: VentouseConfig {
+            peri: p.SPI6,
+            sck: p.PB3,
+            mosi: p.PB5,
+            miso: p.PB4,
+            foc_cs: p.PD7,
+            foc_enable: p.PD5,
+            driver_cs: p.PD6,
+        },
+
+        aksim: AksimConfig {
+            cs: p.PE4,
+        },
+        ad5047: AD5047Config {
+            cs: p.PA15,
+        },
+
+    };
+
+
+    unwrap!(spawner.spawn(motor_control::task::control_loop(actuator_config)));
 
     // Prepare and spawn the DXL communication task
     let mut usart_config = usart_config::default();
     usart_config.baudrate = 1_000_000;
+    // usart_config.baudrate = 115_200;
     usart_config.stop_bits = embassy_stm32::usart::StopBits::STOP1;
     usart_config.data_bits = embassy_stm32::usart::DataBits::DataBits8;
     usart_config.parity = embassy_stm32::usart::Parity::ParityNone;
     usart_config.detect_previous_overrun = false;
 
+    //Poule A1
+    // let usart = config::DynamixelUart::new(
+    //     p.USART1,
+    //     p.PB15, //RX
+    //     p.PB14, //TX
+    //     Irqs,
+    //     p.DMA1_CH0,
+    //     p.DMA1_CH1,
+    //     usart_config,
+    // )
+    // .unwrap();
+    // unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
+
+
+    // Poulpe B1
     let usart = config::DynamixelUart::new(
         p.USART1,
-        p.PB15,
-        p.PB14,
+        p.PB15, //RX
+        p.PA9, //TX
         Irqs,
         p.DMA1_CH0,
         p.DMA1_CH1,
         usart_config,
     )
     .unwrap();
+
+
     unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
 
     // Prepare and spawn the main task

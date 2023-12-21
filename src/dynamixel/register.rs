@@ -1,29 +1,53 @@
 pub enum DynamixelRegister {
-    TorqueEnable,
-    CurrentPosition,
-    // CurrentVelocity,
-    // CurrentTorque,
-    TargetPosition,
-    // VelocityLimit,
-    // TorqueLimit,
+    ModelNumber,
+    FirmwareVersion,
+    Id,
+    VelocityLimit,
+    TorqueLimit,
+    // FluxPID,
+    TorquePID,
+    VelocityPID,
+    PositionPID,
 
-    // PIDGains,
+    TorqueEnable,
+
+    CurrentPosition,
+    CurrentVelocity,
+    CurrentTorque,
+    TargetTorque,
+    TargetVelocity,
+    TargetPosition,
+
+    AxisSensor
 }
 
 impl DynamixelRegister {
     pub fn with_address(address: u8) -> Option<Self> {
         match address {
+	    0 => Some(DynamixelRegister::ModelNumber),
+	    6 => Some(DynamixelRegister::FirmwareVersion),
+	    7 => Some(DynamixelRegister::Id),
+
+
+
+
+	    10 => Some(DynamixelRegister::VelocityLimit),
+	    14 => Some(DynamixelRegister::TorqueLimit),
+
+
+
+
             40 => Some(DynamixelRegister::TorqueEnable),
             50 => Some(DynamixelRegister::CurrentPosition),
-            // 51 => Some(DynamixelRegister::CurrentVelocity),
-            // 52 => Some(DynamixelRegister::CurrentTorque),
+            51 => Some(DynamixelRegister::CurrentVelocity),
+            52 => Some(DynamixelRegister::CurrentTorque),
             60 => Some(DynamixelRegister::TargetPosition),
 
-            // 70 => Some(DynamixelRegister::VelocityLimit),
-            // 71 => Some(DynamixelRegister::TorqueLimit),
+	    90 => Some(DynamixelRegister::AxisSensor),
 
-            // 80 => Some(DynamixelRegister::PIDGains),
-            _ => None,
+	    _ => None
+
+
         }
     }
 }

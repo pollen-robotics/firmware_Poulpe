@@ -1,4 +1,4 @@
-use defmt::{debug, Format};
+use defmt::{debug, Format, trace};
 use embassy_stm32::{
     gpio::{AnyPin, Level, Output, Speed},
     usart::{BasicInstance, Uart},
@@ -11,7 +11,12 @@ const MAX_BUFFER_LENGTH: usize = 256;
 //Seems ok at 115200 with LOG=Info
 const UART_SLEEP_US_DIRLOW: u64 = 200;
 const UART_SLEEP_US_DIRHIGH: u64 = 300;
-const MAX_READ_BUFFER_LENGTH: usize = 16;
+
+
+
+
+
+const MAX_READ_BUFFER_LENGTH: usize = 32;
 
 pub struct DynamixelUsartIO<'d, T, TxDma, RxDma>
 where
@@ -59,6 +64,7 @@ where
                 Err(e) => return Err(CommunicationError::UartError(e)),
             };
 
+
             total += n;
 
             assert!(total <= MAX_BUFFER_LENGTH - MAX_READ_BUFFER_LENGTH);
@@ -67,12 +73,38 @@ where
                 continue;
             }
 
-            if n < MAX_READ_BUFFER_LENGTH {
-                break;
+            if n < MAX_READ_BUFFER_LENGTH { //FIXME continue until full packet... => parse packet
+              break;
+
+		/*
+		if total>=4{
+		    if self.read_buffer[0] == 0xff && self.read_buffer[1] == 0xff && self.read_buffer[2]== self.id
+		    {
+			let mut length = self.read_buffer[3]as usize;
+			length+=4;
+			if total>=length{ //FIXME might have more than one packet in the buffer...
+			    total=length; //cut here
+			    break;
+			}
+			else {
+			    continue;
+			}
+		    }
+		    else{
+			break;
+		    }
+
+		}
+		else {
+		    continue;
+		}
+*/
+
             }
         }
 
         debug!("Read {} bytes", total);
+	trace!("Read {:#x}", &self.read_buffer[..total]);
 
         InstructionPacketKind::parse(&self.read_buffer[..total], self.id)
             .map_err(CommunicationError::DynamixelParsingError)

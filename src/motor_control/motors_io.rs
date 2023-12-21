@@ -1,17 +1,21 @@
 use embassy_stm32::spi;
 
+use super::foc::MotionMode;
+
 pub type Result<T> = core::result::Result<T, IOError>;
 
 #[derive(Debug)]
 pub enum IOError {
     SpiError(spi::Error),
+    InvalidData,
+
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Pid {
-    pub p: f32,
-    pub i: f32,
-    pub d: f32,
+    pub p: i16,
+    pub i: i16,
+
 }
 
 pub trait RawMotorsIO<const N: usize> {
@@ -19,6 +23,12 @@ pub trait RawMotorsIO<const N: usize> {
     fn is_torque_on(&mut self) -> Result<[bool; N]>;
     /// Enable/Disable the torque
     fn set_torque(&mut self, on: [bool; N]) -> Result<()>;
+
+    /// Get the control mode
+    fn get_control_mode(&mut self) -> Result<[MotionMode; N]>;
+    /// Set the control mode
+    fn set_control_mode(&mut self, mode:MotionMode) -> Result<()>;
+
 
     /// Get the current position of the motors (in radians)
     fn get_current_position(&mut self) -> Result<[f32; N]>;
@@ -31,6 +41,20 @@ pub trait RawMotorsIO<const N: usize> {
     fn get_target_position(&mut self) -> Result<[f32; N]>;
     /// Set the current target position of the motors (in radians)
     fn set_target_position(&mut self, position: [f32; N]) -> Result<()>;
+
+
+
+    /// Get the current target velocity of the motors (in rpm)
+    fn get_target_velocity(&mut self) -> Result<[f32; N]>;
+    /// Set the current target velocity of the motors (in rpm)
+    fn set_target_velocity(&mut self, velocity: [f32; N]) -> Result<()>;
+
+
+    /// Get the current target torque of the motors (in ?? mA)
+    fn get_target_torque(&mut self) -> Result<[f32; N]>;
+    /// Set the current target torque of the motors (in ?? mA)
+    fn set_target_torque(&mut self, torque: [f32; N]) -> Result<()>;
+
 
     /// Get the velocity limit of the motors (in radians per second)
     fn get_velocity_limit(&mut self) -> Result<[f32; N]>;
