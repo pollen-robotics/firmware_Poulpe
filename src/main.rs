@@ -9,13 +9,15 @@
 use defmt::{info, unwrap};
 use embassy_executor::Spawner;
 use embassy_stm32::gpio::{Level, Output, Speed};
+use embassy_stm32::i2c::{Error, I2c};
 use embassy_stm32::usart::Config as usart_config;
 use embassy_stm32::Config as stm32_config;
-use embassy_stm32::{bind_interrupts, peripherals, usart};
+use embassy_stm32::{bind_interrupts, peripherals, i2c, usart};
 use embassy_stm32::dma::NoDma;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer, block_for};
+use embassy_stm32::time::Hertz;
 
 mod config;
 mod dynamixel;
@@ -28,9 +30,16 @@ use crate::shared_memory::SharedMemory;
 
 use {defmt_rtt as _, panic_probe as _};
 
+const ADDRESS_A: u8 = 0x38;
+const ADDRESS_B: u8 = 0x39;
+
 bind_interrupts!(struct Irqs {
     USART1 => usart::InterruptHandler<peripherals::USART1>;
 });
+bind_interrupts!(struct IrqsI2c {
+    I2C1_EV => i2c::InterruptHandler<peripherals::I2C1>;
+});
+
 
 // TODO: Use a NoopMutex instead of a real mutex?
 static SHARED_MEMORY: Mutex<ThreadModeRawMutex, SharedMemory<{ config::N_AXIS }>> =
@@ -80,8 +89,44 @@ async fn main(spawner: Spawner) {
 
     let p = embassy_stm32::init(stm32_conf);
 
+    let mut i2c = I2c::new(
+        p.I2C1,
+        p.PB6,
+        p.PB7,
+        IrqsI2c,
+        NoDma,//p.DMA1_CH4,
+        NoDma,//p.DMA1_CH5,
+        Hertz(100_000),
+        Default::default(),
+    );
+
+    let mut data = [0u8; 1];
+
+    loop {
+    match i2c.blocking_read(ADDRESS_A, &mut data) {
+        Ok(()) => info!("Inputs_A: {:#010b}", data[0]),
+        Err(Error::Timeout) => info!("Operation timed out"),
+        Err(e) => info!("I2c Error: {:?}", e),
+    }
+
+    match i2c.blocking_read(ADDRESS_B, &mut data) {
+        Ok(()) => info!("Inputs_B: {:#010b}", data[0]),
+        Err(Error::Timeout) => info!("Operation timed out"),
+        Err(e) => info!("I2c Error: {:?}", e),
+    }
+
+/*    match timeout_i2c.blocking_write_read(ADDRESS, &[IO_REG], &mut data) {
+        Ok(()) => info!("Inputs: {}", data[0]),
+        Err(Error::Timeout) => error!("Operation timed out"),
+        Err(e) => error!("I2c Error: {:?}", e),
+    }*/
+
+    Timer::after(Duration::from_millis(50)).await;
+
+    }
+
     // Spawn the control loop
-    #[cfg(feature = "orbita3d")]
+    /*#[cfg(feature = "orbita3d")]
     let actuator_config = ActuatorConfig {
 
         a: VentouseConfig {
@@ -208,5 +253,5 @@ async fn main(spawner: Spawner) {
         Timer::after(Duration::from_millis(500)).await;
         led_hello.set_low();
         Timer::after(Duration::from_millis(500)).await;
-    }
+    }*/
 }
