@@ -262,12 +262,20 @@ where
 
 
     pub fn tmc4671_get_mode(&mut self) -> Result<MotionMode, embassy_stm32::spi::Error> {
-        if let Ok(read) = self.tmc4671_read_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8)
-        {
-            Ok(MotionMode::from_u8((read & 0x000000FFu32) as u8).unwrap())
-        } else {
-            Err(embassy_stm32::spi::Error::Framing)
-        }
+
+	match self.tmc4671_read_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8)
+	{
+	    Ok(read) =>
+		{
+		    Ok(MotionMode::from_u8((read & 0x000000FFu32) as u8).unwrap_or(MotionMode::Stopped )) //Hu??
+		}
+	    Err(_e) => {
+		// error!("!!! Error SPI {:?}!!!", e);
+		Err(embassy_stm32::spi::Error::Framing)
+	    }
+
+	}
+
     }
 
     pub fn tmc4671_get_torque_actual(&mut self) -> Result<i16, embassy_stm32::spi::Error> {

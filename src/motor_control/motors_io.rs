@@ -1,10 +1,11 @@
+use defmt::Format;
 use embassy_stm32::spi;
 
 use super::foc::MotionMode;
 
 pub type Result<T> = core::result::Result<T, IOError>;
 
-#[derive(Debug)]
+#[derive(Debug, Format)]
 pub enum IOError {
     SpiError(spi::Error),
     InvalidData,

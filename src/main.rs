@@ -50,7 +50,12 @@ pub fn exit() -> ! {
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    info!("Hello World!");
+    info!("==== Pollen Robotics ====");
+    #[cfg(feature = "orbita3d")]
+    info!("Poulpe: Orbita 3D");
+    #[cfg(feature = "orbita2d")]
+    info!("Poulpe: Orbita 2D");
+
 
     // 440MHz (without HSE)
     let mut stm32_conf = stm32_config::default();
@@ -58,7 +63,7 @@ async fn main(spawner: Spawner) {
         use embassy_stm32::rcc::*;
         stm32_conf.rcc.hsi = Some(HSIPrescaler::DIV1); //HSIState = RCC_HSI_DIV1
         stm32_conf.rcc.csi = true; //CSIState = RCC_CSI_ON;
-                                   // stm32_conf.rcc.hse = Som(Hse{Hertz::mhz(48), HseMode::Oscillator}); //TODO
+                                   // stm32_conf.rcc.hse = Som(Hse{Hertz::mhz(48), HseMode::Oscillator}); //TODO hse external clock might be more accurate
         stm32_conf.rcc.pll1 = Some(Pll {
             // source: PllSource::HSI
             source: PllSource::CSI,   //PLLSource = RCC_PLLSOURCE_CSI
@@ -167,7 +172,7 @@ async fn main(spawner: Spawner) {
     usart_config.parity = embassy_stm32::usart::Parity::ParityNone;
     usart_config.detect_previous_overrun = false;
 
-    //Poule A1
+    //Pouple A1
     // let usart = config::DynamixelUart::new(
     //     p.USART1,
     //     p.PB15, //RX
@@ -199,10 +204,19 @@ async fn main(spawner: Spawner) {
     // Prepare and spawn the main task
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
     let mut led_error = Output::new(p.PC8, Level::High, Speed::Low);
-    led_error.set_low();
+    led_error.set_low(); //TODO
     led_hello.set_low();
 
     loop {
+
+	let errorled= {SHARED_MEMORY.lock().await.get_error_led()};
+
+	if errorled {
+	    led_error.set_high();
+	} else {
+	    led_error.set_low();
+	}
+
         // Robots should dance, LED should blink.
         led_hello.set_high();
         Timer::after(Duration::from_millis(500)).await;

@@ -20,6 +20,7 @@ pub struct Memory<const N: usize> {
 
     axis_sensor: [f32; N],
 
+    error_led: bool,
 
 }
 
@@ -98,6 +99,13 @@ impl<const N: usize> SharedMemory<N> {
 	self.inner.borrow_mut().axis_sensor=sensor;
     }
 
+    pub fn set_error_led(&self, error: bool) {
+	self.inner.borrow_mut().error_led=error;
+    }
+
+    pub fn get_error_led(&self) -> bool {
+	self.inner.borrow().error_led
+    }
 
 
 
@@ -117,6 +125,7 @@ impl<const N: usize> SharedMemory<N> {
                 target_velocity: [0.0; N],
                 target_torque: [0.0; N],
 		axis_sensor: [0.0; N],
+		error_led: false,
 
             }),
         }
@@ -137,6 +146,7 @@ impl<const N: usize> SharedMemory<N> {
 
 	    axis_sensor: actuator.get_axis_sensors().unwrap_or([f32::NAN; N]),
 
+	    error_led: false,
 
         };
     }

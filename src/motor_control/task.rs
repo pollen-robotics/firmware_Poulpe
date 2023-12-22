@@ -1,6 +1,6 @@
 use core::cell::RefCell;
 
-use defmt::{info, error};
+use defmt::{info, error, debug};
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_stm32::{
     dma::NoDma,
@@ -19,6 +19,11 @@ use super::{
     ventouse::{Ventouse, VentouseKind},
     Actuator, Driver, Foc, RawMotorsIO, sensors::AksimSensor,
 };
+
+pub async fn set_error_led() {
+    SHARED_MEMORY.lock().await.set_error_led(true);
+}
+
 
 #[embassy_executor::task]
 pub async fn control_loop(config: ActuatorConfig) {
@@ -271,8 +276,59 @@ pub async fn control_loop(config: ActuatorConfig) {
     let mut actuator = Actuator::new([ventouse_b, ventouse_c], [aksim, ad5047]);
     #[cfg(feature = "orbita3d")]
     let mut actuator = Actuator::new([ventouse_a, ventouse_b, ventouse_c], [ad5047top, ad5047mid, ad5047bot]);
+    let mut init_error=false;
+    let res_init=actuator.init().await;
+    match res_init {
+	Ok(_v) => {
+	    info!("Registers init ok");
+	},
+	Err(e) => {
+	    init_error=true;
+	    error!("init error: {:?}", e);
+	}
+    }
 
-    actuator.init().await;
+    let init_sensors=actuator.get_axis_sensors().unwrap();
+    let res = actuator.check_motors_1().await;
+    match res {
+	Ok(_v) => {
+
+	},
+	Err(e) => {
+	    init_error=true;
+	    error!("Motor check error: {:?}", e);
+	}
+    }
+
+
+
+    let moved_sensors = actuator.get_axis_sensors().unwrap();
+    let res =actuator.check_motors_2().await;
+    match res {
+	Ok(_v) => {
+
+	},
+	Err(e) => {
+	    init_error=true;
+	    error!("Motor check error: {:?}", e);
+	}
+    }
+
+    let mut diff=[0.0;config::N_AXIS];
+    for (i, s) in moved_sensors.iter().enumerate() {
+        diff[i] = *s - init_sensors[i];
+	//Orbita3D
+	if (diff[i]<0.0 && diff[i]>-0.1) || (diff[i]>0.0) {
+	    error!("Axis sensor {:?} moved too little: {:?} Check sensor connection??", i, diff[i]);
+	    init_error=true;
+
+	}
+    }
+    debug!("init sensors: {:?}", init_sensors);
+    debug!("moved sensors: {:?}", moved_sensors);
+    debug!("diff sensors: {:?}", diff);
+
+
 
     block_for(Duration::from_secs(1));
     #[cfg(feature = "orbita2d")]
@@ -282,23 +338,42 @@ pub async fn control_loop(config: ActuatorConfig) {
     info!("init done");
     // Init SharedMemory with real values before actually running the control loop
     SHARED_MEMORY.lock().await.init(&mut actuator);
-
+    if init_error {
+	SHARED_MEMORY.lock().await.set_error_led(true);
+    }
 
     // actuator.set_torque([false,false]).unwrap();
-
+    let mut error_led=false;
+    let mut prev_error_led=false;
     loop {
 
-        let pos = actuator.get_current_position().unwrap();
+	//TODO match and set error led for every call
+        let pos = actuator.get_current_position().unwrap_or_else(|e|
+	    {
+		error!("Error reading position: {:?}", e);
+		error_led=true;
+		[f32::NAN; config::N_AXIS]
+	    });
         {
             SHARED_MEMORY.lock().await.set_current_position(pos)
         }
 
 
         let torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
-        actuator.set_torque(torque_on).unwrap();
-	// block_for(Duration::from_micros(10));
+        actuator.set_torque(torque_on).unwrap_or_else(|e|
+						      {
+							  error!("Error setting torque: {:?}", e);
+							  error_led=true;
+						      }
+	);
+	// block_for(Duration::from_maicros(10));
         let target = { SHARED_MEMORY.lock().await.get_target_position() };
-        actuator.set_target_position(target).unwrap();
+        actuator.set_target_position(target).unwrap_or_else(|e|
+						      {
+							  error!("Error setting target pos: {:?}", e);
+							  error_led=true;
+						      }
+	);
 	// block_for(Duration::from_micros(10));
 
 
@@ -312,7 +387,8 @@ pub async fn control_loop(config: ActuatorConfig) {
 	    },
 	    Err(_e) => {
 		// SHARED_MEMORY.lock().await.set_axis_sensor([999999.0, 999999.0]);
-		error!("sensors error");
+		error_led=true;
+		error!("Axis sensors error");
 	    }
 	}
 
@@ -327,6 +403,13 @@ pub async fn control_loop(config: ActuatorConfig) {
 	SHARED_MEMORY.lock().await.set_current_velocity(vel);
 	SHARED_MEMORY.lock().await.set_current_position(pos);
 	 */
+
+
+	if error_led!=prev_error_led {
+	    SHARED_MEMORY.lock().await.set_error_led(error_led);
+	    prev_error_led=error_led;
+	}
+
 
 	// block_for(Duration::from_micros(1000));
         Timer::after(Duration::from_millis(1)).await;

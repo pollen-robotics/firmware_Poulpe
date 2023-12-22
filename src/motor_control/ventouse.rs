@@ -1,4 +1,4 @@
-use defmt::{info, error};
+use defmt::{info, error, debug};
 use embassy_stm32::{gpio::Pin, spi};
 use embassy_time::{Duration, Timer};
 
@@ -62,25 +62,25 @@ where
     pub async fn init(&mut self, kind:char) -> Result<(), embassy_stm32::spi::Error> {
 	self.kind=kind;
 	self.foc.tmc4671_disable();
-	info!("Initializing register...");
+	info!("[Ventouse{:?}] Initializing register...", self.kind);
 
 	match self.driver.tmc6200_checked_write(0x00u8, 0x00000000u32)
 	{
 	    Ok(_) => info!("[Ventouse{:?}] TMC6200 init done",self.kind),
-	    Err(e) => error!("[Ventouse{:?}] TMC6200 init failed: {:?}", self.kind,e),
+	    Err(e) => error!("[Ventouse{:?}] TMC6200 init failed: {:?} => check SPI and power connection", self.kind,e),
 
 	}
 	match self.driver.tmc6200_checked_write(0x0au8, 0x00000000u32) // DRVSRENGTH=0 for BOB
 	{
 	    Ok(_) => info!("[Ventouse{:?}] TMC6200 init done",self.kind),
-	    Err(e) => error!("[Ventouse{:?}] TMC6200 init failed: {:?}", self.kind,e),
+	    Err(e) => error!("[Ventouse{:?}] TMC6200 init failed: {:?}  => check SPI and power connection", self.kind,e),
 
 	}
 
         match self.foc.tmc4671_init_registers().await
 	{
 	    Ok(_) => info!("[Ventouse{:?}] TMC4671 init done",self.kind),
-	    Err(e) => error!("[Ventouse{:?}] TMC467100 init failed: {:?}", self.kind,e),
+	    Err(e) => error!("[Ventouse{:?}] TMC467100 init failed: {:?}  => check SPI and power connection", self.kind,e),
 
 	}
 
@@ -93,13 +93,13 @@ where
         match self.align_motor().await
 	{
 	    Ok(_) => info!("[Ventouse{:?}] align done",self.kind),
-	    Err(e) => error!("[Ventouse{:?}] align failed: {:?}", self.kind,e),
+	    Err(e) => error!("[Ventouse{:?}] align failed: {:?}  => check SPI and power connection", self.kind,e),
 
 	}
 
 
         self.foc.tmc4671_set_mode(MotionMode::Position)?;
-        info!("Motor set to position mode done");
+        info!("[Ventouse{:?}] Motor set to position mode done",self.kind);
 
         Ok(())
     }
@@ -141,22 +141,68 @@ where
         self.foc
             .tmc4671_checked_write(Tmc4671Registers::VELOCITY_SELECTION as u8, 0x00000000)?; // PHI_E_SELECTION
 
+
+	// set everything to 0
+        self.foc.tmc4671_set_target_velocity(0)?;
+	self.foc.tmc4671_set_actual_position(0)?;
+	self.foc.tmc4671_set_target_position(0)?;
+        self.foc.tmc4671_set_mode(MotionMode::Stopped)?;
         //put max value
         // self.foc.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, 0x00007D00)?; // ~4000
+
+
+
+
+        Ok(())
+    }
+    //check motors
+    pub async fn check_motors_1(&mut self) -> Result<(), embassy_stm32::spi::Error> {
+	//Assume that the registers are already initialized and the motors aligned
+
+	// - Read the initial position and axis sensors
+	// - Move the motors
+	// - Read the final position and axis sensors
+	// - check that it has moved "accordingly"
+
+
+	// Get initial position
+	let initial_position = self.foc.tmc4671_get_actual_position()?;
+	debug!("[Ventouse{:?}] Initial position: {}",self.kind, initial_position);
+
 
         // Move!
         self.foc.tmc4671_set_mode(MotionMode::Velocity)?;
 
         // Rotate right
-        info!("Rotate right...");
+        info!("[Ventouse{:?}] Rotate right...",self.kind);
 	#[cfg(feature = "orbita2d")]
         self.foc.tmc4671_set_target_velocity(50)?;
 	#[cfg(feature = "orbita3d")]
         self.foc.tmc4671_set_target_velocity(500)?;
         let _ = Timer::after(Duration::from_millis(1000)).await;
+        self.foc.tmc4671_set_target_velocity(0)?;
+	let position = self.foc.tmc4671_get_actual_position()?;
+	debug!("[Ventouse{:?}] position: {}",self.kind, position);
+	// check that it has moved
+
+	let diff=position-initial_position;
+	//TODO is it the same for Orbita3D and Orbita2D?
+	if diff<100000{
+	    error!("[Ventouse{:?}] Motor has not moved enough: {} Check motor/encoder connection",self.kind, diff);
+	}
+	else{
+	    info!("[Ventouse{:?}] Motor has moved: {}",self.kind, diff);
+
+	}
+
+	Ok(())
+    }
+
+    pub async fn check_motors_2(&mut self) -> Result<(), embassy_stm32::spi::Error> {
+	//Assume that check_motors_1 has been called
 
         // Rotate left
-        info!("Rotate left...");
+        info!("[Ventouse{:?}] Rotate left...",self.kind);
 	#[cfg(feature = "orbita2d")]
         self.foc.tmc4671_set_target_velocity(-50)?;
 	#[cfg(feature = "orbita3d")]
@@ -164,20 +210,22 @@ where
         let _ = Timer::after(Duration::from_millis(1000)).await;
 
         // Stop
-        info!("Stop...");
+        info!("[Ventouse{:?}] Stop...", self.kind);
         self.foc.tmc4671_set_target_velocity(0)?;
         self.foc.tmc4671_set_mode(MotionMode::Stopped)?;
-	// self.foc.tmc4671_disable();
-	// let pos=self.foc.tmc4671_get_actual_position()?;
 
 	//Start everything at 0
 	self.foc.tmc4671_set_actual_position(0)?;
 	self.foc.tmc4671_set_target_position(0)?;
-
-
-        Ok(())
+	Ok(())
     }
+
+
 }
+
+
+
+
 
 impl<'d, T, FocP, FocEnb, DrvP> RawMotorsIO<1> for Ventouse<'d, T, FocP, FocEnb, DrvP>
 where
@@ -353,6 +401,24 @@ impl<'d> VentouseKind<'d> {
             VentouseKind::C(vc) => vc.init('C').await,
         }
     }
+
+    pub async fn check_motors_1(&mut self) -> Result<(), embassy_stm32::spi::Error> {
+        match self {
+            VentouseKind::A(va) => va.check_motors_1().await,
+            VentouseKind::B(vb) => vb.check_motors_1().await,
+            VentouseKind::C(vc) => vc.check_motors_1().await,
+        }
+    }
+    pub async fn check_motors_2(&mut self) -> Result<(), embassy_stm32::spi::Error> {
+        match self {
+            VentouseKind::A(va) => va.check_motors_2().await,
+            VentouseKind::B(vb) => vb.check_motors_2().await,
+            VentouseKind::C(vc) => vc.check_motors_2().await,
+        }
+    }
+
+
+
 }
 
 impl<'d> RawMotorsIO<1> for VentouseKind<'d> {

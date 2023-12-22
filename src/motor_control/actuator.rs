@@ -17,9 +17,22 @@ impl<'d, const N: usize> Actuator<'d, N> {
         Self { axes, sensors }
     }
 
-    pub async fn init(&mut self) {
+    pub async fn init(&mut self) -> Result<()>{
         join::join_array(self.axes.each_mut().map(|v| v.init())).await;
+	Ok(())
     }
+
+    // check motors
+    pub async fn check_motors_1(&mut self) -> Result<()> {
+	join::join_array(self.axes.each_mut().map(|v| v.check_motors_1())).await;
+	Ok(())
+    }
+    pub async fn check_motors_2(&mut self) -> Result<()> {
+	join::join_array(self.axes.each_mut().map(|v| v.check_motors_2())).await;
+	Ok(())
+    }
+
+
 }
 
 // TODO: make this generic (how?)
