@@ -89,6 +89,11 @@ async fn main(spawner: Spawner) {
 
     let p = embassy_stm32::init(stm32_conf);
 
+    let mut led_green = Output::new(p.PC9, Level::High, Speed::Low);
+    led_green.set_low();
+    let mut led_red = Output::new(p.PC8, Level::High, Speed::Low);
+    led_red.set_high();
+
     let mut i2c = I2c::new(
         p.I2C1,
         p.PB6,
@@ -101,19 +106,35 @@ async fn main(spawner: Spawner) {
     );
 
     let mut data = [0u8; 1];
+    let mut hall_detected = 0u16;
+
+    led_red.set_low();
 
     loop {
+
+    led_green.set_high();
+
     match i2c.blocking_read(ADDRESS_A, &mut data) {
-        Ok(()) => info!("Inputs_A: {:#010b}", data[0]),
+        Ok(()) => {
+            //info!("Inputs_A: {:#010b}", data[0]);
+//            hall_detected = (data[0] as u16) << 8;
+            hall_detected = data[0] as u16;
+        },
         Err(Error::Timeout) => info!("Operation timed out"),
         Err(e) => info!("I2c Error: {:?}", e),
     }
 
     match i2c.blocking_read(ADDRESS_B, &mut data) {
-        Ok(()) => info!("Inputs_B: {:#010b}", data[0]),
+        Ok(()) => {
+            //info!("Inputs_B: {:#010b}", data[0]);
+//            hall_detected = hall_detected | (data[0] as u16);
+            hall_detected = hall_detected | ((data[0] as u16) << 8);
+        },
         Err(Error::Timeout) => info!("Operation timed out"),
         Err(e) => info!("I2c Error: {:?}", e),
     }
+
+    info!("Halls: {:#018b}", !hall_detected);
 
 /*    match timeout_i2c.blocking_write_read(ADDRESS, &[IO_REG], &mut data) {
         Ok(()) => info!("Inputs: {}", data[0]),
@@ -122,7 +143,8 @@ async fn main(spawner: Spawner) {
     }*/
 
     Timer::after(Duration::from_millis(50)).await;
-
+    //led_green.set_low();
+    //Timer::after(Duration::from_millis(450)).await;
     }
 
     // Spawn the control loop
