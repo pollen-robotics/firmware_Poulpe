@@ -217,6 +217,7 @@ where
 	//Start everything at 0
 	self.foc.tmc4671_set_actual_position(0)?;
 	self.foc.tmc4671_set_target_position(0)?;
+        self.foc.tmc4671_set_mode(MotionMode::Position)?;
 	Ok(())
     }
 
