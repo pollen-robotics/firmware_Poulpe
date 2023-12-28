@@ -1,5 +1,6 @@
 use defmt::Format;
-use embassy_stm32::spi;
+use embassy_embedded_hal::shared_bus;
+use embassy_stm32::{spi, i2c};
 
 use super::foc::MotionMode;
 
@@ -8,6 +9,7 @@ pub type Result<T> = core::result::Result<T, IOError>;
 #[derive(Debug, Format)]
 pub enum IOError {
     SpiError(spi::Error),
+    I2cError,
     InvalidData,
 
 }

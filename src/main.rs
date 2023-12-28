@@ -10,7 +10,7 @@ use defmt::{info, unwrap};
 use embassy_executor::Spawner;
 use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_stm32::usart::Config as usart_config;
-use embassy_stm32::Config as stm32_config;
+use embassy_stm32::{Config as stm32_config, i2c};
 use embassy_stm32::{bind_interrupts, peripherals, usart};
 use embassy_stm32::dma::NoDma;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
@@ -31,7 +31,9 @@ use {defmt_rtt as _, panic_probe as _};
 bind_interrupts!(struct Irqs {
     USART1 => usart::InterruptHandler<peripherals::USART1>;
 });
-
+bind_interrupts!(struct IrqsI2c {
+    I2C1_EV => i2c::InterruptHandler<peripherals::I2C1>;
+});
 // TODO: Use a NoopMutex instead of a real mutex?
 static SHARED_MEMORY: Mutex<ThreadModeRawMutex, SharedMemory<{ config::N_AXIS }>> =
     Mutex::new(SharedMemory::default());

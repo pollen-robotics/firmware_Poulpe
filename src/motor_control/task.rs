@@ -366,7 +366,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 							  error_led=true;
 						      }
 	);
-	// block_for(Duration::from_maicros(10));
+
         let target = { SHARED_MEMORY.lock().await.get_target_position() };
         actuator.set_target_position(target).unwrap_or_else(|e|
 						      {
@@ -374,7 +374,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 							  error_led=true;
 						      }
 	);
-	// block_for(Duration::from_micros(10));
+
 
 
 
@@ -394,15 +394,33 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 
 
-	/*
-	let torque=actuator.get_current_torque().unwrap();
-	let vel=actuator.get_current_velocity().unwrap();
-	let pos=actuator.get_current_position().unwrap();
 
-	SHARED_MEMORY.lock().await.set_current_torque(torque);
-	SHARED_MEMORY.lock().await.set_current_velocity(vel);
-	SHARED_MEMORY.lock().await.set_current_position(pos);
-	 */
+	let torque=actuator.get_current_torque();
+	match torque {
+	    Ok(torque) => {
+		SHARED_MEMORY.lock().await.set_current_torque(torque);
+		// info!("sensors: {:?}", sensors);
+	    },
+	    Err(_e) => {
+
+		error_led=true;
+		error!("Torque error");
+	    }
+	}
+
+	let vel=actuator.get_current_velocity();
+	match vel {
+	    Ok(vel) => {
+		SHARED_MEMORY.lock().await.set_current_velocity(vel);
+		// info!("sensors: {:?}", sensors);
+	    },
+	    Err(_e) => {
+
+		error_led=true;
+		error!("Vel error");
+	    }
+	}
+
 
 
 	if error_led!=prev_error_led {
