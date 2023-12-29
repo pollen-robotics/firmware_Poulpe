@@ -18,7 +18,11 @@ pub enum DynamixelRegister {
     TargetVelocity,
     TargetPosition,
 
-    AxisSensor
+    AxisSensor,
+
+    FullState,
+
+
 }
 
 impl DynamixelRegister {
@@ -44,6 +48,8 @@ impl DynamixelRegister {
             60 => Some(DynamixelRegister::TargetPosition),
 
 	    90 => Some(DynamixelRegister::AxisSensor),
+
+	    100 => Some(DynamixelRegister::FullState),
 
 	    _ => None
 

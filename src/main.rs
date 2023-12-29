@@ -166,9 +166,9 @@ async fn main(spawner: Spawner) {
 
     // Prepare and spawn the DXL communication task
     let mut usart_config = usart_config::default();
-    usart_config.baudrate = 1_000_000;
+    // usart_config.baudrate = 1_000_000;
     // usart_config.baudrate = 115_200
-    // usart_config.baudrate = 2_000_000;
+    usart_config.baudrate = 2_000_000;
     usart_config.stop_bits = embassy_stm32::usart::StopBits::STOP1;
     usart_config.data_bits = embassy_stm32::usart::DataBits::DataBits8;
     usart_config.parity = embassy_stm32::usart::Parity::ParityNone;

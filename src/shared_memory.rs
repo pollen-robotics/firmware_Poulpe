@@ -107,7 +107,17 @@ impl<const N: usize> SharedMemory<N> {
 	self.inner.borrow().error_led
     }
 
-
+    pub fn get_full_state(&self) -> [f32; 3*N] {
+	let mut state = [0.0; 3*N];
+	// state[0..N].copy_from_slice(&self.get_target_position());
+	// state[N..2*N].copy_from_slice(&self.get_current_position());
+	// state[2*N..3*N].copy_from_slice(&self.get_current_velocity());
+	// state[3*N..4*N].copy_from_slice(&self.get_current_torque());
+	state[0..N].copy_from_slice(&self.get_current_position());
+	state[N..2*N].copy_from_slice(&self.get_current_velocity());
+	state[2*N..3*N].copy_from_slice(&self.get_current_torque());
+	state
+    }
 
 }
 

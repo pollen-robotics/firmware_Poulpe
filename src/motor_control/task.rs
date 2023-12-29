@@ -1,6 +1,6 @@
 use core::cell::RefCell;
 
-use defmt::{info, error, debug};
+use defmt::{info, error, debug, warn};
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_stm32::{
     dma::NoDma,
@@ -8,7 +8,10 @@ use embassy_stm32::{
     spi,
 };
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex};
-use embassy_time::{Duration, Timer, block_for};
+use embassy_time::{Duration, Timer, block_for, Instant};
+
+const SPI_FREQ: u32 = 2_000_000;
+
 
 use crate::{
     config::{self, ActuatorConfig},
@@ -28,18 +31,18 @@ pub async fn set_error_led() {
 #[embassy_executor::task]
 pub async fn control_loop(config: ActuatorConfig) {
     let mut spi_config = spi::Config::default();
-    spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
+    spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
     spi_config.bit_order = spi::BitOrder::MsbFirst;
 
     spi_config.mode = spi::MODE_1;
 
     let mut foc_spi_config = spi::Config::default();
-    foc_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
+    foc_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
     foc_spi_config.mode = spi::MODE_3;
     foc_spi_config.bit_order = spi::BitOrder::MsbFirst;
     let mut driver_spi_config = spi::Config::default();
     driver_spi_config.mode = spi::MODE_3;
-    driver_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
+    driver_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
     driver_spi_config.bit_order = spi::BitOrder::MsbFirst;
 
 
@@ -101,7 +104,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     /////////////
 	let mut aksim_spi_config = spi::Config::default();
 
-	aksim_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
+	aksim_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
 
 	aksim_spi_config.mode = spi::MODE_1;
 
@@ -128,7 +131,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 	let mut ad5047top_spi_config = spi::Config::default();
 
-	ad5047top_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
+	ad5047top_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
 
 	ad5047top_spi_config.mode = spi::MODE_1;
 
@@ -147,7 +150,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 	let mut ad5047mid_spi_config = spi::Config::default();
 
-	ad5047mid_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
+	ad5047mid_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
 
 	ad5047mid_spi_config.mode = spi::MODE_1;
 
@@ -165,7 +168,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 	let mut ad5047bot_spi_config = spi::Config::default();
 
-	ad5047bot_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
+	ad5047bot_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
 
 	ad5047bot_spi_config.mode = spi::MODE_1;
 
@@ -253,7 +256,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     //ad5047 sensor BUS C
     let mut ad5047_spi_config = spi::Config::default();
-    ad5047_spi_config.frequency = embassy_stm32::time::Hertz(1_000_000);
+    ad5047_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
     ad5047_spi_config.mode = spi::MODE_1;
 
     ad5047_spi_config.bit_order = spi::BitOrder::MsbFirst;
@@ -345,8 +348,23 @@ pub async fn control_loop(config: ActuatorConfig) {
     // actuator.set_torque([false,false]).unwrap();
     let mut error_led=false;
     let mut prev_error_led=false;
-    loop {
 
+    use biquad::*;
+    let f0 = 10.hz();
+    let fs = 1.khz();
+
+    // Create coefficients for the biquads
+    let coeffs = Coefficients::<f32>::from_params(Type::LowPass, fs, f0, Q_BUTTERWORTH_F32).unwrap();
+
+    // Create two different biquads
+    // let mut biquad = DirectForm1::<f32>::new(coeffs);
+    // let mut biquad = DirectForm2Transposed::<f32>::new(coeffs);
+    let mut torque_filter=[DirectForm2Transposed::<f32>::new(coeffs); config::N_AXIS];
+    let mut vel_filter=[DirectForm2Transposed::<f32>::new(coeffs); config::N_AXIS];
+
+    loop {
+	let t0=Instant::now();
+	// warn!("ELAPSED -1 {:?}",t0.elapsed().as_micros());
 	//TODO match and set error led for every call
         let pos = actuator.get_current_position().unwrap_or_else(|e|
 	    {
@@ -355,18 +373,21 @@ pub async fn control_loop(config: ActuatorConfig) {
 		[f32::NAN; config::N_AXIS]
 	    });
         {
-            SHARED_MEMORY.lock().await.set_current_position(pos)
+	    // warn!("ELAPSED 0 {:?}",t0.elapsed().as_micros());
+            SHARED_MEMORY.lock().await.set_current_position(pos);
+	    // warn!("ELAPSED 1 {:?}",t0.elapsed().as_micros());
         }
 
 
         let torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
+	// warn!("ELAPSED 2 {:?}",t0.elapsed().as_micros());
         actuator.set_torque(torque_on).unwrap_or_else(|e|
 						      {
 							  error!("Error setting torque: {:?}", e);
 							  error_led=true;
 						      }
 	);
-
+	// warn!("ELAPSED 3 {:?}",t0.elapsed().as_micros());
         let target = { SHARED_MEMORY.lock().await.get_target_position() };
         actuator.set_target_position(target).unwrap_or_else(|e|
 						      {
@@ -397,7 +418,8 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 	let torque=actuator.get_current_torque();
 	match torque {
-	    Ok(torque) => {
+	    Ok(mut torque) => {
+		torque.iter_mut().enumerate().for_each(|(i,t)| {*t=torque_filter[i].run(*t)});
 		SHARED_MEMORY.lock().await.set_current_torque(torque);
 		// info!("sensors: {:?}", sensors);
 	    },
@@ -410,7 +432,8 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 	let vel=actuator.get_current_velocity();
 	match vel {
-	    Ok(vel) => {
+	    Ok(mut vel) => {
+		vel.iter_mut().enumerate().for_each(|(i,t)| {*t=vel_filter[i].run(*t)});
 		SHARED_MEMORY.lock().await.set_current_velocity(vel);
 		// info!("sensors: {:?}", sensors);
 	    },
@@ -429,7 +452,11 @@ pub async fn control_loop(config: ActuatorConfig) {
 	}
 
 
-	// block_for(Duration::from_micros(1000));
-        Timer::after(Duration::from_millis(1)).await;
+
+
+	let elapsed=t0.elapsed().as_micros();
+	// warn!("ELAPSED: {:?}",elapsed);
+        Timer::after(Duration::from_micros(1000-elapsed)).await;
+        // Timer::after(Duration::from_millis(1)).await;
     }
 }

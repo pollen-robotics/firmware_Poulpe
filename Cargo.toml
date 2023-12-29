@@ -78,7 +78,7 @@ embedded-storage = "0.3.0"
 static_cell = { version = "1.1", features = ["nightly"]}
 paste = "1.0.14"
 modular-bitfield = "0.11.2"
-
+biquad = "0.4.1"
 
 
 

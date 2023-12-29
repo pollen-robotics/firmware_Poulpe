@@ -9,11 +9,13 @@ use super::packet::{InstructionPacketKind, ParsingError, StatusPacket};
 
 const MAX_BUFFER_LENGTH: usize = 256;
 //Seems ok at 115200 with LOG=Info
-const UART_SLEEP_US_DIRLOW: u64 = 200;
-const UART_SLEEP_US_DIRHIGH: u64 = 300;
+// const UART_SLEEP_US_DIRLOW: u64 = 200;
+// const UART_SLEEP_US_DIRHIGH: u64 = 300;
 
 
-
+// 2Mbauds
+const UART_SLEEP_US_DIRLOW: u64 = 100;
+const UART_SLEEP_US_DIRHIGH: u64 = 150;
 
 
 const MAX_READ_BUFFER_LENGTH: usize = 32;
