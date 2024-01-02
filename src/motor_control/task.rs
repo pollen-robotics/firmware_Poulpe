@@ -345,6 +345,17 @@ pub async fn control_loop(config: ActuatorConfig) {
 	SHARED_MEMORY.lock().await.set_error_led(true);
     }
 
+    //"Slow" registers
+    let mut init_fluxpid = { SHARED_MEMORY.lock().await.get_flux_pid_gains() };
+    let mut init_torquepid = { SHARED_MEMORY.lock().await.get_torque_pid_gains() };
+    let mut init_velocitypid = { SHARED_MEMORY.lock().await.get_velocity_pid_gains() };
+    let mut init_positionpid = { SHARED_MEMORY.lock().await.get_position_pid_gains() };
+    let mut init_uqudlimit = { SHARED_MEMORY.lock().await.get_uq_ud_limit() };
+    let mut init_torquefluxlimit = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
+    let mut init_velocitylimit = { SHARED_MEMORY.lock().await.get_velocity_limit() };
+
+
+
     // actuator.set_torque([false,false]).unwrap();
     let mut error_led=false;
     let mut prev_error_led=false;
@@ -361,7 +372,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     // let mut biquad = DirectForm2Transposed::<f32>::new(coeffs);
     let mut torque_filter=[DirectForm2Transposed::<f32>::new(coeffs); config::N_AXIS];
     let mut vel_filter=[DirectForm2Transposed::<f32>::new(coeffs); config::N_AXIS];
-
+    let mut slow_timer:u32=1000;
     loop {
 	let t0=Instant::now();
 	// warn!("ELAPSED -1 {:?}",t0.elapsed().as_micros());
@@ -452,7 +463,107 @@ pub async fn control_loop(config: ActuatorConfig) {
 	}
 
 
+	if slow_timer == 0
+	{
+	    //PID and limits: only for debug
 
+
+            let fluxpid = { SHARED_MEMORY.lock().await.get_flux_pid_gains() };
+	    if fluxpid!=init_fluxpid {
+
+		actuator.set_flux_pid_gains(fluxpid).unwrap_or_else(|e|
+								    {
+									error!("Error setting flux pid: {:?}", e);
+									error_led=true;
+								    }
+		);
+		init_fluxpid=fluxpid;
+
+	    }
+
+
+            let torquepid = { SHARED_MEMORY.lock().await.get_torque_pid_gains() };
+	    if torquepid!=init_torquepid {
+
+		actuator.set_torque_pid_gains(torquepid).unwrap_or_else(|e|
+									{
+									    error!("Error setting torque pid: {:?}", e);
+									    error_led=true;
+									}
+		);
+		init_torquepid=torquepid;
+	    }
+
+            let velocitypid = { SHARED_MEMORY.lock().await.get_velocity_pid_gains() };
+	    if velocitypid!=init_velocitypid {
+
+		actuator.set_velocity_pid_gains(velocitypid).unwrap_or_else(|e|
+									    {
+										error!("Error setting velocity pid: {:?}", e);
+										error_led=true;
+									    }
+		);
+		init_velocitypid=velocitypid;
+	    }
+
+            let positionpid = { SHARED_MEMORY.lock().await.get_position_pid_gains() };
+	    if positionpid!=init_positionpid {
+
+		actuator.set_position_pid_gains(positionpid).unwrap_or_else(|e|
+									    {
+										error!("Error setting position pid: {:?}", e);
+										error_led=true;
+									    }
+		);
+		init_positionpid=positionpid;
+	    }
+
+            let uqudlimit = { SHARED_MEMORY.lock().await.get_uq_ud_limit() };
+	    if uqudlimit!=init_uqudlimit {
+
+		actuator.set_uq_ud_limit(uqudlimit).unwrap_or_else(|e|
+								   {
+								       error!("Error setting uq/ud limit: {:?}", e);
+								       error_led=true;
+								   }
+		);
+		init_uqudlimit=uqudlimit;
+	    }
+
+
+            let torquefluxlimit = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
+	    if torquefluxlimit!=init_torquefluxlimit {
+
+		actuator.set_torque_flux_limit(torquefluxlimit).unwrap_or_else(|e|
+									       {
+										   error!("Error setting torque/flux limit: {:?}", e);
+										   error_led=true;
+									       }
+		);
+		init_torquefluxlimit=torquefluxlimit;
+	    }
+
+            let velocitylimit = { SHARED_MEMORY.lock().await.get_velocity_limit() };
+	    if velocitylimit!=init_velocitylimit {
+
+		actuator.set_velocity_limit(velocitylimit).unwrap_or_else(|e|
+									  {
+									      error!("Error setting velocity limit: {:?}", e);
+									      error_led=true;
+									  }
+		);
+		init_velocitylimit=velocitylimit;
+	    }
+
+
+	    slow_timer=1000;
+
+
+	}
+	else
+	{
+	    slow_timer-=1;
+	}
 
 	let elapsed=t0.elapsed().as_micros();
 	// warn!("ELAPSED: {:?}",elapsed);

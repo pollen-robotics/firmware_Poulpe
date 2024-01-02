@@ -2,12 +2,16 @@ pub enum DynamixelRegister {
     ModelNumber,
     FirmwareVersion,
     Id,
-    VelocityLimit,
-    TorqueLimit,
-    // FluxPID,
+
+
+    FluxPID,
     TorquePID,
     VelocityPID,
     PositionPID,
+
+    UqUdLimit,
+    TorqueFluxLimit,
+    VelocityLimit,
 
     TorqueEnable,
 
@@ -36,8 +40,13 @@ impl DynamixelRegister {
 
 
 	    10 => Some(DynamixelRegister::VelocityLimit),
-	    14 => Some(DynamixelRegister::TorqueLimit),
+	    14 => Some(DynamixelRegister::TorqueFluxLimit),
+	    18 => Some(DynamixelRegister::UqUdLimit),
 
+	    20 => Some(DynamixelRegister::FluxPID),
+	    24 => Some(DynamixelRegister::TorquePID),
+	    28 => Some(DynamixelRegister::VelocityPID),
+	    32 => Some(DynamixelRegister::PositionPID),
 
 
 

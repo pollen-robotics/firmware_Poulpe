@@ -355,36 +355,171 @@ where
     }
 
 
+
+    /// Get the uq_ud limit of the motors
+    fn get_uq_ud_limit(&mut self) -> Result<[f32; 1], IOError> {
+	//TODO Conversion. Is it in rpm?
+        let limit=self.foc.tmc4671_get_uq_ud_limit()
+            .map_err(IOError::SpiError)?;
+	Ok([limit as f32])
+
+    }
+    /// Set the uq_ud limit of the motors
+    fn set_uq_ud_limit(&mut self, limit: [f32; 1]) -> Result<(), IOError> {
+	self.foc.tmc4671_set_uq_ud_limit(limit[0] as i16)
+			.map(|_| ())
+			.map_err(IOError::SpiError)
+
+    }
+
+
+    /// Get the torque_flux limit of the motors
+    fn get_torque_flux_limit(&mut self) -> Result<[f32; 1], IOError> {
+	//TODO Conversion. Is it in rpm?
+        let limit=self.foc.tmc4671_get_torque_flux_limit()
+            .map_err(IOError::SpiError)?;
+	Ok([limit as f32])
+
+    }
+    /// Set the torque_flux limit of the motors
+    fn set_torque_flux_limit(&mut self, limit: [f32; 1]) -> Result<(), IOError> {
+	self.foc.tmc4671_set_torque_flux_limit(limit[0] as i16)
+			.map(|_| ())
+			.map_err(IOError::SpiError)
+
+    }
+
+
     /// Get the velocity limit of the motors (in radians per second)
     fn get_velocity_limit(&mut self) -> Result<[f32; 1], IOError> {
-        Ok([0.0])
+	//TODO Conversion. Is it in rpm?
+        let limit=self.foc.tmc4671_get_velocity_limit()
+            .map_err(IOError::SpiError)?;
+	Ok([limit as f32])
+
     }
     /// Set the velocity limit of the motors (in radians per second)
-    fn set_velocity_limit(&mut self, _velocity: [f32; 1]) -> Result<(), IOError> {
-        Ok(())
+    fn set_velocity_limit(&mut self, limit: [f32; 1]) -> Result<(), IOError> {
+	self.foc.tmc4671_set_velocity_limit(limit[0] as u32)
+			.map(|_| ())
+			.map_err(IOError::SpiError)
+
     }
 
-    /// Get the torque limit of the motors (in Nm)
-    fn get_torque_limit(&mut self) -> Result<[f32; 1], IOError> {
-        Ok([0.0])
+    // /// Get the torque limit of the motors (in Nm)
+    // fn get_torque_limit(&mut self) -> Result<[f32; 1], IOError> {
+    //     Ok([0.0])
+    // }
+    // /// Set the torque limit of the motors (in Nm)
+    // fn set_torque_limit(&mut self, _torque: [f32; 1]) -> Result<(), IOError> {
+    //     Ok(())
+    // }
+
+    // /// Get the current PID gains of the motors
+    // fn get_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+    //     Ok([Pid {
+    //         p: 0,
+    //         i: 0,
+    //         // d: 0.0,
+    //     }])
+    // }
+    // /// Set the current PID gains of the motors
+    // fn set_pid_gains(&mut self, _pid: [Pid; 1]) -> Result<(), IOError> {
+    //     Ok(())
+    // }
+
+
+
+    /// Get the current flux PID gains of the motors
+    fn get_flux_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+	let rawpid=self.foc.tmc4671_get_pid_flux();
+	match rawpid{
+	    Ok(pid) => Ok([Pid {
+		p: ((pid>>16) & 0x7fff) as i16,
+		i: (pid & 0x7fff) as i16,
+	    }]),
+	    Err(e) => Err(IOError::SpiError(e)),
+	}
+
     }
-    /// Set the torque limit of the motors (in Nm)
-    fn set_torque_limit(&mut self, _torque: [f32; 1]) -> Result<(), IOError> {
-        Ok(())
+    /// Set the current flux PID gains of the motors
+    fn set_flux_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+	let _pid=pid[0].i as u32 | ((pid[0].p as u32)<<16);
+	self.foc.tmc4671_set_pid_flux(_pid)
+	    .map(|_| ())
+	    .map_err(IOError::SpiError)
+
     }
 
-    /// Get the current PID gains of the motors
-    fn get_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
-        Ok([Pid {
-            p: 0,
-            i: 0,
-            // d: 0.0,
-        }])
+
+
+    /// Get the current torque PID gains of the motors
+    fn get_torque_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+	let rawpid=self.foc.tmc4671_get_pid_torque();
+	match rawpid{
+	    Ok(pid) => Ok([Pid {
+		p: ((pid>>16) & 0x7fff) as i16,
+		i: (pid & 0x7fff) as i16,
+	    }]),
+	    Err(e) => Err(IOError::SpiError(e)),
+	}
+
     }
-    /// Set the current PID gains of the motors
-    fn set_pid_gains(&mut self, _pid: [Pid; 1]) -> Result<(), IOError> {
-        Ok(())
+    /// Set the current torque PID gains of the motors
+    fn set_torque_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+	let _pid=pid[0].i as u32 | ((pid[0].p as u32)<<16);
+	self.foc.tmc4671_set_pid_torque(_pid)
+	    .map(|_| ())
+	    .map_err(IOError::SpiError)
+
     }
+
+
+    /// Get the current velocity PID gains of the motors
+    fn get_velocity_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+	let rawpid=self.foc.tmc4671_get_pid_velocity();
+	match rawpid{
+	    Ok(pid) => Ok([Pid {
+		p: ((pid>>16) & 0x7fff) as i16,
+		i: (pid & 0x7fff) as i16,
+	    }]),
+	    Err(e) => Err(IOError::SpiError(e)),
+	}
+
+    }
+    /// Set the current velocity PID gains of the motors
+    fn set_velocity_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+	let _pid=pid[0].i as u32 | ((pid[0].p as u32)<<16);
+	self.foc.tmc4671_set_pid_velocity(_pid)
+	    .map(|_| ())
+	    .map_err(IOError::SpiError)
+
+    }
+
+
+    /// Get the current position PID gains of the motors
+    fn get_position_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+	let rawpid=self.foc.tmc4671_get_pid_position();
+	match rawpid{
+	    Ok(pid) => Ok([Pid {
+		p: ((pid>>16) & 0x7fff) as i16,
+		i: (pid & 0x7fff) as i16,
+	    }]),
+	    Err(e) => Err(IOError::SpiError(e)),
+	}
+
+    }
+    /// Set the current position PID gains of the motors
+    fn set_position_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+	let _pid=pid[0].i as u32 | ((pid[0].p as u32)<<16);
+	self.foc.tmc4671_set_pid_position(_pid)
+	    .map(|_| ())
+	    .map_err(IOError::SpiError)
+
+    }
+
+
+
 }
 
 pub enum VentouseKind<'d> {
@@ -561,39 +696,135 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
 
-    /// Get the torque limit of the motors (in Nm)
-    fn get_torque_limit(&mut self) -> Result<[f32; 1], IOError> {
+    /// Get the torque_flux limit of the motors (in Nm)
+    fn get_torque_flux_limit(&mut self) -> Result<[f32; 1], IOError> {
         match self {
-            VentouseKind::A(va) => va.get_torque_limit(),
-            VentouseKind::B(vb) => vb.get_torque_limit(),
-            VentouseKind::C(vc) => vc.get_torque_limit(),
+            VentouseKind::A(va) => va.get_torque_flux_limit(),
+            VentouseKind::B(vb) => vb.get_torque_flux_limit(),
+            VentouseKind::C(vc) => vc.get_torque_flux_limit(),
         }
     }
-    /// Set the torque limit of the motors (in Nm)
-    fn set_torque_limit(&mut self, torque: [f32; 1]) -> Result<(), IOError> {
+    /// Set the torque_flux limit of the motors (in Nm)
+    fn set_torque_flux_limit(&mut self, torque_flux: [f32; 1]) -> Result<(), IOError> {
         match self {
-            VentouseKind::A(va) => va.set_torque_limit(torque),
-            VentouseKind::B(vb) => vb.set_torque_limit(torque),
-            VentouseKind::C(vc) => vc.set_torque_limit(torque),
+            VentouseKind::A(va) => va.set_torque_flux_limit(torque_flux),
+            VentouseKind::B(vb) => vb.set_torque_flux_limit(torque_flux),
+            VentouseKind::C(vc) => vc.set_torque_flux_limit(torque_flux),
         }
     }
 
-    /// Get the current PID gains of the motors
-    fn get_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+    /// Get the uq_ud limit of the motors (in Nm)
+    fn get_uq_ud_limit(&mut self) -> Result<[f32; 1], IOError> {
         match self {
-            VentouseKind::A(va) => va.get_pid_gains(),
-            VentouseKind::B(vb) => vb.get_pid_gains(),
-            VentouseKind::C(vc) => vc.get_pid_gains(),
+            VentouseKind::A(va) => va.get_uq_ud_limit(),
+            VentouseKind::B(vb) => vb.get_uq_ud_limit(),
+            VentouseKind::C(vc) => vc.get_uq_ud_limit(),
         }
     }
-    /// Set the current PID gains of the motors
-    fn set_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+    /// Set the uq_ud limit of the motors (in Nm)
+    fn set_uq_ud_limit(&mut self, uq_ud: [f32; 1]) -> Result<(), IOError> {
         match self {
-            VentouseKind::A(va) => va.set_pid_gains(pid),
-            VentouseKind::B(vb) => vb.set_pid_gains(pid),
-            VentouseKind::C(vc) => vc.set_pid_gains(pid),
+            VentouseKind::A(va) => va.set_uq_ud_limit(uq_ud),
+            VentouseKind::B(vb) => vb.set_uq_ud_limit(uq_ud),
+            VentouseKind::C(vc) => vc.set_uq_ud_limit(uq_ud),
         }
     }
+
+
+    // /// Get the current PID gains of the motors
+    // fn get_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+    //     match self {
+    //         VentouseKind::A(va) => va.get_pid_gains(),
+    //         VentouseKind::B(vb) => vb.get_pid_gains(),
+    //         VentouseKind::C(vc) => vc.get_pid_gains(),
+    //     }
+    // }
+    // /// Set the current PID gains of the motors
+    // fn set_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+    //     match self {
+    //         VentouseKind::A(va) => va.set_pid_gains(pid),
+    //         VentouseKind::B(vb) => vb.set_pid_gains(pid),
+    //         VentouseKind::C(vc) => vc.set_pid_gains(pid),
+    //     }
+    // }
+
+
+
+    /// Get the current flux PID gains of the motors
+    fn get_flux_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+        match self {
+            VentouseKind::A(va) => va.get_flux_pid_gains(),
+            VentouseKind::B(vb) => vb.get_flux_pid_gains(),
+            VentouseKind::C(vc) => vc.get_flux_pid_gains(),
+        }
+    }
+    /// Set the current flux PID gains of the motors
+    fn set_flux_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+        match self {
+            VentouseKind::A(va) => va.set_flux_pid_gains(pid),
+            VentouseKind::B(vb) => vb.set_flux_pid_gains(pid),
+            VentouseKind::C(vc) => vc.set_flux_pid_gains(pid),
+        }
+    }
+
+
+    /// Get the current torque PID gains of the motors
+    fn get_torque_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+        match self {
+            VentouseKind::A(va) => va.get_torque_pid_gains(),
+            VentouseKind::B(vb) => vb.get_torque_pid_gains(),
+            VentouseKind::C(vc) => vc.get_torque_pid_gains(),
+        }
+    }
+    /// Set the current torque PID gains of the motors
+    fn set_torque_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+        match self {
+            VentouseKind::A(va) => va.set_torque_pid_gains(pid),
+            VentouseKind::B(vb) => vb.set_torque_pid_gains(pid),
+            VentouseKind::C(vc) => vc.set_torque_pid_gains(pid),
+        }
+    }
+
+
+    /// Get the current velocity PID gains of the motors
+    fn get_velocity_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+        match self {
+            VentouseKind::A(va) => va.get_velocity_pid_gains(),
+            VentouseKind::B(vb) => vb.get_velocity_pid_gains(),
+            VentouseKind::C(vc) => vc.get_velocity_pid_gains(),
+        }
+    }
+    /// Set the current velocity PID gains of the motors
+    fn set_velocity_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+        match self {
+            VentouseKind::A(va) => va.set_velocity_pid_gains(pid),
+            VentouseKind::B(vb) => vb.set_velocity_pid_gains(pid),
+            VentouseKind::C(vc) => vc.set_velocity_pid_gains(pid),
+        }
+    }
+
+
+    /// Get the current position PID gains of the motors
+    fn get_position_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+        match self {
+            VentouseKind::A(va) => va.get_position_pid_gains(),
+            VentouseKind::B(vb) => vb.get_position_pid_gains(),
+            VentouseKind::C(vc) => vc.get_position_pid_gains(),
+        }
+    }
+    /// Set the current position PID gains of the motors
+    fn set_position_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+        match self {
+            VentouseKind::A(va) => va.set_position_pid_gains(pid),
+            VentouseKind::B(vb) => vb.set_position_pid_gains(pid),
+            VentouseKind::C(vc) => vc.set_position_pid_gains(pid),
+        }
+    }
+
+
+
+
+
 }
 
 mod conversion {

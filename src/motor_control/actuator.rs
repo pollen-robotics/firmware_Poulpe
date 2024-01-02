@@ -187,39 +187,147 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
     }
 
     /// Get the torque limit of the motors (in Nm)
-    fn get_torque_limit(&mut self) -> Result<[f32; N]> {
+    fn get_torque_flux_limit(&mut self) -> Result<[f32; N]> {
         let mut res = [0.0; N];
         for (i, axis) in self.axes.iter_mut().enumerate() {
-            res[i] = axis.get_torque_limit()?[0];
+            res[i] = axis.get_torque_flux_limit()?[0];
         }
 
         Ok(res)
     }
     /// Set the torque limit of the motors (in Nm)
-    fn set_torque_limit(&mut self, torque: [f32; N]) -> Result<()> {
+    fn set_torque_flux_limit(&mut self, torque: [f32; N]) -> Result<()> {
         for (i, axis) in self.axes.iter_mut().enumerate() {
-            axis.set_torque_limit([torque[i]])?;
+            axis.set_torque_flux_limit([torque[i]])?;
         }
 
         Ok(())
     }
 
-    /// Get the current PID gains of the motors
-    fn get_pid_gains(&mut self) -> Result<[Pid; N]> {
+
+
+    /// Get the torque limit of the motors (in Nm)
+    fn get_uq_ud_limit(&mut self) -> Result<[f32; N]> {
+        let mut res = [0.0; N];
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            res[i] = axis.get_uq_ud_limit()?[0];
+        }
+
+        Ok(res)
+    }
+    /// Set the torque limit of the motors (in Nm)
+    fn set_uq_ud_limit(&mut self, torque: [f32; N]) -> Result<()> {
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            axis.set_uq_ud_limit([torque[i]])?;
+        }
+
+        Ok(())
+    }
+
+
+    // /// Get the current PID gains of the motors
+    // fn get_pid_gains(&mut self) -> Result<[Pid; N]> {
+    //     let mut res = [Pid {
+    //         p: 0,
+    //         i: 0,
+    //         // d: 0.0,
+    //     }; N];
+    //     for (i, axis) in self.axes.iter_mut().enumerate() {
+    //         res[i] = axis.get_pid_gains()?[0];
+    //     }
+    //     Ok(res)
+    // }
+    // /// Set the current PID gains of the motors
+    // fn set_pid_gains(&mut self, pid: [Pid; N]) -> Result<()> {
+    //     for (i, axis) in self.axes.iter_mut().enumerate() {
+    //         axis.set_pid_gains([pid[i]])?;
+    //     }
+
+    //     Ok(())
+    // }
+
+/// Get the current flux PID gains of the motors
+    fn get_flux_pid_gains(&mut self) -> Result<[Pid; N]> {
         let mut res = [Pid {
             p: 0,
             i: 0,
             // d: 0.0,
         }; N];
         for (i, axis) in self.axes.iter_mut().enumerate() {
-            res[i] = axis.get_pid_gains()?[0];
+            res[i] = axis.get_flux_pid_gains()?[0];
         }
         Ok(res)
     }
-    /// Set the current PID gains of the motors
-    fn set_pid_gains(&mut self, pid: [Pid; N]) -> Result<()> {
+    /// Set the current flux PID gains of the motors
+    fn set_flux_pid_gains(&mut self, pid: [Pid; N]) -> Result<()> {
         for (i, axis) in self.axes.iter_mut().enumerate() {
-            axis.set_pid_gains([pid[i]])?;
+            axis.set_flux_pid_gains([pid[i]])?;
+        }
+
+        Ok(())
+    }
+
+
+/// Get the current torque PID gains of the motors
+    fn get_torque_pid_gains(&mut self) -> Result<[Pid; N]> {
+        let mut res = [Pid {
+            p: 0,
+            i: 0,
+            // d: 0.0,
+        }; N];
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            res[i] = axis.get_torque_pid_gains()?[0];
+        }
+        Ok(res)
+    }
+    /// Set the current torque PID gains of the motors
+    fn set_torque_pid_gains(&mut self, pid: [Pid; N]) -> Result<()> {
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            axis.set_torque_pid_gains([pid[i]])?;
+        }
+
+        Ok(())
+    }
+
+
+/// Get the current velocity PID gains of the motors
+    fn get_velocity_pid_gains(&mut self) -> Result<[Pid; N]> {
+        let mut res = [Pid {
+            p: 0,
+            i: 0,
+            // d: 0.0,
+        }; N];
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            res[i] = axis.get_velocity_pid_gains()?[0];
+        }
+        Ok(res)
+    }
+    /// Set the current velocity PID gains of the motors
+    fn set_velocity_pid_gains(&mut self, pid: [Pid; N]) -> Result<()> {
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            axis.set_velocity_pid_gains([pid[i]])?;
+        }
+
+        Ok(())
+    }
+
+
+/// Get the current position PID gains of the motors
+    fn get_position_pid_gains(&mut self) -> Result<[Pid; N]> {
+        let mut res = [Pid {
+            p: 0,
+            i: 0,
+            // d: 0.0,
+        }; N];
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            res[i] = axis.get_position_pid_gains()?[0];
+        }
+        Ok(res)
+    }
+    /// Set the current position PID gains of the motors
+    fn set_position_pid_gains(&mut self, pid: [Pid; N]) -> Result<()> {
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            axis.set_position_pid_gains([pid[i]])?;
         }
 
         Ok(())

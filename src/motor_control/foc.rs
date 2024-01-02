@@ -261,6 +261,60 @@ where
     }
 
 
+    pub fn tmc4671_get_pid_flux(&mut self) -> Result<u32, embassy_stm32::spi::Error> {
+	self.tmc4671_get_u32(Tmc4671Registers::PID_FLUX_P_FLUX_I as u8)
+    }
+    pub fn tmc4671_get_pid_torque(&mut self) -> Result<u32, embassy_stm32::spi::Error> {
+	self.tmc4671_get_u32(Tmc4671Registers::PID_TORQUE_P_TORQUE_I as u8)
+    }
+    pub fn tmc4671_get_pid_velocity(&mut self) -> Result<u32, embassy_stm32::spi::Error> {
+	self.tmc4671_get_u32(Tmc4671Registers::PID_VELOCITY_P_VELOCITY_I as u8)
+    }
+    pub fn tmc4671_get_pid_position(&mut self) -> Result<u32, embassy_stm32::spi::Error> {
+	self.tmc4671_get_u32(Tmc4671Registers::PID_POSITION_P_POSITION_I as u8)
+    }
+
+
+    pub fn tmc4671_set_pid_flux(&mut self, pid:u32) -> Result<u32, embassy_stm32::spi::Error> {
+	self.tmc4671_write_register(Tmc4671Registers::PID_FLUX_P_FLUX_I as u8, pid)
+    }
+
+    pub fn tmc4671_set_pid_torque(&mut self, pid:u32) -> Result<u32, embassy_stm32::spi::Error> {
+	self.tmc4671_write_register(Tmc4671Registers::PID_TORQUE_P_TORQUE_I as u8, pid)
+    }
+
+    pub fn tmc4671_set_pid_velocity(&mut self, pid:u32) -> Result<u32, embassy_stm32::spi::Error> {
+	self.tmc4671_write_register(Tmc4671Registers::PID_VELOCITY_P_VELOCITY_I as u8, pid)
+    }
+
+    pub fn tmc4671_set_pid_position(&mut self, pid:u32) -> Result<u32, embassy_stm32::spi::Error> {
+	self.tmc4671_write_register(Tmc4671Registers::PID_POSITION_P_POSITION_I as u8, pid)
+    }
+
+
+    pub fn tmc4671_get_uq_ud_limit(&mut self) -> Result<i16, embassy_stm32::spi::Error> {
+	self.tmc4671_get_lower_i16(Tmc4671Registers::PIDOUT_UQ_UD_LIMITS as u8)
+    }
+    pub fn tmc4671_set_uq_ud_limit(&mut self, limit:i16) -> Result<u32, embassy_stm32::spi::Error> {
+	self.tmc4671_write_register(Tmc4671Registers::PIDOUT_UQ_UD_LIMITS as u8, limit as u32 &0x7FFF as u32)
+    }
+
+    pub fn tmc4671_get_torque_flux_limit(&mut self) -> Result<i16, embassy_stm32::spi::Error> {
+	self.tmc4671_get_lower_i16(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8)
+    }
+    pub fn tmc4671_set_torque_flux_limit(&mut self, limit:i16) -> Result<u32, embassy_stm32::spi::Error> {
+	self.tmc4671_write_register(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, limit as u32 &0x7FFF as u32)
+    }
+
+    pub fn tmc4671_get_velocity_limit(&mut self) -> Result<u32, embassy_stm32::spi::Error> {
+	self.tmc4671_read_register(Tmc4671Registers::PID_VELOCITY_LIMIT as u8)
+    }
+    pub fn tmc4671_set_velocity_limit(&mut self, limit:u32) -> Result<u32, embassy_stm32::spi::Error> {
+	self.tmc4671_write_register(Tmc4671Registers::PID_VELOCITY_LIMIT as u8, limit)
+    }
+
+
+
     pub fn tmc4671_get_mode(&mut self) -> Result<MotionMode, embassy_stm32::spi::Error> {
 
 	match self.tmc4671_read_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8)
