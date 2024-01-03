@@ -1,5 +1,7 @@
 use embassy_futures::join;
 
+use crate::config::DonutHall;
+
 use super::foc::MotionMode;
 use super::motors_io::{Pid, RawMotorsIO, Result};
 use super::sensors_io::{RawSensorsIO};
@@ -32,11 +34,20 @@ impl<'d, const N: usize> Actuator<'d, N> {
 	Ok(())
     }
 
-
+    // pub fn get_ventouse(&mut self, v:char) ->Option<&mut dyn RawMotorsIO<1>>{
+    // 	match v {
+    // 	    'A' => self.axes[0].get_ventouse('A'),
+    // 	    'B' => self.axes[1].get_ventouse('B'),
+    // 	    'C' => self.axes[2].get_ventouse('C'),
+    // 	    _ => None,
+    // 	}
+    // }
 }
 
 // TODO: make this generic (how?)
 impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
+
+
     /// Check if the motors are ON or OFF
     fn is_torque_on(&mut self) -> Result<[bool; N]> {
         let mut res = [false; N];
@@ -331,6 +342,15 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
         }
 
         Ok(())
+    }
+
+    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<()> {
+	for (i, axis) in self.axes.iter_mut().enumerate() {
+
+	    axis.find_index(donut_sensor)?;
+	}
+
+	Ok(())
     }
 
 }

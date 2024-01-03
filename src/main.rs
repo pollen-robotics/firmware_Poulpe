@@ -23,6 +23,7 @@ mod motor_control;
 mod shared_memory;
 
 use crate::config::{ActuatorConfig, AksimConfig, AD5047Config, AD5047ConfigTop, AD5047ConfigMid, AD5047ConfigBot};
+use crate::motor_control::sensors::I2cHallConfig;
 use crate::motor_control::ventouse::VentouseConfig;
 use crate::shared_memory::SharedMemory;
 
@@ -128,6 +129,13 @@ async fn main(spawner: Spawner) {
         ad5047bot: AD5047ConfigBot {
             cs: p.PA15,
         },
+
+	donut_hall: I2cHallConfig {
+	    peri: p.I2C1,
+	    scl: p.PB6,
+	    sda: p.PB7,
+	},
+
 
     };
     #[cfg(feature = "orbita2d")]

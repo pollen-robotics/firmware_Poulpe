@@ -14,7 +14,7 @@ pub static DXL_ID: u8 = 42;
 pub type DynamixelUart = Uart<'static, p::USART1, p::DMA1_CH0, p::DMA1_CH1>;
 
 
-use crate::motor_control::{ventouse::{Ventouse, VentouseConfig}, sensors::SensorConfig, sensors::{AksimSensor, AD5047Sensor}};
+use crate::motor_control::{ventouse::{Ventouse, VentouseConfig}, sensors::{SensorConfig, I2cHallConfig}, sensors::{AksimSensor, AD5047Sensor, I2cHallSensor}};
 
 pub type VentouseA<'d> = Ventouse<'d, p::SPI1, p::PA3, p::PC0, p::PA2>;
 pub type VentouseB<'d> = Ventouse<'d, p::SPI4, p::PE3, p::PE0, p::PC15>;
@@ -28,9 +28,12 @@ pub type VentouseCConfig = VentouseConfig<p::SPI6, p::PB3, p::PB5, p::PB4, p::PD
 
 pub type AksimConfig = SensorConfig<p::PE4>;
 pub type AD5047Config = SensorConfig<p::PA15>;
-pub type AD5047ConfigTop = SensorConfig<p::PA4>; //TODO
-pub type AD5047ConfigMid = SensorConfig<p::PE4>; //TODO
-pub type AD5047ConfigBot = SensorConfig<p::PA15>; //TODO
+pub type AD5047ConfigTop = SensorConfig<p::PA4>;
+pub type AD5047ConfigMid = SensorConfig<p::PE4>;
+pub type AD5047ConfigBot = SensorConfig<p::PA15>;
+
+pub type DonutHallConfig = I2cHallConfig<p::I2C1, p::PB6, p::PB7>;
+
 
 pub type Aksim<'d> = AksimSensor<'d,p::SPI4, p::PE4>;
 pub type AD5047<'d> = AD5047Sensor<'d, p::SPI6,p::PA15>;
@@ -38,6 +41,9 @@ pub type AD5047<'d> = AD5047Sensor<'d, p::SPI6,p::PA15>;
 pub type AD5047Top<'d> = AD5047Sensor<'d, p::SPI4,p::PA4>;
 pub type AD5047Mid<'d> = AD5047Sensor<'d, p::SPI4,p::PE4>;
 pub type AD5047Bot<'d> = AD5047Sensor<'d, p::SPI4,p::PA15>;
+
+// pub type DonutHall<'d> = I2cHallSensor<'d, p::I2C1, p::PB6, p::PB7>;
+pub type DonutHall<'d> = I2cHallSensor<p::I2C1>;
 
 
 pub struct ActuatorConfig {
@@ -57,6 +63,8 @@ pub struct ActuatorConfig {
     pub ad5047mid: AD5047ConfigMid,
     #[cfg(feature = "orbita3d")]
     pub ad5047bot: AD5047ConfigBot,
+    #[cfg(feature = "orbita3d")]
+    pub donut_hall: DonutHallConfig,
 
 
 }

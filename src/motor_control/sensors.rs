@@ -9,7 +9,7 @@ use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{Input, Level, Output, Pin, Pull, Speed};
 use embassy_stm32::peripherals::SPI4;
 use embassy_stm32::spi::{Config, Instance, MisoPin, MosiPin, SckPin, Spi};
-use embassy_stm32::i2c::{Error, I2c};
+use embassy_stm32::i2c::{Error, I2c, Instance as I2cInstance};
 use embassy_stm32::{spi,i2c};
 use embassy_time::*;
 // use embassy_embedded_hal::shared_bus::blocking::spi::SpiDevice;
@@ -20,7 +20,9 @@ use embassy_sync::blocking_mutex::{NoopMutex, raw::NoopRawMutex};
 
 
 use embedded_hal_1::spi::SpiDevice;
-use cortex_m::prelude::_embedded_hal_blocking_i2c_Read;
+// use embedded_hal_1::i2c::I2cDevice as embedded_hal_I2cDevice;
+// use embedded_hal_1::i2c::I2c::BlockingRead;
+// use cortex_m::prelude::_embedded_hal_blocking_i2c_Read;
 
 
 use static_cell::StaticCell;
@@ -102,7 +104,7 @@ where
 
 pub struct I2cHallConfig<T, Scl, Sda>
 where
-    T: Instance,
+    T: I2cInstance,
 	Scl: Pin,
 	Sda: Pin,
 {
@@ -111,24 +113,26 @@ where
 	pub sda: Sda,
 }
 
-pub struct I2cHallSensor<'d,T, Scl, Sda>
+
+pub struct I2cHallSensor<T>
 where
-    T: Instance+ embassy_stm32::i2c::Instance,
-    Scl: Pin,
-    Sda: Pin,
-    embassy_stm32::i2c::I2c<'static, T, Scl, Sda>: SetConfig
+    T: I2cInstance,
+    // Scl: Pin,
+    // Sda: Pin,
+    // embassy_stm32::i2c::I2c<'static, T, Scl, Sda>: SetConfig
 
 {
-	i2c: I2cDevice<'d,NoopRawMutex, I2c<'static, T, Scl, Sda >>,
+	i2c: I2c<'static, T >,
 }
-impl<'d, T, Scl, Sda>I2cHallSensor<'d,T,Scl,Sda>
+
+impl<T>I2cHallSensor<T>
 where
-	  T: Instance+ embassy_stm32::i2c::Instance,
-	  Scl: Pin,
-	  Sda: Pin,
-    embassy_stm32::i2c::I2c<'static, T, Scl, Sda>: SetConfig, embassy_stm32::i2c::I2c<'static, T, Scl, Sda>: _embedded_hal_blocking_i2c_Read
+	  T: I2cInstance,
+	  // Scl: Pin,
+	  // Sda: Pin,
+    // embassy_stm32::i2c::I2c<'static, T, Scl, Sda>: _embedded_hal_blocking_i2c_Read
 {
-    pub fn new(i2c: I2cDevice<'d,NoopRawMutex, I2c<'static, T, Scl, Sda >>,) -> Self {
+    pub fn new(i2c: I2c<'static, T >,) -> Self {
 		Self {
 			i2c,
 		}
@@ -137,7 +141,7 @@ where
     {
 	let mut data = [0u8; 1];
 	let mut hall_detected = 0u16;
-	match I2cDevice::read(&mut self.i2c, ADDRESS_A, &mut data) {
+	match self.i2c.blocking_read(ADDRESS_A, &mut data) {
             Ok(()) => {
 		//info!("Inputs_A: {:#010b}", data[0]);
 		//            hall_detected = (data[0] as u16) << 8;
@@ -148,7 +152,7 @@ where
             Err(e) => {return Err(IOError::I2cError)},
 	}
 
-	match I2cDevice::read(&mut self.i2c, ADDRESS_B, &mut data) {
+	match self.i2c.blocking_read(ADDRESS_B, &mut data) {
             Ok(()) => {
 		//info!("Inputs_B: {:#010b}", data[0]);
 		//            hall_detected = hall_detected | (data[0] as u16);
@@ -162,6 +166,62 @@ where
     }
 
 }
+
+
+// I can't get this to work, so I'm using the "standard" blocking version above
+
+// pub struct I2cHallSensor<'d,T, Scl, Sda>
+// where
+//     T: I2cInstance,
+//     Scl: Pin,
+//     Sda: Pin,
+//     // embassy_stm32::i2c::I2c<'static, T, Scl, Sda>: SetConfig
+
+// {
+// 	i2c: I2cDevice<'d,NoopRawMutex, I2c<'static, T, Scl, Sda >>,
+// }
+
+// impl<'d, T, Scl, Sda>I2cHallSensor<'d,T,Scl,Sda>
+// where
+// 	  T: I2cInstance,
+// 	  Scl: Pin,
+// 	  Sda: Pin,
+//     // embassy_stm32::i2c::I2c<'static, T, Scl, Sda>: _embedded_hal_blocking_i2c_Read
+// {
+//     pub fn new(i2c: I2cDevice<'d,NoopRawMutex, I2c<'static, T, Scl, Sda >>,) -> Self {
+// 		Self {
+// 			i2c,
+// 		}
+// 	}
+//     pub fn read(&mut self) -> Result<u16,IOError>
+//     {
+// 	let mut data = [0u8; 1];
+// 	let mut hall_detected = 0u16;
+// 	match I2cDevice::read(&mut self.i2c, ADDRESS_A, &mut data) {
+//             Ok(()) => {
+// 		//info!("Inputs_A: {:#010b}", data[0]);
+// 		//            hall_detected = (data[0] as u16) << 8;
+// 		hall_detected = data[0] as u16;
+//             },
+//             // Err(Error::Timeout) => info!("Operation timed out"),
+// 	    //Why is this so complicated!!! I cannot return the original error thanks to a dozain levels of abstraction...
+//             Err(e) => {return Err(IOError::I2cError)},
+// 	}
+
+// 	match I2cDevice::read(&mut self.i2c, ADDRESS_B, &mut data) {
+//             Ok(()) => {
+// 		//info!("Inputs_B: {:#010b}", data[0]);
+// 		//            hall_detected = hall_detected | (data[0] as u16);
+// 		hall_detected |= ((data[0] as u16) << 8);
+//             },
+//             // Err(Error::Timeout) => info!("Operation timed out"),
+//             // Err(e) => info!("I2c Error: {:?}", e),
+//             Err(e) => {return Err(IOError::I2cError)},
+// 	}
+// 	Ok(hall_detected)
+//     }
+
+// }
 
 pub struct AksimSensor<'d,T,P>
     where

@@ -2,6 +2,8 @@ use defmt::Format;
 use embassy_embedded_hal::shared_bus;
 use embassy_stm32::{spi, i2c};
 
+use crate::config::DonutHall;
+
 use super::foc::MotionMode;
 
 pub type Result<T> = core::result::Result<T, IOError>;
@@ -104,6 +106,9 @@ pub trait RawMotorsIO<const N: usize> {
     fn get_position_pid_gains(&mut self) -> Result<[Pid; N]>;
     /// Set the current position PID gains of the motors
     fn set_position_pid_gains(&mut self, pid: [Pid; N]) -> Result<()>;
+
+
+    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<()>;
 
 
 }

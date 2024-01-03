@@ -1,21 +1,25 @@
 use core::cell::RefCell;
 
 use defmt::{info, error, debug, warn};
-use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
+use embassy_embedded_hal::shared_bus::blocking::{spi::SpiDeviceWithConfig, i2c::I2cDevice};
 use embassy_stm32::{
     dma::NoDma,
     gpio::{Level, Output, Speed},
-    spi,
+    spi
 };
+use embassy_stm32::i2c::{Error, I2c};
+use embassy_stm32::time::Hertz;
+
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex};
 use embassy_time::{Duration, Timer, block_for, Instant};
+
 
 const SPI_FREQ: u32 = 2_000_000;
 
 
 use crate::{
-    config::{self, ActuatorConfig},
-    SHARED_MEMORY, motor_control::{sensors::{AD5047Sensor, SensorKind}, RawSensorsIO},
+    config::{self, ActuatorConfig, DonutHall},
+    SHARED_MEMORY, motor_control::{sensors::{AD5047Sensor, SensorKind, I2cHallSensor}, RawSensorsIO}, IrqsI2c,
 };
 
 use super::{
@@ -270,6 +274,36 @@ pub async fn control_loop(config: ActuatorConfig) {
     let ad5047=AD5047Sensor::new(ad5047_spi);
     #[cfg(feature = "orbita2d")]
     let ad5047=SensorKind::Center(ad5047);
+
+
+    //Donut I2C Hall sensors
+    // #[cfg(feature = "orbita3d")]
+    let i2c = I2c::new(
+        config.donut_hall.peri,
+        config.donut_hall.scl,
+        config.donut_hall.sda,
+	IrqsI2c,
+        NoDma,
+        NoDma,
+	Hertz(100_000),
+        Default::default(),
+    );
+
+
+    let mut donut_hall=DonutHall::new(i2c);
+
+
+    // let val=donut_hall.read();
+    // match val {
+    // 	Ok(val) => {
+    // 	    info!("Donut sensor: {:#x}",val);
+    // 	},
+    // 	Err(e) => {
+    // 	    error!("Donut sensor error: {:?}",e);
+    // 	}
+    // }
+
+    // error!("Donut sensor: {:#x}",val);
     /////////
 
 
@@ -331,6 +365,10 @@ pub async fn control_loop(config: ActuatorConfig) {
     debug!("moved sensors: {:?}", moved_sensors);
     debug!("diff sensors: {:?}", diff);
 
+
+    //Find index for Orbita3D motors
+    #[cfg(feature = "orbita3d")]
+    actuator.find_index(&mut donut_hall);
 
 
     block_for(Duration::from_secs(1));

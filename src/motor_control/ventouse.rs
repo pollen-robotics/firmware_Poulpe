@@ -3,7 +3,7 @@ use embassy_stm32::{gpio::Pin, spi};
 use embassy_time::{Duration, Timer};
 
 use crate::{
-    config,
+    config::{self, DonutHall},
     motor_control::foc::{MotionMode, Tmc4671Registers, OPENLOOP_ACCELERATION, UQ_UD_EXT},
 };
 
@@ -221,6 +221,11 @@ where
 	Ok(())
     }
 
+    // pub async fn find_index(&mut self, donut_sensor: &mut DonutHall<'_>) -> Result<(), IOError> //TODO
+    // {
+    // 	let d=donut_sensor.read();
+    // 	Ok(())
+    // }
 
 }
 
@@ -518,6 +523,21 @@ where
 
     }
 
+    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<(), IOError> //TODO
+	{
+	    let d=donut_sensor.read();
+	    match d{
+		Ok(d) => {	debug!("FIND INDEX: {:#x} {:?}",d,self.kind);},
+		Err(e) => error!("DonutHall error: {:?}",e),
+
+	    }
+
+	    Ok(())
+	}
+
+
+
+
 
 
 }
@@ -552,6 +572,24 @@ impl<'d> VentouseKind<'d> {
             VentouseKind::C(vc) => vc.check_motors_2().await,
         }
     }
+
+    // pub fn get_ventouse(&mut self, v: char) -> Option<&mut dyn RawMotorsIO<1>> {
+    // 		match v {
+    // 			'A' => match self {
+    // 				VentouseKind::A(va) => Some(va),
+    // 				_ => None,
+    // 			},
+    // 			'B' => match self {
+    // 				VentouseKind::B(vb) => Some(vb),
+    // 				_ => None,
+    // 			},
+    // 			'C' => match self {
+    // 				VentouseKind::C(vc) => Some(vc),
+    // 				_ => None,
+    // 			},
+    // 			_ => None,
+    // 		}
+    // 	}
 
 
 
@@ -820,6 +858,32 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
             VentouseKind::C(vc) => vc.set_position_pid_gains(pid),
         }
     }
+
+    // fn get_ventouse(&mut self, v: char) -> Option<&mut dyn RawMotorsIO<1>> {
+    // 		match v {
+    // 		    'A' => match self {
+    // 				VentouseKind::A(va) => Some(va),
+    // 				_ => None,
+    // 			},
+    // 			'B' => match self {
+    // 				VentouseKind::B(vb) => Some(vb),
+    // 				_ => None,
+    // 			},
+    // 			'C' => match self {
+    // 				VentouseKind::C(vc) => Some(vc),
+    // 				_ => None,
+    // 			},
+    // 			_ => None,
+    // 		}
+    // }
+    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<(), IOError> //TODO
+	{
+	    match self {
+		VentouseKind::A(va) => va.find_index(donut_sensor),
+		VentouseKind::B(vb) => vb.find_index(donut_sensor),
+		VentouseKind::C(vc) => vc.find_index(donut_sensor),
+	    }
+	}
 
 
 
