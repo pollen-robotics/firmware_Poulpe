@@ -344,13 +344,13 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
         Ok(())
     }
 
-    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<()> {
+    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<[u8;N]> {
 	for (i, axis) in self.axes.iter_mut().enumerate() {
 
 	    axis.find_index(donut_sensor)?;
 	}
 
-	Ok(())
+	Ok([0;N])
     }
 
 }

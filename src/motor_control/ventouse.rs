@@ -524,16 +524,21 @@ where
     }
 
     fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<(), IOError> //TODO
-	{
-	    let d=donut_sensor.read();
-	    match d{
-		Ok(d) => {	debug!("FIND INDEX: {:#x} {:?}",d,self.kind);},
-		Err(e) => error!("DonutHall error: {:?}",e),
+    {
+	// - read initial Hall state
+	// - Slowly move the motor (velocity mode?)
+	// - Loop while Hall state is the same
+	// - Returns the index of the Hall that changed
+	// - setup the motor back
+	let d=donut_sensor.read();
+	match d{
+	    Ok(d) => {	debug!("FIND INDEX: {:#x} {:?}",d,self.kind);},
+	    Err(e) => error!("DonutHall error: {:?}",e),
 
-	    }
-
-	    Ok(())
 	}
+
+	Ok(())
+    }
 
 
 
