@@ -108,7 +108,7 @@ pub trait RawMotorsIO<const N: usize> {
     fn set_position_pid_gains(&mut self, pid: [Pid; N]) -> Result<()>;
 
 
-    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<()>;
+    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<[u8;N]>;
 
 
 }

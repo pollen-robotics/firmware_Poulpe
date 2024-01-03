@@ -523,7 +523,7 @@ where
 
     }
 
-    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<(), IOError> //TODO
+    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<[u8;1], IOError> //TODO
     {
 	// - read initial Hall state
 	// - Slowly move the motor (velocity mode?)
@@ -537,7 +537,7 @@ where
 
 	}
 
-	Ok(())
+	Ok([0])
     }
 
 
@@ -881,7 +881,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     // 			_ => None,
     // 		}
     // }
-    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<(), IOError> //TODO
+    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<[u8;1], IOError> //TODO
 	{
 	    match self {
 		VentouseKind::A(va) => va.find_index(donut_sensor),
