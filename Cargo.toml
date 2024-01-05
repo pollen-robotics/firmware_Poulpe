@@ -7,6 +7,7 @@ license = "MIT OR Apache-2.0"
 [features]
 #motor specifig config
 default = ["orbita2d", "ec60", "cmd_filter"]
+# default = ["orbita3d", "cmd_filter"]
 orbita2d = []
 orbita3d = []
 ec60 = []

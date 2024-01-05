@@ -161,10 +161,10 @@ async fn main(spawner: Spawner) {
         },
 
         aksim: AksimConfig {
-            cs: p.PE4,
+            cs: p.PA15,
         },
         ad5047: AD5047Config {
-            cs: p.PA15,
+            cs: p.PE4,
         },
 
     };

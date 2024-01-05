@@ -104,33 +104,28 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 
 
-    //Aksim Ring sensor BUS B
+    //AD5047 center sensor BUS B
     /////////////
-	let mut aksim_spi_config = spi::Config::default();
+    let mut ad5047_spi_config = spi::Config::default();
+    ad5047_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
+    ad5047_spi_config.mode = spi::MODE_1;
 
-	aksim_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
-
-	aksim_spi_config.mode = spi::MODE_1;
-
-	aksim_spi_config.bit_order = spi::BitOrder::MsbFirst;
-
-
+    ad5047_spi_config.bit_order = spi::BitOrder::MsbFirst;
     #[cfg(feature = "orbita2d")]
-	let aksim_spi = SpiDeviceWithConfig::new(
-            &spi_bus,
-            Output::new(config.aksim.cs, Level::High, Speed::Medium),
-            aksim_spi_config,
-	);
+    let ad5047_spi = SpiDeviceWithConfig::new(
+        &spi_bus,
+        Output::new(config.ad5047.cs, Level::High, Speed::Medium),
+        ad5047_spi_config,
+    );
     #[cfg(feature = "orbita2d")]
-
-	let aksim=AksimSensor::new(aksim_spi);
+    let ad5047=AD5047Sensor::new(ad5047_spi);
     #[cfg(feature = "orbita2d")]
+    let ad5047=SensorKind::Center(ad5047);
 
-	let aksim=SensorKind::Ring(aksim);
     //////////
 
 
-    //Donut sensor BUS B TODO
+    //Donut sensor BUS B
 
 
 	let mut ad5047top_spi_config = spi::Config::default();
@@ -262,22 +257,28 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 
 
-    //ad5047 sensor BUS C
-    let mut ad5047_spi_config = spi::Config::default();
-    ad5047_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
-    ad5047_spi_config.mode = spi::MODE_1;
+    //Aksim sensor BUS C
+ let mut aksim_spi_config = spi::Config::default();
 
-    ad5047_spi_config.bit_order = spi::BitOrder::MsbFirst;
+    aksim_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
+
+    aksim_spi_config.mode = spi::MODE_1;
+
+    aksim_spi_config.bit_order = spi::BitOrder::MsbFirst;
+
+
     #[cfg(feature = "orbita2d")]
-    let ad5047_spi = SpiDeviceWithConfig::new(
-        &spi_bus,
-        Output::new(config.ad5047.cs, Level::High, Speed::Medium),
-        ad5047_spi_config,
-    );
+	let aksim_spi = SpiDeviceWithConfig::new(
+            &spi_bus,
+            Output::new(config.aksim.cs, Level::High, Speed::Medium),
+            aksim_spi_config,
+	);
     #[cfg(feature = "orbita2d")]
-    let ad5047=AD5047Sensor::new(ad5047_spi);
+	let aksim=AksimSensor::new(aksim_spi);
     #[cfg(feature = "orbita2d")]
-    let ad5047=SensorKind::Center(ad5047);
+	let aksim=SensorKind::Ring(aksim);
+    ////
+
 
 
     //Donut I2C Hall sensors
@@ -315,7 +316,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     // Setup the actuator with the configured ventouses
     #[cfg(feature = "orbita2d")]
-    let mut actuator = Actuator::new([ventouse_b, ventouse_c], [aksim, ad5047]);
+    let mut actuator = Actuator::new([ventouse_b, ventouse_c], [ad5047,aksim]);
     #[cfg(feature = "orbita3d")]
     let mut actuator = Actuator::new([ventouse_a, ventouse_b, ventouse_c], [ad5047top, ad5047mid, ad5047bot]);
     let mut init_error=false;

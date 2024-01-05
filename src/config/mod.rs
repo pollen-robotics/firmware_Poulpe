@@ -26,8 +26,9 @@ pub type VentouseBConfig =
     VentouseConfig<p::SPI4, p::PE12, p::PE6, p::PE5, p::PE3, p::PE0, p::PC15>;
 pub type VentouseCConfig = VentouseConfig<p::SPI6, p::PB3, p::PB5, p::PB4, p::PD7, p::PD5, p::PD6>;
 
-pub type AksimConfig = SensorConfig<p::PE4>;
-pub type AD5047Config = SensorConfig<p::PA15>;
+pub type AksimConfig = SensorConfig<p::PA15>;
+pub type AD5047Config = SensorConfig<p::PE4>;
+
 pub type AD5047ConfigTop = SensorConfig<p::PA4>;
 pub type AD5047ConfigMid = SensorConfig<p::PE4>;
 pub type AD5047ConfigBot = SensorConfig<p::PA15>;
@@ -35,8 +36,8 @@ pub type AD5047ConfigBot = SensorConfig<p::PA15>;
 pub type DonutHallConfig = I2cHallConfig<p::I2C1, p::PB6, p::PB7>;
 
 
-pub type Aksim<'d> = AksimSensor<'d,p::SPI4, p::PE4>;
-pub type AD5047<'d> = AD5047Sensor<'d, p::SPI6,p::PA15>;
+pub type Aksim<'d> = AksimSensor<'d,p::SPI6, p::PA15>;
+pub type AD5047<'d> = AD5047Sensor<'d, p::SPI4,p::PE4>;
 
 pub type AD5047Top<'d> = AD5047Sensor<'d, p::SPI4,p::PA4>;
 pub type AD5047Mid<'d> = AD5047Sensor<'d, p::SPI4,p::PE4>;
