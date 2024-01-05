@@ -316,7 +316,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     // Setup the actuator with the configured ventouses
     #[cfg(feature = "orbita2d")]
-    let mut actuator = Actuator::new([ventouse_b, ventouse_c], [ad5047,aksim]);
+    let mut actuator = Actuator::new([ventouse_b, ventouse_c], [aksim, ad5047]);
     #[cfg(feature = "orbita3d")]
     let mut actuator = Actuator::new([ventouse_a, ventouse_b, ventouse_c], [ad5047top, ad5047mid, ad5047bot]);
     let mut init_error=false;
