@@ -488,10 +488,12 @@ pub async fn control_loop(config: ActuatorConfig) {
 	// warn!("ELAPSED 2 {:?}",t0.elapsed().as_micros());
 
 	//Unfiltered
-        // let target = { SHARED_MEMORY.lock().await.get_target_position() };
+	#[cfg(not(feature = "cmd_filter"))]
+        let target = { SHARED_MEMORY.lock().await.get_target_position() };
 
 	//Filtered
         let mut target = { SHARED_MEMORY.lock().await.get_target_position() };
+	#[cfg(feature = "cmd_filter")]
 	target.iter_mut().enumerate().for_each(|(i,t)| {*t=cmd_filter[i].run(*t)});
 
 	actuator.set_target_position(target).unwrap_or_else(|e|
