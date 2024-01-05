@@ -19,6 +19,7 @@ const UART_SLEEP_US_DIRHIGH: u64 = 150;
 
 
 
+
 const MAX_READ_BUFFER_LENGTH: usize = 32;
 
 pub struct DynamixelUsartIO<'d, T, TxDma, RxDma>

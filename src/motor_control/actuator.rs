@@ -17,8 +17,14 @@ pub struct Actuator<'d, const N: usize> {
 }
 
 impl<'d, const N: usize> Actuator<'d, N> {
+    #[cfg(feature = "orbita3d")]
     pub fn new(axes: [VentouseKind<'d>; N], sensors: [SensorKind<'d>;N]) -> Self {
         Self { axes, sensors, index_sensor: [0xff; N] }
+
+    }
+    #[cfg(feature = "orbita2d")]
+    pub fn new(axes: [VentouseKind<'d>; N], sensors: [SensorKind<'d>;N]) -> Self {
+        Self { axes, sensors }
 
     }
 

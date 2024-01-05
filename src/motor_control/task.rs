@@ -11,7 +11,7 @@ use embassy_stm32::i2c::{Error, I2c};
 use embassy_stm32::time::Hertz;
 
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex};
-use embassy_time::{Duration, Timer, block_for, Instant};
+use embassy_time::{Duration, Timer, block_for, Instant, Ticker};
 
 
 const SPI_FREQ: u32 = 2_000_000;
@@ -202,8 +202,10 @@ pub async fn control_loop(config: ActuatorConfig) {
     let foc = Foc::new(
         foc_spi,
         config.b.foc_enable,
-	#[cfg(feature = "orbita2d")]
+	#[cfg(all(feature = "orbita2d", not(feature = "ec60")))]
         config::BrushlessMotor::ec45(),
+	#[cfg(all(feature = "orbita2d", feature = "ec60"))]
+        config::BrushlessMotor::ec60(),
 	#[cfg(feature = "orbita3d")]
         config::BrushlessMotor::ecx22(),
 
@@ -240,8 +242,10 @@ pub async fn control_loop(config: ActuatorConfig) {
     let foc = Foc::new(
         foc_spi,
         config.c.foc_enable,
-	#[cfg(feature = "orbita2d")]
+	#[cfg(all(feature = "orbita2d", not(feature = "ec60")))]
         config::BrushlessMotor::ec45(),
+	#[cfg(all(feature = "orbita2d", feature = "ec60"))]
+        config::BrushlessMotor::ec60(),
 	#[cfg(feature = "orbita3d")]
         config::BrushlessMotor::ecx22(),
     );
@@ -277,7 +281,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 
     //Donut I2C Hall sensors
-    // #[cfg(feature = "orbita3d")]
+    #[cfg(feature = "orbita3d")]
     let i2c = I2c::new(
         config.donut_hall.peri,
         config.donut_hall.scl,
@@ -289,7 +293,7 @@ pub async fn control_loop(config: ActuatorConfig) {
         Default::default(),
     );
 
-
+    #[cfg(feature = "orbita3d")]
     let mut donut_hall=DonutHall::new(i2c);
     // let mut donut_hall=SensorKind::DonutHall(donut_hall);
 
@@ -380,7 +384,9 @@ pub async fn control_loop(config: ActuatorConfig) {
 									[255;config::N_AXIS]
 								    }
     );
+    #[cfg(feature = "orbita3d")]
     actuator.set_index_sensor(indices);
+    #[cfg(feature = "orbita3d")]
     debug!("indices: {:?}", indices);
 
     // - Get the "closest" Hall for each motor
@@ -431,9 +437,16 @@ pub async fn control_loop(config: ActuatorConfig) {
     // let mut biquad = DirectForm2Transposed::<f32>::new(coeffs);
     let mut torque_filter=[DirectForm2Transposed::<f32>::new(coeffs); config::N_AXIS];
     let mut vel_filter=[DirectForm2Transposed::<f32>::new(coeffs); config::N_AXIS];
+
+
+
+    let mut cmd_filter=[DirectForm2Transposed::<f32>::new(coeffs); config::N_AXIS];
+
     let mut slow_timer:u32=1000;
+
+    let mut ticker = Ticker::every(Duration::from_micros(1000));
     loop {
-	let t0=Instant::now();
+	// let t0=Instant::now();
 	// warn!("ELAPSED -1 {:?}",t0.elapsed().as_micros());
 	//TODO match and set error led for every call
         let pos = actuator.get_current_position().unwrap_or_else(|e|
@@ -474,7 +487,13 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 	// warn!("ELAPSED 2 {:?}",t0.elapsed().as_micros());
 
-        let target = { SHARED_MEMORY.lock().await.get_target_position() };
+	//Unfiltered
+        // let target = { SHARED_MEMORY.lock().await.get_target_position() };
+
+	//Filtered
+        let mut target = { SHARED_MEMORY.lock().await.get_target_position() };
+	target.iter_mut().enumerate().for_each(|(i,t)| {*t=cmd_filter[i].run(*t)});
+
 	actuator.set_target_position(target).unwrap_or_else(|e|
 							    {
 								error!("Error setting target pos: {:?}", e);
@@ -655,9 +674,11 @@ pub async fn control_loop(config: ActuatorConfig) {
 	    slow_timer-=1;
 	}
 
-	let elapsed=t0.elapsed().as_micros();
+	// let elapsed=t0.elapsed().as_micros();
 	// warn!("ELAPSED: {:?}",elapsed);
-        Timer::after(Duration::from_micros(1000-elapsed)).await;
+        // Timer::after(Duration::from_micros(1000-elapsed)).await;
         // Timer::after(Duration::from_millis(1)).await;
+	ticker.next().await;
+
     }
 }

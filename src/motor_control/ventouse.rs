@@ -600,14 +600,14 @@ where
 
 
 
-	self.set_target_velocity([2000.0])?;
+	self.set_target_velocity([4000.0])?;
 	self.set_control_mode(MotionMode::Velocity)?;
 	let t0=Instant::now();
 	let mut dd=donut_sensor.read().unwrap_or_else(|e| {
 	    error!("FIND INDEX error: {:?}",e);
 	    0
 	});
-	while dd==d && t0.elapsed().as_millis()<1000
+	while dd==d && t0.elapsed().as_millis()<500
 	{
 	    // debug!("FIND INDEX: {:#x} {:#x} {:?}",d,dd,self.kind);
 	    dd=donut_sensor.read().unwrap_or_else(|e| {
@@ -616,8 +616,8 @@ where
 	    });
 	}
 	self.set_target_velocity([0.0])?;
-	self.set_target_velocity([-2000.0])?;
-	block_for(Duration::from_secs(1));
+	self.set_target_velocity([-5000.0])?;
+	block_for(Duration::from_millis(500));
 	let _=self.foc.tmc4671_set_actual_position(0);
 	let _=self.foc.tmc4671_set_target_position(0);
 	self.set_control_mode(MotionMode::Position)?;

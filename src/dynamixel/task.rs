@@ -178,7 +178,7 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                 }
                             }
 
-
+			    #[cfg(feature = "orbita3d")]
                             DynamixelRegister::IndexSensor => {
                                 let value = { SHARED_MEMORY.lock().await.get_index_sensor() };
                                 let sp = StatusPacket::with_value(id, dxl_error, value);
