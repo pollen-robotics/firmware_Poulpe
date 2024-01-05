@@ -1,6 +1,6 @@
 use defmt::{info, error, debug};
 use embassy_stm32::{gpio::Pin, spi};
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Timer, Instant, block_for};
 
 use crate::{
     config::{self, DonutHall},
@@ -59,28 +59,46 @@ where
         Self { foc, driver, kind:'?' }
     }
 
-    pub async fn init(&mut self, kind:char) -> Result<(), embassy_stm32::spi::Error> {
+    pub async fn init(&mut self, kind:char) -> Result<(), IOError> {
 	self.kind=kind;
 	self.foc.tmc4671_disable();
+	let mut ret_err=false;
+	let mut err=IOError::InitError;
 	info!("[Ventouse{:?}] Initializing register...", self.kind);
 
 	match self.driver.tmc6200_checked_write(0x00u8, 0x00000000u32)
 	{
 	    Ok(_) => info!("[Ventouse{:?}] TMC6200 init done",self.kind),
-	    Err(e) => error!("[Ventouse{:?}] TMC6200 init failed: {:?} => check SPI and power connection", self.kind,e),
+	    Err(e) => {
+		ret_err=true;
+		error!("[Ventouse{:?}] TMC6200 init failed: {:?} => check SPI and power connection", self.kind,e);
+		err=IOError::SpiError(e);
+
+
+	    }
 
 	}
 	match self.driver.tmc6200_checked_write(0x0au8, 0x00000000u32) // DRVSRENGTH=0 for BOB
 	{
 	    Ok(_) => info!("[Ventouse{:?}] TMC6200 init done",self.kind),
-	    Err(e) => error!("[Ventouse{:?}] TMC6200 init failed: {:?}  => check SPI and power connection", self.kind,e),
+	    Err(e) => {
+		ret_err=true;
+		error!("[Ventouse{:?}] TMC6200 init failed: {:?}  => check SPI and power connection", self.kind,e);
+		err=IOError::SpiError(e);
+
+	    }
 
 	}
 
         match self.foc.tmc4671_init_registers().await
 	{
 	    Ok(_) => info!("[Ventouse{:?}] TMC4671 init done",self.kind),
-	    Err(e) => error!("[Ventouse{:?}] TMC467100 init failed: {:?}  => check SPI and power connection", self.kind,e),
+	    Err(e) => {
+		ret_err=true;
+		error!("[Ventouse{:?}] TMC467100 init failed: {:?}  => check SPI and power connection", self.kind,e);
+		err=IOError::SpiError(e);
+
+	    }
 
 	}
 
@@ -93,14 +111,29 @@ where
         match self.align_motor().await
 	{
 	    Ok(_) => info!("[Ventouse{:?}] align done",self.kind),
-	    Err(e) => error!("[Ventouse{:?}] align failed: {:?}  => check SPI and power connection", self.kind,e),
+	    Err(e) => {
+		ret_err=true;
+		error!("[Ventouse{:?}] align failed: {:?}  => check SPI and power connection", self.kind,e);
+		err=IOError::SpiError(e);
+
+	    }
 
 	}
 
 
-        self.foc.tmc4671_set_mode(MotionMode::Position)?;
+        match self.foc.tmc4671_set_mode(MotionMode::Position)
+	{
+	    Ok(_) => {}
+	    Err(e) => {
+		ret_err=true;
+		err=IOError::SpiError(e);
+	    }
+	}
         info!("[Ventouse{:?}] Motor set to position mode done",self.kind);
-
+	if ret_err
+	{
+	    return Err(err);
+	}
         Ok(())
     }
 
@@ -156,7 +189,7 @@ where
         Ok(())
     }
     //check motors
-    pub async fn check_motors_1(&mut self) -> Result<(), embassy_stm32::spi::Error> {
+    pub async fn check_motors_1(&mut self) -> Result<(), IOError> {
 	//Assume that the registers are already initialized and the motors aligned
 
 	// - Read the initial position and axis sensors
@@ -166,29 +199,30 @@ where
 
 
 	// Get initial position
-	let initial_position = self.foc.tmc4671_get_actual_position()?;
+	let initial_position = self.foc.tmc4671_get_actual_position().map_err(IOError::SpiError)?;
 	debug!("[Ventouse{:?}] Initial position: {}",self.kind, initial_position);
 
 
         // Move!
-        self.foc.tmc4671_set_mode(MotionMode::Velocity)?;
+        self.foc.tmc4671_set_mode(MotionMode::Velocity).map_err(IOError::SpiError)?;
 
         // Rotate right
         info!("[Ventouse{:?}] Rotate right...",self.kind);
 	#[cfg(feature = "orbita2d")]
-        self.foc.tmc4671_set_target_velocity(50)?;
+        self.foc.tmc4671_set_target_velocity(50).map_err(IOError::SpiError)?;
 	#[cfg(feature = "orbita3d")]
-        self.foc.tmc4671_set_target_velocity(500)?;
+        self.foc.tmc4671_set_target_velocity(500).map_err(IOError::SpiError)?;
         let _ = Timer::after(Duration::from_millis(1000)).await;
-        self.foc.tmc4671_set_target_velocity(0)?;
-	let position = self.foc.tmc4671_get_actual_position()?;
+        self.foc.tmc4671_set_target_velocity(0).map_err(IOError::SpiError)?;
+	let position = self.foc.tmc4671_get_actual_position().map_err(IOError::SpiError)?;
 	debug!("[Ventouse{:?}] position: {}",self.kind, position);
 	// check that it has moved
 
-	let diff=position-initial_position;
+	let diff=position.saturating_sub(initial_position);
 	//TODO is it the same for Orbita3D and Orbita2D?
 	if diff<100000{
 	    error!("[Ventouse{:?}] Motor has not moved enough: {} Check motor/encoder connection",self.kind, diff);
+	    return Err(IOError::InitError);
 	}
 	else{
 	    info!("[Ventouse{:?}] Motor has moved: {}",self.kind, diff);
@@ -198,26 +232,26 @@ where
 	Ok(())
     }
 
-    pub async fn check_motors_2(&mut self) -> Result<(), embassy_stm32::spi::Error> {
+    pub async fn check_motors_2(&mut self) -> Result<(), IOError> {
 	//Assume that check_motors_1 has been called
 
         // Rotate left
         info!("[Ventouse{:?}] Rotate left...",self.kind);
 	#[cfg(feature = "orbita2d")]
-        self.foc.tmc4671_set_target_velocity(-50)?;
+        self.foc.tmc4671_set_target_velocity(-50).map_err(IOError::SpiError)?;
 	#[cfg(feature = "orbita3d")]
-        self.foc.tmc4671_set_target_velocity(-500)?;
+        self.foc.tmc4671_set_target_velocity(-500).map_err(IOError::SpiError)?;
         let _ = Timer::after(Duration::from_millis(1000)).await;
 
         // Stop
         info!("[Ventouse{:?}] Stop...", self.kind);
-        self.foc.tmc4671_set_target_velocity(0)?;
-        self.foc.tmc4671_set_mode(MotionMode::Stopped)?;
+        self.foc.tmc4671_set_target_velocity(0).map_err(IOError::SpiError)?;
+        self.foc.tmc4671_set_mode(MotionMode::Stopped).map_err(IOError::SpiError)?;
 
 	//Start everything at 0
-	self.foc.tmc4671_set_actual_position(0)?;
-	self.foc.tmc4671_set_target_position(0)?;
-        self.foc.tmc4671_set_mode(MotionMode::Position)?;
+	self.foc.tmc4671_set_actual_position(0).map_err(IOError::SpiError)?;
+	self.foc.tmc4671_set_target_position(0).map_err(IOError::SpiError)?;
+        self.foc.tmc4671_set_mode(MotionMode::Position).map_err(IOError::SpiError)?;
 	Ok(())
     }
 
@@ -530,14 +564,79 @@ where
 	// - Loop while Hall state is the same
 	// - Returns the index of the Hall that changed
 	// - setup the motor back
-	let d=donut_sensor.read();
-	match d{
-	    Ok(d) => {	debug!("FIND INDEX: {:#x} {:?}",d,self.kind);},
-	    Err(e) => error!("DonutHall error: {:?}",e),
 
+	let d=donut_sensor.read().unwrap_or_else(|e| {
+	    error!("FIND INDEX error: {:?}",e);
+	    0
+	});
+
+
+
+
+	let compute_idx=|d: u16|
+	{
+	    let mut allindices:[u8;3]=[0xff;3]; //Assuming there is only 3 active sensors?
+	    let mut tmpidx=0;
+	    let mut i:usize=0;
+	    let mut didx=d.clone();
+	    while tmpidx<16{
+		let idx=didx.trailing_ones();
+		if idx==0
+		{
+		    break;
+		}
+		tmpidx+=idx;
+		if idx<16{
+		    allindices[i]=idx as u8;
+		}
+		didx>>=(idx+1);
+		i+=1;
+	    }
+	    allindices
+	};
+
+	let start_indices=compute_idx(d);
+	debug!("Start indices: {:?}",start_indices);
+
+
+
+	self.set_target_velocity([2000.0])?;
+	self.set_control_mode(MotionMode::Velocity)?;
+	let t0=Instant::now();
+	let mut dd=donut_sensor.read().unwrap_or_else(|e| {
+	    error!("FIND INDEX error: {:?}",e);
+	    0
+	});
+	while dd==d && t0.elapsed().as_millis()<1000
+	{
+	    // debug!("FIND INDEX: {:#x} {:#x} {:?}",d,dd,self.kind);
+	    dd=donut_sensor.read().unwrap_or_else(|e| {
+		error!("FIND INDEX error: {:?}",e);
+		0
+	    });
+	}
+	self.set_target_velocity([0.0])?;
+	self.set_target_velocity([-2000.0])?;
+	block_for(Duration::from_secs(1));
+	let _=self.foc.tmc4671_set_actual_position(0);
+	let _=self.foc.tmc4671_set_target_position(0);
+	self.set_control_mode(MotionMode::Position)?;
+
+	let end_indices=compute_idx(dd);
+	debug!("end indices: {:?}",end_indices);
+
+	for index in end_indices.iter()
+	{
+	    if !start_indices.contains(index)
+	    {
+
+		return Ok([*index]);
+	    }
 	}
 
-	Ok([0])
+
+
+	Ok([255])
     }
 
 
@@ -555,7 +654,7 @@ pub enum VentouseKind<'d> {
 }
 
 impl<'d> VentouseKind<'d> {
-    pub async fn init(&mut self) -> Result<(), embassy_stm32::spi::Error> {
+    pub async fn init(&mut self) -> Result<(), IOError> {
         match self {
             VentouseKind::A(va) => va.init('A').await,
             VentouseKind::B(vb) => vb.init('B').await,
@@ -563,14 +662,14 @@ impl<'d> VentouseKind<'d> {
         }
     }
 
-    pub async fn check_motors_1(&mut self) -> Result<(), embassy_stm32::spi::Error> {
+    pub async fn check_motors_1(&mut self) -> Result<(), IOError> {
         match self {
             VentouseKind::A(va) => va.check_motors_1().await,
             VentouseKind::B(vb) => vb.check_motors_1().await,
             VentouseKind::C(vc) => vc.check_motors_1().await,
         }
     }
-    pub async fn check_motors_2(&mut self) -> Result<(), embassy_stm32::spi::Error> {
+    pub async fn check_motors_2(&mut self) -> Result<(), IOError> {
         match self {
             VentouseKind::A(va) => va.check_motors_2().await,
             VentouseKind::B(vb) => vb.check_motors_2().await,

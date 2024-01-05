@@ -41,25 +41,49 @@ impl<'d> InstructionPacketKind<'d> {
 
 	//At least it is easy to find a complete packet inside a buffer
 	let mut idx:usize = 0;
+	let mut buffer_checked=false;
+        let mut id = 0;
+        let mut length = 0;
 
-	while  !(bytes[idx] == 0xFF && bytes[idx+1] == 0xFF)
+	while !buffer_checked
 	{
-	    idx+=1;
-	    if bytes.len() - idx < 6 {
-		return Err(ParsingError::InvalidPacket);
+	    while  !(bytes[idx] == 0xFF && bytes[idx+1] == 0xFF)
+	    {
+		idx+=1;
+		if bytes.len() - idx < 6 {
+		    return Err(ParsingError::InvalidPacket);
+		}
+
 	    }
 
+            id = bytes[idx+2];
+            length = bytes[idx+3];
+
+
+            if id != receiver_id{
+		if length as usize == bytes.len()-idx - 4{
+		    //If the id is wrong and there is only one packet in the buffer, we can ignore it and return
+		    return Err(ParsingError::IgnorePacket(receiver_id, id));
+		}
+		else{
+		    //If the id is wrong and there are more packets in the buffer, we need to continue searching
+		    idx+=1;
+		    continue;
+
+		}
+            }
+
+
+            if length as usize > bytes.len()-idx - 4 {
+		//if the packet is not complete, we can ignore it and return
+		return Err(ParsingError::InvalidPacket);
+            }
+
+	    //If we are here, we have a complete packet
+	    buffer_checked=true;
+
+
 	}
-
-        let id = bytes[idx+2];
-        if id != receiver_id {
-            return Err(ParsingError::IgnorePacket(receiver_id, id));
-        }
-
-        let length = bytes[idx+3];
-        if length as usize != bytes.len()-idx - 4 {
-            return Err(ParsingError::InvalidPacket);
-        }
 
         let instruction = bytes[idx+4];
         let params = &bytes[idx+5..idx+5+(length as usize) -2];

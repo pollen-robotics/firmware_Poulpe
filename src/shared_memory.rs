@@ -30,6 +30,13 @@ pub struct Memory<const N: usize> {
 
     axis_sensor: [f32; N],
 
+
+    #[cfg(feature = "orbita3d")]
+    index_sensor: [u8; N],
+
+    // #[cfg(feature = "orbita3d")]
+    // hall_states: u16,
+
     error_led: bool,
 
 }
@@ -179,6 +186,28 @@ impl<const N: usize> SharedMemory<N> {
     }
 
 
+    #[cfg(feature = "orbita3d")]
+    pub fn get_index_sensor(&self) -> [u8;N] {
+	self.inner.borrow_mut().index_sensor
+    }
+
+
+    #[cfg(feature = "orbita3d")]
+    pub fn set_index_sensor(&self, index:[u8;N]) {
+	self.inner.borrow_mut().index_sensor=index;
+    }
+
+    // #[cfg(feature = "orbita3d")]
+    // pub fn get_hall_states(&self) -> u16 {
+    // 	self.inner.borrow_mut().hall_states
+    // }
+
+    // #[cfg(feature = "orbita3d")]
+    // pub fn set_hall_states(&self, hall:u16) {
+    // 	self.inner.borrow_mut().hall_states=hall;
+    // }
+
+
 
 
 }
@@ -197,6 +226,12 @@ impl<const N: usize> SharedMemory<N> {
                 target_velocity: [0.0; N],
                 target_torque: [0.0; N],
 		axis_sensor: [0.0; N],
+
+		#[cfg(feature = "orbita3d")]
+		index_sensor: [0xff; N],
+
+		// #[cfg(feature = "orbita3d")]
+		// hall_states: 0xffff,
 
 
 		flux_pid_gains: [Pid{p:0,i:0};N],
@@ -238,6 +273,11 @@ impl<const N: usize> SharedMemory<N> {
 	    torque_flux_limit: actuator.get_torque_flux_limit().unwrap_or([f32::NAN;N]),
 	    velocity_limit: actuator.get_velocity_limit().unwrap_or([f32::NAN;N]),
 
+	    #[cfg(feature = "orbita3d")]
+	    index_sensor: actuator.get_index_sensor(),
+
+	    // #[cfg(feature = "orbita3d")]
+	    // hall_states: actuator.get_hall_states(),
 
 	    error_led: false,
 

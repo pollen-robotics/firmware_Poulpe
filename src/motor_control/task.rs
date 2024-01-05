@@ -291,6 +291,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 
     let mut donut_hall=DonutHall::new(i2c);
+    // let mut donut_hall=SensorKind::DonutHall(donut_hall);
 
 
     // let val=donut_hall.read();
@@ -354,6 +355,10 @@ pub async fn control_loop(config: ActuatorConfig) {
     let mut diff=[0.0;config::N_AXIS];
     for (i, s) in moved_sensors.iter().enumerate() {
         diff[i] = *s - init_sensors[i];
+	if diff[i]>3.141592 {
+	    diff[i]=diff[i]-2.0*3.141592;
+	}
+
 	//Orbita3D
 	if (diff[i]<0.0 && diff[i]>-0.1) || (diff[i]>0.0) {
 	    error!("Axis sensor {:?} moved too little: {:?} Check sensor connection??", i, diff[i]);
@@ -368,10 +373,23 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     //Find index for Orbita3D motors
     #[cfg(feature = "orbita3d")]
-    actuator.find_index(&mut donut_hall);
+    let indices= actuator.find_index(&mut donut_hall).unwrap_or_else(|e|
+								    {
+									error!("Error finding index: {:?}", e);
+									init_error=true;
+									[255;config::N_AXIS]
+								    }
+    );
+    actuator.set_index_sensor(indices);
+    debug!("indices: {:?}", indices);
+
+    // - Get the "closest" Hall for each motor
+    // - Get the "absolute" position of each motor
+    // - Set the index of the detected Hall for each motor
+    // - Wait for the PC to read theses values...
 
 
-    block_for(Duration::from_secs(1));
+    block_for(Duration::from_millis(100));
     #[cfg(feature = "orbita2d")]
     actuator.set_torque([false,false]).unwrap();
     #[cfg(feature = "orbita3d")]
@@ -393,10 +411,13 @@ pub async fn control_loop(config: ActuatorConfig) {
     let mut init_velocitylimit = { SHARED_MEMORY.lock().await.get_velocity_limit() };
 
 
+    let mut init_torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
+    let mut init_target_position = { SHARED_MEMORY.lock().await.get_target_position() };
+
 
     // actuator.set_torque([false,false]).unwrap();
-    let mut error_led=false;
-    let mut prev_error_led=false;
+    let mut error_led=init_error;
+    let mut prev_error_led=init_error;
 
     use biquad::*;
     let f0 = 10.hz();
@@ -429,23 +450,53 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 
         let torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
-	// warn!("ELAPSED 2 {:?}",t0.elapsed().as_micros());
         actuator.set_torque(torque_on).unwrap_or_else(|e|
 						      {
 							  error!("Error setting torque: {:?}", e);
 							  error_led=true;
 						      }
 	);
-	// warn!("ELAPSED 3 {:?}",t0.elapsed().as_micros());
+
+
+	/*
+	if torque_on != init_torque_on{
+            actuator.set_torque(torque_on).unwrap_or_else(|e|
+							  {
+							      error!("Error setting torque: {:?}", e);
+							      error_led=true;
+							  }
+	    );
+
+	    init_torque_on=torque_on;
+
+	}
+	*/
+
+	// warn!("ELAPSED 2 {:?}",t0.elapsed().as_micros());
+
         let target = { SHARED_MEMORY.lock().await.get_target_position() };
-        actuator.set_target_position(target).unwrap_or_else(|e|
-						      {
-							  error!("Error setting target pos: {:?}", e);
-							  error_led=true;
-						      }
+	actuator.set_target_position(target).unwrap_or_else(|e|
+							    {
+								error!("Error setting target pos: {:?}", e);
+								error_led=true;
+							    }
+
+
 	);
+	/*
+	if target != init_target_position{
+	    actuator.set_target_position(target).unwrap_or_else(|e|
+								{
+								    error!("Error setting target pos: {:?}", e);
+								    error_led=true;
+								}
 
 
+	    );
+	    init_target_position=target;
+	}
+	// warn!("ELAPSED 3 {:?}",t0.elapsed().as_micros());
+	*/
 
 
 
@@ -461,7 +512,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 		error!("Axis sensors error");
 	    }
 	}
-
+	// warn!("ELAPSED 4 {:?}",t0.elapsed().as_micros());
 
 
 
@@ -478,6 +529,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 		error!("Torque error");
 	    }
 	}
+	// warn!("ELAPSED 5 {:?}",t0.elapsed().as_micros());
 
 	let vel=actuator.get_current_velocity();
 	match vel {
@@ -492,7 +544,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 		error!("Vel error");
 	    }
 	}
-
+	// warn!("ELAPSED 6 {:?}",t0.elapsed().as_micros());
 
 
 	if error_led!=prev_error_led {

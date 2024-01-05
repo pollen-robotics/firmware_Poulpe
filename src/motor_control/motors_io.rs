@@ -13,7 +13,8 @@ pub enum IOError {
     SpiError(spi::Error),
     I2cError,
     InvalidData,
-
+    Unavailable,
+    InitError,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Format)]

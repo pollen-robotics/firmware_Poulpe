@@ -24,6 +24,9 @@ pub enum DynamixelRegister {
 
     AxisSensor,
 
+    #[cfg(feature = "orbita3d")]
+    IndexSensor,
+
     FullState,
 
 
@@ -57,6 +60,11 @@ impl DynamixelRegister {
             60 => Some(DynamixelRegister::TargetPosition),
 
 	    90 => Some(DynamixelRegister::AxisSensor),
+
+
+	    #[cfg(feature = "orbita3d")]
+	    99 => Some(DynamixelRegister::IndexSensor),
+
 
 	    100 => Some(DynamixelRegister::FullState),
 

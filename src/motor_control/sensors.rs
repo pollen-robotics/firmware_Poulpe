@@ -88,6 +88,8 @@ pub enum SensorKind<'d>{
     DonutMid(config::AD5047Mid<'d>),
     DonutBot(config::AD5047Bot<'d>),
 
+    DonutHall(config::DonutHall<'d>)
+
 }
 
 
@@ -165,6 +167,15 @@ where
 	Ok(hall_detected)
     }
 
+    pub fn get_index(&mut self) -> Result<[u16;1],IOError>
+    {
+	match self.read() {
+	    Ok(hall_detected) => {
+		Ok([hall_detected])
+	    },
+	    Err(e) => Err(e),
+	}
+    }
 }
 
 
@@ -488,7 +499,16 @@ impl<'d> RawSensorsIO<1> for SensorKind<'d> {
 	    SensorKind::DonutMid(mid) => mid.get_axis_sensor(),
 	    SensorKind::DonutBot(bot) => bot.get_axis_sensor(),
 
+	    SensorKind::DonutHall(hall) => Err(IOError::Unavailable),
 
         }
     }
+    // fn get_index_sensors(&mut self) -> Result<[u16;1], IOError>
+    // {
+    // 	match self{
+    // 	    SensorKind::DonutHall(hall) => hall.get_index(),
+    // 	    _ => Err(IOError::Unavailable),
+
+    // 	}
+    // }
 }

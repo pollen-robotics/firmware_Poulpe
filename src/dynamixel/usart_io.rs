@@ -7,7 +7,7 @@ use embassy_time::{Duration, Timer};
 
 use super::packet::{InstructionPacketKind, ParsingError, StatusPacket};
 
-const MAX_BUFFER_LENGTH: usize = 256;
+const MAX_BUFFER_LENGTH: usize = 512;
 //Seems ok at 115200 with LOG=Info
 // const UART_SLEEP_US_DIRLOW: u64 = 200;
 // const UART_SLEEP_US_DIRHIGH: u64 = 300;
@@ -16,6 +16,7 @@ const MAX_BUFFER_LENGTH: usize = 256;
 // 2Mbauds
 const UART_SLEEP_US_DIRLOW: u64 = 100;
 const UART_SLEEP_US_DIRHIGH: u64 = 150;
+
 
 
 const MAX_READ_BUFFER_LENGTH: usize = 32;
@@ -81,7 +82,7 @@ where
 		/*
 		if total>=4{
 		    if self.read_buffer[0] == 0xff && self.read_buffer[1] == 0xff && self.read_buffer[2]== self.id
-		    {
+c		    {
 			let mut length = self.read_buffer[3]as usize;
 			length+=4;
 			if total>=length{ //FIXME might have more than one packet in the buffer...

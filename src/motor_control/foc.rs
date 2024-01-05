@@ -552,7 +552,7 @@ where
         if data_r == data_w {
             Ok(())
         } else {
-            info!("!!! TMC4671 Error checked write addr: {:#x} {:#x}_r / {:#x}_w !!!", reg,data_r, data_w);
+            error!("!!! TMC4671 Error checked write addr: {:#x} {:#x}_r / {:#x}_w !!!", reg,data_r, data_w);
             Err(embassy_stm32::spi::Error::Framing)
         }
     }

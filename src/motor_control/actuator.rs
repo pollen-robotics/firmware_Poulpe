@@ -3,7 +3,7 @@ use embassy_futures::join;
 use crate::config::DonutHall;
 
 use super::foc::MotionMode;
-use super::motors_io::{Pid, RawMotorsIO, Result};
+use super::motors_io::{Pid, RawMotorsIO, Result, IOError};
 use super::sensors_io::{RawSensorsIO};
 
 use super::sensors::{SensorKind};
@@ -12,25 +12,49 @@ use super::ventouse::VentouseKind;
 pub struct Actuator<'d, const N: usize> {
     axes: [VentouseKind<'d>; N],
     sensors: [SensorKind<'d>; N],
+    #[cfg(feature = "orbita3d")]
+    index_sensor: [u8; N],
 }
 
 impl<'d, const N: usize> Actuator<'d, N> {
     pub fn new(axes: [VentouseKind<'d>; N], sensors: [SensorKind<'d>;N]) -> Self {
-        Self { axes, sensors }
+        Self { axes, sensors, index_sensor: [0xff; N] }
+
     }
 
     pub async fn init(&mut self) -> Result<()>{
-        join::join_array(self.axes.each_mut().map(|v| v.init())).await;
+        let res=join::join_array(self.axes.each_mut().map(|v| v.init())).await;
+	// Ok(())
+	for r in res{
+	    match r{
+		Ok(_) => {},
+		Err(e) => {return Err(e)},
+	    }
+	}
 	Ok(())
     }
 
     // check motors
     pub async fn check_motors_1(&mut self) -> Result<()> {
-	join::join_array(self.axes.each_mut().map(|v| v.check_motors_1())).await;
+	let res=join::join_array(self.axes.each_mut().map(|v| v.check_motors_1())).await;
+
+	for r in res{
+	    match r{
+		Ok(_) => {},
+		Err(e) => {return Err(e)},
+	    }
+	}
+
 	Ok(())
     }
     pub async fn check_motors_2(&mut self) -> Result<()> {
-	join::join_array(self.axes.each_mut().map(|v| v.check_motors_2())).await;
+	let res=join::join_array(self.axes.each_mut().map(|v| v.check_motors_2())).await;
+	for r in res{
+	    match r{
+		Ok(_) => {},
+		Err(e) => {return Err(e)},
+	    }
+	}
 	Ok(())
     }
 
@@ -42,6 +66,18 @@ impl<'d, const N: usize> Actuator<'d, N> {
     // 	    _ => None,
     // 	}
     // }
+
+    #[cfg(feature = "orbita3d")]
+    pub fn get_index_sensor(&mut self) -> [u8;N] {
+	self.index_sensor
+    }
+
+    #[cfg(feature = "orbita3d")]
+    pub fn set_index_sensor(&mut self, index:[u8;N]) {
+	self.index_sensor=index;
+    }
+
+
 }
 
 // TODO: make this generic (how?)
@@ -345,12 +381,20 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
     }
 
     fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<[u8;N]> {
+	let mut indices:[u8;N]=[255;N];
 	for (i, axis) in self.axes.iter_mut().enumerate() {
 
-	    axis.find_index(donut_sensor)?;
-	}
+	    let idx=axis.find_index(donut_sensor);
+	    match idx{
+		Ok(val) => {
+		    indices[i]=val[0];
+		},
+		Err(e) => indices[i]=255,
 
-	Ok([0;N])
+	    }
+	}
+	Ok(indices)
+
     }
 
 }

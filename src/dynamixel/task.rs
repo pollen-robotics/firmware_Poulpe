@@ -4,7 +4,7 @@ use embassy_time::{Timer, Duration};
 
 use crate::{
     config,
-    dynamixel::{conversion, DynamixelRegister, InstructionPacketKind, StatusPacket},
+    dynamixel::{conversion, DynamixelRegister, InstructionPacketKind, StatusPacket, packet::ParsingError, self},
     SHARED_MEMORY, motor_control::Pid,
 };
 
@@ -171,6 +171,16 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                             DynamixelRegister::VelocityLimit => {
                                 let value = { SHARED_MEMORY.lock().await.get_velocity_limit() };
                                 let value = conversion::float_to_bytes(value);
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
+
+                            DynamixelRegister::IndexSensor => {
+                                let value = { SHARED_MEMORY.lock().await.get_index_sensor() };
                                 let sp = StatusPacket::with_value(id, dxl_error, value);
                                 trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
                                 if let Some(e) = dxl.write(&sp).await.err() {
@@ -394,7 +404,16 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                 }
             }
             Err(e) => {
-                error!("Error: {:?}", e);
+		match e {
+		    dynamixel::usart_io::CommunicationError::DynamixelParsingError(ParsingError::IgnorePacket(id1, id2)) =>
+		    {
+			trace!("Ignoring packet with id {} (I am {}).", id2, id1);
+		    }
+		    _ => {
+			error!("Error: {:?}", e);
+		    }
+		}
+
             }
         }
 
