@@ -3,11 +3,14 @@ use core::cell::RefCell;
 use crate::config;
 
 use defmt::*;
+use embassy_embedded_hal::SetConfig;
+use embassy_embedded_hal::shared_bus::blocking::i2c::I2cDevice;
 use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{Input, Level, Output, Pin, Pull, Speed};
 use embassy_stm32::peripherals::SPI4;
 use embassy_stm32::spi::{Config, Instance, MisoPin, MosiPin, SckPin, Spi};
-use embassy_stm32::{spi};
+use embassy_stm32::i2c::{Error, I2c, Instance as I2cInstance};
+use embassy_stm32::{spi,i2c};
 use embassy_time::*;
 // use embassy_embedded_hal::shared_bus::blocking::spi::SpiDevice;
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
@@ -17,11 +20,18 @@ use embassy_sync::blocking_mutex::{NoopMutex, raw::NoopRawMutex};
 
 
 use embedded_hal_1::spi::SpiDevice;
+// use embedded_hal_1::i2c::I2cDevice as embedded_hal_I2cDevice;
+// use embedded_hal_1::i2c::I2c::BlockingRead;
+// use cortex_m::prelude::_embedded_hal_blocking_i2c_Read;
+
+
 use static_cell::StaticCell;
 
 use super::RawSensorsIO;
 use super::motors_io::IOError;
 
+const ADDRESS_A: u8 = 0x38;
+const ADDRESS_B: u8 = 0x39;
 
 // CRC Code from: https://www.rls.si/media/custom/upload/CRCD01_03.pdf
 //Lookup table for polynome = 0x97
@@ -78,6 +88,8 @@ pub enum SensorKind<'d>{
     DonutMid(config::AD5047Mid<'d>),
     DonutBot(config::AD5047Bot<'d>),
 
+    DonutHall(config::DonutHall<'d>)
+
 }
 
 
@@ -92,9 +104,135 @@ where
 
 }
 
+pub struct I2cHallConfig<T, Scl, Sda>
+where
+    T: I2cInstance,
+	Scl: Pin,
+	Sda: Pin,
+{
+	pub peri: T,
+	pub scl: Scl,
+	pub sda: Sda,
+}
 
 
+pub struct I2cHallSensor<T>
+where
+    T: I2cInstance,
+    // Scl: Pin,
+    // Sda: Pin,
+    // embassy_stm32::i2c::I2c<'static, T, Scl, Sda>: SetConfig
 
+{
+	i2c: I2c<'static, T >,
+}
+
+impl<T>I2cHallSensor<T>
+where
+	  T: I2cInstance,
+	  // Scl: Pin,
+	  // Sda: Pin,
+    // embassy_stm32::i2c::I2c<'static, T, Scl, Sda>: _embedded_hal_blocking_i2c_Read
+{
+    pub fn new(i2c: I2c<'static, T >,) -> Self {
+		Self {
+			i2c,
+		}
+	}
+    pub fn read(&mut self) -> Result<u16,IOError>
+    {
+	let mut data = [0u8; 1];
+	let mut hall_detected = 0u16;
+	match self.i2c.blocking_read(ADDRESS_A, &mut data) {
+            Ok(()) => {
+		//info!("Inputs_A: {:#010b}", data[0]);
+		//            hall_detected = (data[0] as u16) << 8;
+		hall_detected = data[0] as u16;
+            },
+            // Err(Error::Timeout) => info!("Operation timed out"),
+	    //Why is this so complicated!!! I cannot return the original error thanks to a dozain levels of abstraction...
+            Err(e) => {return Err(IOError::I2cError)},
+	}
+
+	match self.i2c.blocking_read(ADDRESS_B, &mut data) {
+            Ok(()) => {
+		//info!("Inputs_B: {:#010b}", data[0]);
+		//            hall_detected = hall_detected | (data[0] as u16);
+		hall_detected |= ((data[0] as u16) << 8);
+            },
+            // Err(Error::Timeout) => info!("Operation timed out"),
+            // Err(e) => info!("I2c Error: {:?}", e),
+            Err(e) => {return Err(IOError::I2cError)},
+	}
+	Ok(hall_detected)
+    }
+
+    pub fn get_index(&mut self) -> Result<[u16;1],IOError>
+    {
+	match self.read() {
+	    Ok(hall_detected) => {
+		Ok([hall_detected])
+	    },
+	    Err(e) => Err(e),
+	}
+    }
+}
+
+
+// I can't get this to work, so I'm using the "standard" blocking version above
+
+// pub struct I2cHallSensor<'d,T, Scl, Sda>
+// where
+//     T: I2cInstance,
+//     Scl: Pin,
+//     Sda: Pin,
+//     // embassy_stm32::i2c::I2c<'static, T, Scl, Sda>: SetConfig
+
+// {
+// 	i2c: I2cDevice<'d,NoopRawMutex, I2c<'static, T, Scl, Sda >>,
+// }
+
+// impl<'d, T, Scl, Sda>I2cHallSensor<'d,T,Scl,Sda>
+// where
+// 	  T: I2cInstance,
+// 	  Scl: Pin,
+// 	  Sda: Pin,
+//     // embassy_stm32::i2c::I2c<'static, T, Scl, Sda>: _embedded_hal_blocking_i2c_Read
+// {
+//     pub fn new(i2c: I2cDevice<'d,NoopRawMutex, I2c<'static, T, Scl, Sda >>,) -> Self {
+// 		Self {
+// 			i2c,
+// 		}
+// 	}
+//     pub fn read(&mut self) -> Result<u16,IOError>
+//     {
+// 	let mut data = [0u8; 1];
+// 	let mut hall_detected = 0u16;
+// 	match I2cDevice::read(&mut self.i2c, ADDRESS_A, &mut data) {
+//             Ok(()) => {
+// 		//info!("Inputs_A: {:#010b}", data[0]);
+// 		//            hall_detected = (data[0] as u16) << 8;
+// 		hall_detected = data[0] as u16;
+//             },
+//             // Err(Error::Timeout) => info!("Operation timed out"),
+// 	    //Why is this so complicated!!! I cannot return the original error thanks to a dozain levels of abstraction...
+//             Err(e) => {return Err(IOError::I2cError)},
+// 	}
+
+// 	match I2cDevice::read(&mut self.i2c, ADDRESS_B, &mut data) {
+//             Ok(()) => {
+// 		//info!("Inputs_B: {:#010b}", data[0]);
+// 		//            hall_detected = hall_detected | (data[0] as u16);
+// 		hall_detected |= ((data[0] as u16) << 8);
+//             },
+//             // Err(Error::Timeout) => info!("Operation timed out"),
+//             // Err(e) => info!("I2c Error: {:?}", e),
+//             Err(e) => {return Err(IOError::I2cError)},
+// 	}
+// 	Ok(hall_detected)
+//     }
+
+// }
 
 pub struct AksimSensor<'d,T,P>
     where
@@ -174,7 +312,7 @@ where T:Instance,
 	// error >>= 9;
 	let _warning:bool = ((encoder_data & 0x0000000000000100)>>8) != 0x1; // 8th bit, active low
 	if error {
-	    error!("Ring sensor error",);
+	    // error!("Ring sensor error",);
 	    Err(IOError::InvalidData)
 	}
 
@@ -185,7 +323,7 @@ where T:Instance,
 	    let calculated_crc = !CRC_SPI_97_64bit(datapacket) ;
 
 	    if calculated_crc != crc{
-		error!("Ring sensor CRC error. crc: {:#02x} computed: {:#02x} data: {:#x} datapacket: {:#x}", crc, calculated_crc, encoder_data, datapacket);
+		// error!("Ring sensor CRC error. crc: {:#02x} computed: {:#02x} data: {:#x} datapacket: {:#x}", crc, calculated_crc, encoder_data, datapacket);
 		Err(IOError::InvalidData)
 	    }
 	    else {
@@ -348,6 +486,9 @@ where
 }
 
 
+
+
+
 impl<'d> RawSensorsIO<1> for SensorKind<'d> {
     /// Check if the motors are ON or OFF
     fn get_axis_sensors(&mut self) -> Result<[f32; 1], IOError> {
@@ -358,7 +499,16 @@ impl<'d> RawSensorsIO<1> for SensorKind<'d> {
 	    SensorKind::DonutMid(mid) => mid.get_axis_sensor(),
 	    SensorKind::DonutBot(bot) => bot.get_axis_sensor(),
 
+	    SensorKind::DonutHall(hall) => Err(IOError::Unavailable),
 
         }
     }
+    // fn get_index_sensors(&mut self) -> Result<[u16;1], IOError>
+    // {
+    // 	match self{
+    // 	    SensorKind::DonutHall(hall) => hall.get_index(),
+    // 	    _ => Err(IOError::Unavailable),
+
+    // 	}
+    // }
 }

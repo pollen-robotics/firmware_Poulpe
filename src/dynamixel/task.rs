@@ -1,10 +1,11 @@
 use defmt::{debug, error, trace};
 use embassy_stm32::gpio::AnyPin;
+use embassy_time::{Timer, Duration};
 
 use crate::{
     config,
-    dynamixel::{conversion, DynamixelRegister, InstructionPacketKind, StatusPacket},
-    SHARED_MEMORY,
+    dynamixel::{conversion, DynamixelRegister, InstructionPacketKind, StatusPacket, packet::ParsingError, self},
+    SHARED_MEMORY, motor_control::Pid,
 };
 
 #[embassy_executor::task]
@@ -98,6 +99,135 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                 }
                             }
 
+
+
+                            DynamixelRegister::FluxPID => {
+                                let value = { SHARED_MEMORY.lock().await.get_flux_pid_gains() };
+                                let value = conversion::pid_to_bytes(value);
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
+
+                            DynamixelRegister::TorquePID => {
+                                let value = { SHARED_MEMORY.lock().await.get_torque_pid_gains() };
+                                let value = conversion::pid_to_bytes(value);
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
+
+                            DynamixelRegister::VelocityPID => {
+                                let value = { SHARED_MEMORY.lock().await.get_velocity_pid_gains() };
+                                let value = conversion::pid_to_bytes(value);
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
+
+                            DynamixelRegister::PositionPID => {
+                                let value = { SHARED_MEMORY.lock().await.get_position_pid_gains() };
+                                let value = conversion::pid_to_bytes(value);
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
+
+
+                            DynamixelRegister::UqUdLimit => {
+                                let value = { SHARED_MEMORY.lock().await.get_uq_ud_limit() };
+                                let value = conversion::float_to_bytes(value);
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
+
+                            DynamixelRegister::TorqueFluxLimit => {
+                                let value = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
+                                let value = conversion::float_to_bytes(value);
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
+
+                            DynamixelRegister::VelocityLimit => {
+                                let value = { SHARED_MEMORY.lock().await.get_velocity_limit() };
+                                let value = conversion::float_to_bytes(value);
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
+			    #[cfg(feature = "orbita3d")]
+                            DynamixelRegister::IndexSensor => {
+                                let value = { SHARED_MEMORY.lock().await.get_index_sensor() };
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
+
+
+
+                            DynamixelRegister::FullState => {
+				// let target = { SHARED_MEMORY.lock().await.get_target_position() };
+                                // let pos = { SHARED_MEMORY.lock().await.get_current_position() };
+				// let vel = { SHARED_MEMORY.lock().await.get_current_velocity() };
+				// let torque = { SHARED_MEMORY.lock().await.get_current_torque() };
+                                // // let sensor = { SHARED_MEMORY.lock().await.get_axis_sensor() };
+				// let torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
+
+				// //concatenate all the values
+                                // let target  = conversion::float_to_bytes(target);
+				// let pos = conversion::float_to_bytes(pos);
+				// let vel = conversion::float_to_bytes(vel);
+				// let torque = conversion::float_to_bytes(torque);
+				// // let sensor = conversion::float_to_bytes(sensor);
+				// let torque_on = conversion::bool_to_bytes(torque_on);
+
+				// //I cannot find a better way to do this
+				// let mut value = [0; (4*4+1)*config::N_AXIS];
+				// value[0..4*config::N_AXIS].copy_from_slice(&target[0..4*config::N_AXIS]);
+				// value[4*config::N_AXIS..2*4*config::N_AXIS].copy_from_slice(&pos[0..4*config::N_AXIS]);
+				// value[2*4*config::N_AXIS..3*4*config::N_AXIS].copy_from_slice(&vel[0..4*config::N_AXIS]);
+				// value[3*4*config::N_AXIS..4*4*config::N_AXIS].copy_from_slice(&torque[0..4*config::N_AXIS]);
+				// value[4*4*config::N_AXIS..(4*4+1)*config::N_AXIS].copy_from_slice(&torque_on[0..config::N_AXIS]);
+
+
+				let value={ SHARED_MEMORY.lock().await.get_full_state() };
+                                let value  = conversion::float_to_bytes(value);
+
+
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
+
 			    _ => {}
 
 
@@ -119,28 +249,175 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                 {
                                     SHARED_MEMORY.lock().await.set_torque_on(torque_on);
                                 }
+				let sp = StatusPacket::ack(id, dxl_error);
+				debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+				if let Some(e) = dxl.write(&sp).await.err() {
+				    error!("Error: {:?}", e);
+				}
                             }
+
+                            DynamixelRegister::FluxPID => {
+
+				let gains: [Pid; config::N_AXIS] =
+				    conversion::bytes_to_pid(write_data_packet.data);
+				{
+				    SHARED_MEMORY.lock().await.set_flux_pid_gains(gains);
+				}
+
+
+				let sp = StatusPacket::ack(id, dxl_error);
+				debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+				if let Some(e) = dxl.write(&sp).await.err() {
+				    error!("Error: {:?}", e);
+				}
+                            }
+
+                            DynamixelRegister::TorquePID => {
+
+				let gains: [Pid; config::N_AXIS] =
+				    conversion::bytes_to_pid(write_data_packet.data);
+				{
+				    SHARED_MEMORY.lock().await.set_torque_pid_gains(gains);
+				}
+
+
+				let sp = StatusPacket::ack(id, dxl_error);
+				debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+				if let Some(e) = dxl.write(&sp).await.err() {
+				    error!("Error: {:?}", e);
+				}
+                            }
+
+                            DynamixelRegister::VelocityPID => {
+
+				let gains: [Pid; config::N_AXIS] =
+				    conversion::bytes_to_pid(write_data_packet.data);
+				{
+				    SHARED_MEMORY.lock().await.set_velocity_pid_gains(gains);
+				}
+
+
+				let sp = StatusPacket::ack(id, dxl_error);
+				debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+				if let Some(e) = dxl.write(&sp).await.err() {
+				    error!("Error: {:?}", e);
+				}
+                            }
+
+
+                            DynamixelRegister::PositionPID => {
+
+				let gains: [Pid; config::N_AXIS] =
+				    conversion::bytes_to_pid(write_data_packet.data);
+				{
+				    SHARED_MEMORY.lock().await.set_position_pid_gains(gains);
+				}
+
+
+				let sp = StatusPacket::ack(id, dxl_error);
+				debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+				if let Some(e) = dxl.write(&sp).await.err() {
+				    error!("Error: {:?}", e);
+				}
+                            }
+
+
+                            DynamixelRegister::UqUdLimit => {
+
+				let limits: [f32; config::N_AXIS] =
+				    conversion::bytes_to_float(write_data_packet.data);
+				{
+				    SHARED_MEMORY.lock().await.set_uq_ud_limit(limits);
+				}
+
+				let sp = StatusPacket::ack(id, dxl_error);
+				debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+				if let Some(e) = dxl.write(&sp).await.err() {
+				    error!("Error: {:?}", e);
+				}
+                            }
+
+                            DynamixelRegister::TorqueFluxLimit => {
+
+				let limits: [f32; config::N_AXIS] =
+				    conversion::bytes_to_float(write_data_packet.data);
+				{
+				    SHARED_MEMORY.lock().await.set_torque_flux_limit(limits);
+				}
+
+				let sp = StatusPacket::ack(id, dxl_error);
+				debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+				if let Some(e) = dxl.write(&sp).await.err() {
+				    error!("Error: {:?}", e);
+				}
+                            }
+
+                            DynamixelRegister::VelocityLimit => {
+
+				let limits: [f32; config::N_AXIS] =
+				    conversion::bytes_to_float(write_data_packet.data);
+				{
+				    SHARED_MEMORY.lock().await.set_velocity_limit(limits);
+				}
+
+				let sp = StatusPacket::ack(id, dxl_error);
+				debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+				if let Some(e) = dxl.write(&sp).await.err() {
+				    error!("Error: {:?}", e);
+				}
+                            }
+
+
+
                             DynamixelRegister::TargetPosition => {
+
                                 let target: [f32; config::N_AXIS] =
                                     conversion::bytes_to_float(write_data_packet.data);
                                 {
                                     SHARED_MEMORY.lock().await.set_target_position(target);
                                 }
+
+
+				//return the full state
+				let value={ SHARED_MEMORY.lock().await.get_full_state() };
+                                let value  = conversion::float_to_bytes(value);
+
+
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+
+
+
                             }
                             _ => {}
                         }
 
-                        let sp = StatusPacket::ack(id, dxl_error);
-                        debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
-                        if let Some(e) = dxl.write(&sp).await.err() {
-                            error!("Error: {:?}", e);
-                        }
+                        // let sp = StatusPacket::ack(id, dxl_error);
+                        // debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                        // if let Some(e) = dxl.write(&sp).await.err() {
+                        //     error!("Error: {:?}", e);
+                        // }
                     }
                 }
             }
             Err(e) => {
-                error!("Error: {:?}", e);
+		match e {
+		    dynamixel::usart_io::CommunicationError::DynamixelParsingError(ParsingError::IgnorePacket(id1, id2)) =>
+		    {
+			trace!("Ignoring packet with id {} (I am {}).", id2, id1);
+		    }
+		    _ => {
+			error!("Error: {:?}", e);
+		    }
+		}
+
             }
         }
+
+        // Timer::after(Duration::from_micros(1)).await;
+
     }
 }

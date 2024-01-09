@@ -10,7 +10,7 @@ use defmt::{info, unwrap};
 use embassy_executor::Spawner;
 use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_stm32::usart::Config as usart_config;
-use embassy_stm32::Config as stm32_config;
+use embassy_stm32::{Config as stm32_config, i2c};
 use embassy_stm32::{bind_interrupts, peripherals, usart};
 use embassy_stm32::dma::NoDma;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
@@ -23,6 +23,7 @@ mod motor_control;
 mod shared_memory;
 
 use crate::config::{ActuatorConfig, AksimConfig, AD5047Config, AD5047ConfigTop, AD5047ConfigMid, AD5047ConfigBot};
+use crate::motor_control::sensors::I2cHallConfig;
 use crate::motor_control::ventouse::VentouseConfig;
 use crate::shared_memory::SharedMemory;
 
@@ -31,7 +32,9 @@ use {defmt_rtt as _, panic_probe as _};
 bind_interrupts!(struct Irqs {
     USART1 => usart::InterruptHandler<peripherals::USART1>;
 });
-
+bind_interrupts!(struct IrqsI2c {
+    I2C1_EV => i2c::InterruptHandler<peripherals::I2C1>;
+});
 // TODO: Use a NoopMutex instead of a real mutex?
 static SHARED_MEMORY: Mutex<ThreadModeRawMutex, SharedMemory<{ config::N_AXIS }>> =
     Mutex::new(SharedMemory::default());
@@ -50,7 +53,12 @@ pub fn exit() -> ! {
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    info!("Hello World!");
+    info!("==== Pollen Robotics ====");
+    #[cfg(feature = "orbita3d")]
+    info!("Poulpe: Orbita 3D");
+    #[cfg(feature = "orbita2d")]
+    info!("Poulpe: Orbita 2D");
+
 
     // 440MHz (without HSE)
     let mut stm32_conf = stm32_config::default();
@@ -58,10 +66,11 @@ async fn main(spawner: Spawner) {
         use embassy_stm32::rcc::*;
         stm32_conf.rcc.hsi = Some(HSIPrescaler::DIV1); //HSIState = RCC_HSI_DIV1
         stm32_conf.rcc.csi = true; //CSIState = RCC_CSI_ON;
-                                   // stm32_conf.rcc.hse = Som(Hse{Hertz::mhz(48), HseMode::Oscillator}); //TODO
+                                   // stm32_conf.rcc.hse = Som(Hse{Hertz::mhz(48), HseMode::Oscillator}); //TODO hse external clock might be more accurate
         stm32_conf.rcc.pll1 = Some(Pll {
             // source: PllSource::HSI
             source: PllSource::CSI,   //PLLSource = RCC_PLLSOURCE_CSI
+
             prediv: PllPreDiv::DIV1,  //PLLM = 1;
             mul: PllMul::MUL220,      //PLLN = 220
             divp: Some(PllDiv::DIV2), //PLLP = 2;
@@ -121,6 +130,13 @@ async fn main(spawner: Spawner) {
             cs: p.PA15,
         },
 
+	donut_hall: I2cHallConfig {
+	    peri: p.I2C1,
+	    scl: p.PB6,
+	    sda: p.PB7,
+	},
+
+
     };
     #[cfg(feature = "orbita2d")]
     let actuator_config = ActuatorConfig {
@@ -145,10 +161,10 @@ async fn main(spawner: Spawner) {
         },
 
         aksim: AksimConfig {
-            cs: p.PE4,
+            cs: p.PA15,
         },
         ad5047: AD5047Config {
-            cs: p.PA15,
+            cs: p.PE4,
         },
 
     };
@@ -158,14 +174,15 @@ async fn main(spawner: Spawner) {
 
     // Prepare and spawn the DXL communication task
     let mut usart_config = usart_config::default();
-    usart_config.baudrate = 1_000_000;
+    // usart_config.baudrate = 1_000_000;
     // usart_config.baudrate = 115_200;
+    usart_config.baudrate = 2_000_000;
     usart_config.stop_bits = embassy_stm32::usart::StopBits::STOP1;
     usart_config.data_bits = embassy_stm32::usart::DataBits::DataBits8;
     usart_config.parity = embassy_stm32::usart::Parity::ParityNone;
     usart_config.detect_previous_overrun = false;
 
-    //Poule A1
+    //Pouple A1
     // let usart = config::DynamixelUart::new(
     //     p.USART1,
     //     p.PB15, //RX
@@ -197,10 +214,19 @@ async fn main(spawner: Spawner) {
     // Prepare and spawn the main task
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
     let mut led_error = Output::new(p.PC8, Level::High, Speed::Low);
-    led_error.set_low();
+    led_error.set_low(); //TODO
     led_hello.set_low();
 
     loop {
+
+	let errorled= {SHARED_MEMORY.lock().await.get_error_led()};
+
+	if errorled {
+	    led_error.set_high();
+	} else {
+	    led_error.set_low();
+	}
+
         // Robots should dance, LED should blink.
         led_hello.set_high();
         Timer::after(Duration::from_millis(500)).await;

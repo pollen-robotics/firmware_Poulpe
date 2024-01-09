@@ -1,9 +1,9 @@
-use defmt::{info, error};
+use defmt::{info, error, debug};
 use embassy_stm32::{gpio::Pin, spi};
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Timer, Instant, block_for};
 
 use crate::{
-    config,
+    config::{self, DonutHall},
     motor_control::foc::{MotionMode, Tmc4671Registers, OPENLOOP_ACCELERATION, UQ_UD_EXT},
 };
 
@@ -59,28 +59,46 @@ where
         Self { foc, driver, kind:'?' }
     }
 
-    pub async fn init(&mut self, kind:char) -> Result<(), embassy_stm32::spi::Error> {
+    pub async fn init(&mut self, kind:char) -> Result<(), IOError> {
 	self.kind=kind;
 	self.foc.tmc4671_disable();
-	info!("Initializing register...");
+	let mut ret_err=false;
+	let mut err=IOError::InitError;
+	info!("[Ventouse{:?}] Initializing register...", self.kind);
 
 	match self.driver.tmc6200_checked_write(0x00u8, 0x00000000u32)
 	{
 	    Ok(_) => info!("[Ventouse{:?}] TMC6200 init done",self.kind),
-	    Err(e) => error!("[Ventouse{:?}] TMC6200 init failed: {:?}", self.kind,e),
+	    Err(e) => {
+		ret_err=true;
+		error!("[Ventouse{:?}] TMC6200 init failed: {:?} => check SPI and power connection", self.kind,e);
+		err=IOError::SpiError(e);
+
+
+	    }
 
 	}
 	match self.driver.tmc6200_checked_write(0x0au8, 0x00000000u32) // DRVSRENGTH=0 for BOB
 	{
 	    Ok(_) => info!("[Ventouse{:?}] TMC6200 init done",self.kind),
-	    Err(e) => error!("[Ventouse{:?}] TMC6200 init failed: {:?}", self.kind,e),
+	    Err(e) => {
+		ret_err=true;
+		error!("[Ventouse{:?}] TMC6200 init failed: {:?}  => check SPI and power connection", self.kind,e);
+		err=IOError::SpiError(e);
+
+	    }
 
 	}
 
         match self.foc.tmc4671_init_registers().await
 	{
 	    Ok(_) => info!("[Ventouse{:?}] TMC4671 init done",self.kind),
-	    Err(e) => error!("[Ventouse{:?}] TMC467100 init failed: {:?}", self.kind,e),
+	    Err(e) => {
+		ret_err=true;
+		error!("[Ventouse{:?}] TMC467100 init failed: {:?}  => check SPI and power connection", self.kind,e);
+		err=IOError::SpiError(e);
+
+	    }
 
 	}
 
@@ -93,14 +111,29 @@ where
         match self.align_motor().await
 	{
 	    Ok(_) => info!("[Ventouse{:?}] align done",self.kind),
-	    Err(e) => error!("[Ventouse{:?}] align failed: {:?}", self.kind,e),
+	    Err(e) => {
+		ret_err=true;
+		error!("[Ventouse{:?}] align failed: {:?}  => check SPI and power connection", self.kind,e);
+		err=IOError::SpiError(e);
+
+	    }
 
 	}
 
 
-        self.foc.tmc4671_set_mode(MotionMode::Position)?;
-        info!("Motor set to position mode done");
-
+        match self.foc.tmc4671_set_mode(MotionMode::Position)
+	{
+	    Ok(_) => {}
+	    Err(e) => {
+		ret_err=true;
+		err=IOError::SpiError(e);
+	    }
+	}
+        info!("[Ventouse{:?}] Motor set to position mode done",self.kind);
+	if ret_err
+	{
+	    return Err(err);
+	}
         Ok(())
     }
 
@@ -141,43 +174,98 @@ where
         self.foc
             .tmc4671_checked_write(Tmc4671Registers::VELOCITY_SELECTION as u8, 0x00000000)?; // PHI_E_SELECTION
 
+
+	// set everything to 0
+        self.foc.tmc4671_set_target_velocity(0)?;
+	self.foc.tmc4671_set_actual_position(0)?;
+	self.foc.tmc4671_set_target_position(0)?;
+        self.foc.tmc4671_set_mode(MotionMode::Stopped)?;
         //put max value
         // self.foc.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, 0x00007D00)?; // ~4000
 
-        // Move!
-        self.foc.tmc4671_set_mode(MotionMode::Velocity)?;
 
-        // Rotate right
-        info!("Rotate right...");
-	#[cfg(feature = "orbita2d")]
-        self.foc.tmc4671_set_target_velocity(50)?;
-	#[cfg(feature = "orbita3d")]
-        self.foc.tmc4671_set_target_velocity(500)?;
-        let _ = Timer::after(Duration::from_millis(1000)).await;
-
-        // Rotate left
-        info!("Rotate left...");
-	#[cfg(feature = "orbita2d")]
-        self.foc.tmc4671_set_target_velocity(-50)?;
-	#[cfg(feature = "orbita3d")]
-        self.foc.tmc4671_set_target_velocity(-500)?;
-        let _ = Timer::after(Duration::from_millis(1000)).await;
-
-        // Stop
-        info!("Stop...");
-        self.foc.tmc4671_set_target_velocity(0)?;
-        self.foc.tmc4671_set_mode(MotionMode::Stopped)?;
-	// self.foc.tmc4671_disable();
-	// let pos=self.foc.tmc4671_get_actual_position()?;
-
-	//Start everything at 0
-	self.foc.tmc4671_set_actual_position(0)?;
-	self.foc.tmc4671_set_target_position(0)?;
 
 
         Ok(())
     }
+    //check motors
+    pub async fn check_motors_1(&mut self) -> Result<(), IOError> {
+	//Assume that the registers are already initialized and the motors aligned
+
+	// - Read the initial position and axis sensors
+	// - Move the motors
+	// - Read the final position and axis sensors
+	// - check that it has moved "accordingly"
+
+
+	// Get initial position
+	let initial_position = self.foc.tmc4671_get_actual_position().map_err(IOError::SpiError)?;
+	debug!("[Ventouse{:?}] Initial position: {}",self.kind, initial_position);
+
+
+        // Move!
+        self.foc.tmc4671_set_mode(MotionMode::Velocity).map_err(IOError::SpiError)?;
+
+        // Rotate right
+        info!("[Ventouse{:?}] Rotate right...",self.kind);
+	#[cfg(feature = "orbita2d")]
+        self.foc.tmc4671_set_target_velocity(50).map_err(IOError::SpiError)?;
+	#[cfg(feature = "orbita3d")]
+        self.foc.tmc4671_set_target_velocity(500).map_err(IOError::SpiError)?;
+        let _ = Timer::after(Duration::from_millis(1000)).await;
+        self.foc.tmc4671_set_target_velocity(0).map_err(IOError::SpiError)?;
+	let position = self.foc.tmc4671_get_actual_position().map_err(IOError::SpiError)?;
+	debug!("[Ventouse{:?}] position: {}",self.kind, position);
+	// check that it has moved
+
+	let diff=position.saturating_sub(initial_position);
+	//TODO is it the same for Orbita3D and Orbita2D?
+	if diff<100000{
+	    error!("[Ventouse{:?}] Motor has not moved enough: {} Check motor/encoder connection",self.kind, diff);
+	    return Err(IOError::InitError);
+	}
+	else{
+	    info!("[Ventouse{:?}] Motor has moved: {}",self.kind, diff);
+
+	}
+
+	Ok(())
+    }
+
+    pub async fn check_motors_2(&mut self) -> Result<(), IOError> {
+	//Assume that check_motors_1 has been called
+
+        // Rotate left
+        info!("[Ventouse{:?}] Rotate left...",self.kind);
+	#[cfg(feature = "orbita2d")]
+        self.foc.tmc4671_set_target_velocity(-50).map_err(IOError::SpiError)?;
+	#[cfg(feature = "orbita3d")]
+        self.foc.tmc4671_set_target_velocity(-500).map_err(IOError::SpiError)?;
+        let _ = Timer::after(Duration::from_millis(1000)).await;
+
+        // Stop
+        info!("[Ventouse{:?}] Stop...", self.kind);
+        self.foc.tmc4671_set_target_velocity(0).map_err(IOError::SpiError)?;
+        self.foc.tmc4671_set_mode(MotionMode::Stopped).map_err(IOError::SpiError)?;
+
+	//Start everything at 0
+	self.foc.tmc4671_set_actual_position(0).map_err(IOError::SpiError)?;
+	self.foc.tmc4671_set_target_position(0).map_err(IOError::SpiError)?;
+        self.foc.tmc4671_set_mode(MotionMode::Position).map_err(IOError::SpiError)?;
+	Ok(())
+    }
+
+    // pub async fn find_index(&mut self, donut_sensor: &mut DonutHall<'_>) -> Result<(), IOError> //TODO
+    // {
+    // 	let d=donut_sensor.read();
+    // 	Ok(())
+    // }
+
 }
+
+
+
+
 
 impl<'d, T, FocP, FocEnb, DrvP> RawMotorsIO<1> for Ventouse<'d, T, FocP, FocEnb, DrvP>
 where
@@ -306,36 +394,256 @@ where
     }
 
 
+
+    /// Get the uq_ud limit of the motors
+    fn get_uq_ud_limit(&mut self) -> Result<[f32; 1], IOError> {
+	//TODO Conversion. Is it in rpm?
+        let limit=self.foc.tmc4671_get_uq_ud_limit()
+            .map_err(IOError::SpiError)?;
+	Ok([limit as f32])
+
+    }
+    /// Set the uq_ud limit of the motors
+    fn set_uq_ud_limit(&mut self, limit: [f32; 1]) -> Result<(), IOError> {
+	self.foc.tmc4671_set_uq_ud_limit(limit[0] as i16)
+			.map(|_| ())
+			.map_err(IOError::SpiError)
+
+    }
+
+
+    /// Get the torque_flux limit of the motors
+    fn get_torque_flux_limit(&mut self) -> Result<[f32; 1], IOError> {
+	//TODO Conversion. Is it in rpm?
+        let limit=self.foc.tmc4671_get_torque_flux_limit()
+            .map_err(IOError::SpiError)?;
+	Ok([limit as f32])
+
+    }
+    /// Set the torque_flux limit of the motors
+    fn set_torque_flux_limit(&mut self, limit: [f32; 1]) -> Result<(), IOError> {
+	self.foc.tmc4671_set_torque_flux_limit(limit[0] as i16)
+			.map(|_| ())
+			.map_err(IOError::SpiError)
+
+    }
+
+
     /// Get the velocity limit of the motors (in radians per second)
     fn get_velocity_limit(&mut self) -> Result<[f32; 1], IOError> {
-        Ok([0.0])
+	//TODO Conversion. Is it in rpm?
+        let limit=self.foc.tmc4671_get_velocity_limit()
+            .map_err(IOError::SpiError)?;
+	Ok([limit as f32])
+
     }
     /// Set the velocity limit of the motors (in radians per second)
-    fn set_velocity_limit(&mut self, _velocity: [f32; 1]) -> Result<(), IOError> {
-        Ok(())
+    fn set_velocity_limit(&mut self, limit: [f32; 1]) -> Result<(), IOError> {
+	self.foc.tmc4671_set_velocity_limit(limit[0] as u32)
+			.map(|_| ())
+			.map_err(IOError::SpiError)
+
     }
 
-    /// Get the torque limit of the motors (in Nm)
-    fn get_torque_limit(&mut self) -> Result<[f32; 1], IOError> {
-        Ok([0.0])
+    // /// Get the torque limit of the motors (in Nm)
+    // fn get_torque_limit(&mut self) -> Result<[f32; 1], IOError> {
+    //     Ok([0.0])
+    // }
+    // /// Set the torque limit of the motors (in Nm)
+    // fn set_torque_limit(&mut self, _torque: [f32; 1]) -> Result<(), IOError> {
+    //     Ok(())
+    // }
+
+    // /// Get the current PID gains of the motors
+    // fn get_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+    //     Ok([Pid {
+    //         p: 0,
+    //         i: 0,
+    //         // d: 0.0,
+    //     }])
+    // }
+    // /// Set the current PID gains of the motors
+    // fn set_pid_gains(&mut self, _pid: [Pid; 1]) -> Result<(), IOError> {
+    //     Ok(())
+    // }
+
+
+
+    /// Get the current flux PID gains of the motors
+    fn get_flux_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+	let rawpid=self.foc.tmc4671_get_pid_flux();
+	match rawpid{
+	    Ok(pid) => Ok([Pid {
+		p: ((pid>>16) & 0x7fff) as i16,
+		i: (pid & 0x7fff) as i16,
+	    }]),
+	    Err(e) => Err(IOError::SpiError(e)),
+	}
+
     }
-    /// Set the torque limit of the motors (in Nm)
-    fn set_torque_limit(&mut self, _torque: [f32; 1]) -> Result<(), IOError> {
-        Ok(())
+    /// Set the current flux PID gains of the motors
+    fn set_flux_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+	let _pid=pid[0].i as u32 | ((pid[0].p as u32)<<16);
+	self.foc.tmc4671_set_pid_flux(_pid)
+	    .map(|_| ())
+	    .map_err(IOError::SpiError)
+
     }
 
-    /// Get the current PID gains of the motors
-    fn get_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
-        Ok([Pid {
-            p: 0,
-            i: 0,
-            // d: 0.0,
-        }])
+
+
+    /// Get the current torque PID gains of the motors
+    fn get_torque_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+	let rawpid=self.foc.tmc4671_get_pid_torque();
+	match rawpid{
+	    Ok(pid) => Ok([Pid {
+		p: ((pid>>16) & 0x7fff) as i16,
+		i: (pid & 0x7fff) as i16,
+	    }]),
+	    Err(e) => Err(IOError::SpiError(e)),
+	}
+
     }
-    /// Set the current PID gains of the motors
-    fn set_pid_gains(&mut self, _pid: [Pid; 1]) -> Result<(), IOError> {
-        Ok(())
+    /// Set the current torque PID gains of the motors
+    fn set_torque_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+	let _pid=pid[0].i as u32 | ((pid[0].p as u32)<<16);
+	self.foc.tmc4671_set_pid_torque(_pid)
+	    .map(|_| ())
+	    .map_err(IOError::SpiError)
+
     }
+
+
+    /// Get the current velocity PID gains of the motors
+    fn get_velocity_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+	let rawpid=self.foc.tmc4671_get_pid_velocity();
+	match rawpid{
+	    Ok(pid) => Ok([Pid {
+		p: ((pid>>16) & 0x7fff) as i16,
+		i: (pid & 0x7fff) as i16,
+	    }]),
+	    Err(e) => Err(IOError::SpiError(e)),
+	}
+
+    }
+    /// Set the current velocity PID gains of the motors
+    fn set_velocity_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+	let _pid=pid[0].i as u32 | ((pid[0].p as u32)<<16);
+	self.foc.tmc4671_set_pid_velocity(_pid)
+	    .map(|_| ())
+	    .map_err(IOError::SpiError)
+
+    }
+
+
+    /// Get the current position PID gains of the motors
+    fn get_position_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+	let rawpid=self.foc.tmc4671_get_pid_position();
+	match rawpid{
+	    Ok(pid) => Ok([Pid {
+		p: ((pid>>16) & 0x7fff) as i16,
+		i: (pid & 0x7fff) as i16,
+	    }]),
+	    Err(e) => Err(IOError::SpiError(e)),
+	}
+
+    }
+    /// Set the current position PID gains of the motors
+    fn set_position_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+	let _pid=pid[0].i as u32 | ((pid[0].p as u32)<<16);
+	self.foc.tmc4671_set_pid_position(_pid)
+	    .map(|_| ())
+	    .map_err(IOError::SpiError)
+
+    }
+
+    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<[u8;1], IOError> //TODO
+    {
+	// - read initial Hall state
+	// - Slowly move the motor (velocity mode?)
+	// - Loop while Hall state is the same
+	// - Returns the index of the Hall that changed
+	// - setup the motor back
+
+	let d=donut_sensor.read().unwrap_or_else(|e| {
+	    error!("FIND INDEX error: {:?}",e);
+	    0
+	});
+
+
+
+
+	let compute_idx=|d: u16|
+	{
+	    let mut allindices:[u8;3]=[0xff;3]; //Assuming there is only 3 active sensors?
+	    let mut tmpidx=0;
+	    let mut i:usize=0;
+	    let mut didx=d.clone();
+	    while tmpidx<16{
+		let idx=didx.trailing_ones();
+		if idx==0
+		{
+		    break;
+		}
+		tmpidx+=idx;
+		if idx<16{
+		    allindices[i]=idx as u8;
+		}
+		didx>>=(idx+1);
+		i+=1;
+	    }
+	    allindices
+	};
+
+	let start_indices=compute_idx(d);
+	debug!("Start indices: {:?}",start_indices);
+
+
+
+	self.set_target_velocity([4000.0])?;
+	self.set_control_mode(MotionMode::Velocity)?;
+	let t0=Instant::now();
+	let mut dd=donut_sensor.read().unwrap_or_else(|e| {
+	    error!("FIND INDEX error: {:?}",e);
+	    0
+	});
+	while dd==d && t0.elapsed().as_millis()<500
+	{
+	    // debug!("FIND INDEX: {:#x} {:#x} {:?}",d,dd,self.kind);
+	    dd=donut_sensor.read().unwrap_or_else(|e| {
+		error!("FIND INDEX error: {:?}",e);
+		0
+	    });
+	}
+	self.set_target_velocity([0.0])?;
+	self.set_target_velocity([-5000.0])?;
+	block_for(Duration::from_millis(500));
+	let _=self.foc.tmc4671_set_actual_position(0);
+	let _=self.foc.tmc4671_set_target_position(0);
+	self.set_control_mode(MotionMode::Position)?;
+
+	let end_indices=compute_idx(dd);
+	debug!("end indices: {:?}",end_indices);
+
+	for index in end_indices.iter()
+	{
+	    if !start_indices.contains(index)
+	    {
+
+		return Ok([*index]);
+	    }
+	}
+
+
+
+	Ok([255])
+    }
+
+
+
+
+
+
 }
 
 pub enum VentouseKind<'d> {
@@ -346,13 +654,49 @@ pub enum VentouseKind<'d> {
 }
 
 impl<'d> VentouseKind<'d> {
-    pub async fn init(&mut self) -> Result<(), embassy_stm32::spi::Error> {
+    pub async fn init(&mut self) -> Result<(), IOError> {
         match self {
             VentouseKind::A(va) => va.init('A').await,
             VentouseKind::B(vb) => vb.init('B').await,
             VentouseKind::C(vc) => vc.init('C').await,
         }
     }
+
+    pub async fn check_motors_1(&mut self) -> Result<(), IOError> {
+        match self {
+            VentouseKind::A(va) => va.check_motors_1().await,
+            VentouseKind::B(vb) => vb.check_motors_1().await,
+            VentouseKind::C(vc) => vc.check_motors_1().await,
+        }
+    }
+    pub async fn check_motors_2(&mut self) -> Result<(), IOError> {
+        match self {
+            VentouseKind::A(va) => va.check_motors_2().await,
+            VentouseKind::B(vb) => vb.check_motors_2().await,
+            VentouseKind::C(vc) => vc.check_motors_2().await,
+        }
+    }
+
+    // pub fn get_ventouse(&mut self, v: char) -> Option<&mut dyn RawMotorsIO<1>> {
+    // 		match v {
+    // 			'A' => match self {
+    // 				VentouseKind::A(va) => Some(va),
+    // 				_ => None,
+    // 			},
+    // 			'B' => match self {
+    // 				VentouseKind::B(vb) => Some(vb),
+    // 				_ => None,
+    // 			},
+    // 			'C' => match self {
+    // 				VentouseKind::C(vc) => Some(vc),
+    // 				_ => None,
+    // 			},
+    // 			_ => None,
+    // 		}
+    // 	}
+
+
+
 }
 
 impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
@@ -494,39 +838,161 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
 
-    /// Get the torque limit of the motors (in Nm)
-    fn get_torque_limit(&mut self) -> Result<[f32; 1], IOError> {
+    /// Get the torque_flux limit of the motors (in Nm)
+    fn get_torque_flux_limit(&mut self) -> Result<[f32; 1], IOError> {
         match self {
-            VentouseKind::A(va) => va.get_torque_limit(),
-            VentouseKind::B(vb) => vb.get_torque_limit(),
-            VentouseKind::C(vc) => vc.get_torque_limit(),
+            VentouseKind::A(va) => va.get_torque_flux_limit(),
+            VentouseKind::B(vb) => vb.get_torque_flux_limit(),
+            VentouseKind::C(vc) => vc.get_torque_flux_limit(),
         }
     }
-    /// Set the torque limit of the motors (in Nm)
-    fn set_torque_limit(&mut self, torque: [f32; 1]) -> Result<(), IOError> {
+    /// Set the torque_flux limit of the motors (in Nm)
+    fn set_torque_flux_limit(&mut self, torque_flux: [f32; 1]) -> Result<(), IOError> {
         match self {
-            VentouseKind::A(va) => va.set_torque_limit(torque),
-            VentouseKind::B(vb) => vb.set_torque_limit(torque),
-            VentouseKind::C(vc) => vc.set_torque_limit(torque),
+            VentouseKind::A(va) => va.set_torque_flux_limit(torque_flux),
+            VentouseKind::B(vb) => vb.set_torque_flux_limit(torque_flux),
+            VentouseKind::C(vc) => vc.set_torque_flux_limit(torque_flux),
         }
     }
 
-    /// Get the current PID gains of the motors
-    fn get_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+    /// Get the uq_ud limit of the motors (in Nm)
+    fn get_uq_ud_limit(&mut self) -> Result<[f32; 1], IOError> {
         match self {
-            VentouseKind::A(va) => va.get_pid_gains(),
-            VentouseKind::B(vb) => vb.get_pid_gains(),
-            VentouseKind::C(vc) => vc.get_pid_gains(),
+            VentouseKind::A(va) => va.get_uq_ud_limit(),
+            VentouseKind::B(vb) => vb.get_uq_ud_limit(),
+            VentouseKind::C(vc) => vc.get_uq_ud_limit(),
         }
     }
-    /// Set the current PID gains of the motors
-    fn set_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+    /// Set the uq_ud limit of the motors (in Nm)
+    fn set_uq_ud_limit(&mut self, uq_ud: [f32; 1]) -> Result<(), IOError> {
         match self {
-            VentouseKind::A(va) => va.set_pid_gains(pid),
-            VentouseKind::B(vb) => vb.set_pid_gains(pid),
-            VentouseKind::C(vc) => vc.set_pid_gains(pid),
+            VentouseKind::A(va) => va.set_uq_ud_limit(uq_ud),
+            VentouseKind::B(vb) => vb.set_uq_ud_limit(uq_ud),
+            VentouseKind::C(vc) => vc.set_uq_ud_limit(uq_ud),
         }
     }
+
+
+    // /// Get the current PID gains of the motors
+    // fn get_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+    //     match self {
+    //         VentouseKind::A(va) => va.get_pid_gains(),
+    //         VentouseKind::B(vb) => vb.get_pid_gains(),
+    //         VentouseKind::C(vc) => vc.get_pid_gains(),
+    //     }
+    // }
+    // /// Set the current PID gains of the motors
+    // fn set_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+    //     match self {
+    //         VentouseKind::A(va) => va.set_pid_gains(pid),
+    //         VentouseKind::B(vb) => vb.set_pid_gains(pid),
+    //         VentouseKind::C(vc) => vc.set_pid_gains(pid),
+    //     }
+    // }
+
+
+
+    /// Get the current flux PID gains of the motors
+    fn get_flux_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+        match self {
+            VentouseKind::A(va) => va.get_flux_pid_gains(),
+            VentouseKind::B(vb) => vb.get_flux_pid_gains(),
+            VentouseKind::C(vc) => vc.get_flux_pid_gains(),
+        }
+    }
+    /// Set the current flux PID gains of the motors
+    fn set_flux_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+        match self {
+            VentouseKind::A(va) => va.set_flux_pid_gains(pid),
+            VentouseKind::B(vb) => vb.set_flux_pid_gains(pid),
+            VentouseKind::C(vc) => vc.set_flux_pid_gains(pid),
+        }
+    }
+
+
+    /// Get the current torque PID gains of the motors
+    fn get_torque_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+        match self {
+            VentouseKind::A(va) => va.get_torque_pid_gains(),
+            VentouseKind::B(vb) => vb.get_torque_pid_gains(),
+            VentouseKind::C(vc) => vc.get_torque_pid_gains(),
+        }
+    }
+    /// Set the current torque PID gains of the motors
+    fn set_torque_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+        match self {
+            VentouseKind::A(va) => va.set_torque_pid_gains(pid),
+            VentouseKind::B(vb) => vb.set_torque_pid_gains(pid),
+            VentouseKind::C(vc) => vc.set_torque_pid_gains(pid),
+        }
+    }
+
+
+    /// Get the current velocity PID gains of the motors
+    fn get_velocity_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+        match self {
+            VentouseKind::A(va) => va.get_velocity_pid_gains(),
+            VentouseKind::B(vb) => vb.get_velocity_pid_gains(),
+            VentouseKind::C(vc) => vc.get_velocity_pid_gains(),
+        }
+    }
+    /// Set the current velocity PID gains of the motors
+    fn set_velocity_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+        match self {
+            VentouseKind::A(va) => va.set_velocity_pid_gains(pid),
+            VentouseKind::B(vb) => vb.set_velocity_pid_gains(pid),
+            VentouseKind::C(vc) => vc.set_velocity_pid_gains(pid),
+        }
+    }
+
+
+    /// Get the current position PID gains of the motors
+    fn get_position_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
+        match self {
+            VentouseKind::A(va) => va.get_position_pid_gains(),
+            VentouseKind::B(vb) => vb.get_position_pid_gains(),
+            VentouseKind::C(vc) => vc.get_position_pid_gains(),
+        }
+    }
+    /// Set the current position PID gains of the motors
+    fn set_position_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
+        match self {
+            VentouseKind::A(va) => va.set_position_pid_gains(pid),
+            VentouseKind::B(vb) => vb.set_position_pid_gains(pid),
+            VentouseKind::C(vc) => vc.set_position_pid_gains(pid),
+        }
+    }
+
+    // fn get_ventouse(&mut self, v: char) -> Option<&mut dyn RawMotorsIO<1>> {
+    // 		match v {
+    // 		    'A' => match self {
+    // 				VentouseKind::A(va) => Some(va),
+    // 				_ => None,
+    // 			},
+    // 			'B' => match self {
+    // 				VentouseKind::B(vb) => Some(vb),
+    // 				_ => None,
+    // 			},
+    // 			'C' => match self {
+    // 				VentouseKind::C(vc) => Some(vc),
+    // 				_ => None,
+    // 			},
+    // 			_ => None,
+    // 		}
+    // }
+    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<[u8;1], IOError> //TODO
+	{
+	    match self {
+		VentouseKind::A(va) => va.find_index(donut_sensor),
+		VentouseKind::B(vb) => vb.find_index(donut_sensor),
+		VentouseKind::C(vc) => vc.find_index(donut_sensor),
+	    }
+	}
+
+
+
+
+
 }
 
 mod conversion {

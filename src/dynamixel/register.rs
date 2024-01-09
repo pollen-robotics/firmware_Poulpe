@@ -2,12 +2,16 @@ pub enum DynamixelRegister {
     ModelNumber,
     FirmwareVersion,
     Id,
-    VelocityLimit,
-    TorqueLimit,
-    // FluxPID,
+
+
+    FluxPID,
     TorquePID,
     VelocityPID,
     PositionPID,
+
+    UqUdLimit,
+    TorqueFluxLimit,
+    VelocityLimit,
 
     TorqueEnable,
 
@@ -18,7 +22,14 @@ pub enum DynamixelRegister {
     TargetVelocity,
     TargetPosition,
 
-    AxisSensor
+    AxisSensor,
+
+    #[cfg(feature = "orbita3d")]
+    IndexSensor,
+
+    FullState,
+
+
 }
 
 impl DynamixelRegister {
@@ -32,8 +43,13 @@ impl DynamixelRegister {
 
 
 	    10 => Some(DynamixelRegister::VelocityLimit),
-	    14 => Some(DynamixelRegister::TorqueLimit),
+	    14 => Some(DynamixelRegister::TorqueFluxLimit),
+	    18 => Some(DynamixelRegister::UqUdLimit),
 
+	    20 => Some(DynamixelRegister::FluxPID),
+	    24 => Some(DynamixelRegister::TorquePID),
+	    28 => Some(DynamixelRegister::VelocityPID),
+	    32 => Some(DynamixelRegister::PositionPID),
 
 
 
@@ -44,6 +60,13 @@ impl DynamixelRegister {
             60 => Some(DynamixelRegister::TargetPosition),
 
 	    90 => Some(DynamixelRegister::AxisSensor),
+
+
+	    #[cfg(feature = "orbita3d")]
+	    99 => Some(DynamixelRegister::IndexSensor),
+
+
+	    100 => Some(DynamixelRegister::FullState),
 
 	    _ => None
 
