@@ -299,10 +299,10 @@ where
 	self.tmc4671_write_register(Tmc4671Registers::PIDOUT_UQ_UD_LIMITS as u8, limit as u32 &0x7FFF as u32)
     }
 
-    pub fn tmc4671_get_torque_flux_limit(&mut self) -> Result<i16, embassy_stm32::spi::Error> {
-	self.tmc4671_get_lower_i16(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8)
+    pub fn tmc4671_get_torque_flux_limit(&mut self) -> Result<u16, embassy_stm32::spi::Error> {
+	self.tmc4671_get_lower_u16(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8)
     }
-    pub fn tmc4671_set_torque_flux_limit(&mut self, limit:i16) -> Result<u32, embassy_stm32::spi::Error> {
+    pub fn tmc4671_set_torque_flux_limit(&mut self, limit:u16) -> Result<u32, embassy_stm32::spi::Error> {
 	self.tmc4671_write_register(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, limit as u32 &0x7FFF as u32)
     }
 
@@ -640,4 +640,20 @@ where
             Err(e) => Err(e),
         }
     }
+
+    fn tmc4671_get_lower_u16(&mut self, reg: u8) -> Result<u16, embassy_stm32::spi::Error> {
+        if let Ok(res) = self.tmc4671_read_register(reg) {
+            Ok((res & 0x0000FFFFu32) as u16)
+        } else {
+            Err(embassy_stm32::spi::Error::Framing)
+        }
+    }
+
+    fn tmc4671_get_upper_u16(&mut self, reg: u8) -> Result<u16, embassy_stm32::spi::Error> {
+        match self.tmc4671_read_register(reg) {
+            Ok(res) => Ok(((res & 0xFFFF0000u32) >> 16) as u16),
+            Err(e) => Err(e),
+        }
+    }
+
 }
