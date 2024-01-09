@@ -396,15 +396,15 @@ where
 
 
     /// Get the uq_ud limit of the motors
-    fn get_uq_ud_limit(&mut self) -> Result<[f32; 1], IOError> {
+    fn get_uq_ud_limit(&mut self) -> Result<[i16; 1], IOError> {
 	//TODO Conversion. Is it in rpm?
         let limit=self.foc.tmc4671_get_uq_ud_limit()
             .map_err(IOError::SpiError)?;
-	Ok([limit as f32])
+	Ok([limit as i16])
 
     }
     /// Set the uq_ud limit of the motors
-    fn set_uq_ud_limit(&mut self, limit: [f32; 1]) -> Result<(), IOError> {
+    fn set_uq_ud_limit(&mut self, limit: [i16; 1]) -> Result<(), IOError> {
 	self.foc.tmc4671_set_uq_ud_limit(limit[0] as i16)
 			.map(|_| ())
 			.map_err(IOError::SpiError)
@@ -413,16 +413,16 @@ where
 
 
     /// Get the torque_flux limit of the motors
-    fn get_torque_flux_limit(&mut self) -> Result<[f32; 1], IOError> {
+    fn get_torque_flux_limit(&mut self) -> Result<[u16; 1], IOError> {
 	//TODO Conversion. Is it in rpm?
         let limit=self.foc.tmc4671_get_torque_flux_limit()
             .map_err(IOError::SpiError)?;
-	Ok([limit as f32])
+	Ok([limit as u16])
 
     }
     /// Set the torque_flux limit of the motors
-    fn set_torque_flux_limit(&mut self, limit: [f32; 1]) -> Result<(), IOError> {
-	self.foc.tmc4671_set_torque_flux_limit(limit[0] as i16)
+    fn set_torque_flux_limit(&mut self, limit: [u16; 1]) -> Result<(), IOError> {
+	self.foc.tmc4671_set_torque_flux_limit(limit[0] as u16)
 			.map(|_| ())
 			.map_err(IOError::SpiError)
 
@@ -430,15 +430,15 @@ where
 
 
     /// Get the velocity limit of the motors (in radians per second)
-    fn get_velocity_limit(&mut self) -> Result<[f32; 1], IOError> {
+    fn get_velocity_limit(&mut self) -> Result<[u32; 1], IOError> {
 	//TODO Conversion. Is it in rpm?
         let limit=self.foc.tmc4671_get_velocity_limit()
             .map_err(IOError::SpiError)?;
-	Ok([limit as f32])
+	Ok([limit as u32])
 
     }
     /// Set the velocity limit of the motors (in radians per second)
-    fn set_velocity_limit(&mut self, limit: [f32; 1]) -> Result<(), IOError> {
+    fn set_velocity_limit(&mut self, limit: [u32; 1]) -> Result<(), IOError> {
 	self.foc.tmc4671_set_velocity_limit(limit[0] as u32)
 			.map(|_| ())
 			.map_err(IOError::SpiError)
@@ -595,13 +595,18 @@ where
 	    allindices
 	};
 
+
+	self.set_target_velocity([5000.0])?;
+	self.set_control_mode(MotionMode::Velocity)?;
+	block_for(Duration::from_millis(500));
+
 	let start_indices=compute_idx(d);
 	debug!("Start indices: {:?}",start_indices);
 
 
 
-	self.set_target_velocity([4000.0])?;
-	self.set_control_mode(MotionMode::Velocity)?;
+	self.set_target_velocity([-5000.0])?;
+	// self.set_control_mode(MotionMode::Velocity)?;
 	let t0=Instant::now();
 	let mut dd=donut_sensor.read().unwrap_or_else(|e| {
 	    error!("FIND INDEX error: {:?}",e);
@@ -615,9 +620,9 @@ where
 		0
 	    });
 	}
-	self.set_target_velocity([0.0])?;
-	self.set_target_velocity([-5000.0])?;
-	block_for(Duration::from_millis(500));
+	// self.set_target_velocity([0.0])?;
+	// self.set_target_velocity([-5000.0])?;
+	// block_for(Duration::from_millis(500));
 	let _=self.foc.tmc4671_set_actual_position(0);
 	let _=self.foc.tmc4671_set_target_position(0);
 	self.set_control_mode(MotionMode::Position)?;
@@ -822,7 +827,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
 
 
     /// Get the velocity limit of the motors (in radians per second)
-    fn get_velocity_limit(&mut self) -> Result<[f32; 1], IOError> {
+    fn get_velocity_limit(&mut self) -> Result<[u32; 1], IOError> {
         match self {
             VentouseKind::A(va) => va.get_velocity_limit(),
             VentouseKind::B(vb) => vb.get_velocity_limit(),
@@ -830,7 +835,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
     /// Set the velocity limit of the motors (in radians per second)
-    fn set_velocity_limit(&mut self, velocity: [f32; 1]) -> Result<(), IOError> {
+    fn set_velocity_limit(&mut self, velocity: [u32; 1]) -> Result<(), IOError> {
         match self {
             VentouseKind::A(va) => va.set_velocity_limit(velocity),
             VentouseKind::B(vb) => vb.set_velocity_limit(velocity),
@@ -839,7 +844,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     }
 
     /// Get the torque_flux limit of the motors (in Nm)
-    fn get_torque_flux_limit(&mut self) -> Result<[f32; 1], IOError> {
+    fn get_torque_flux_limit(&mut self) -> Result<[u16; 1], IOError> {
         match self {
             VentouseKind::A(va) => va.get_torque_flux_limit(),
             VentouseKind::B(vb) => vb.get_torque_flux_limit(),
@@ -847,7 +852,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
     /// Set the torque_flux limit of the motors (in Nm)
-    fn set_torque_flux_limit(&mut self, torque_flux: [f32; 1]) -> Result<(), IOError> {
+    fn set_torque_flux_limit(&mut self, torque_flux: [u16; 1]) -> Result<(), IOError> {
         match self {
             VentouseKind::A(va) => va.set_torque_flux_limit(torque_flux),
             VentouseKind::B(vb) => vb.set_torque_flux_limit(torque_flux),
@@ -856,7 +861,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     }
 
     /// Get the uq_ud limit of the motors (in Nm)
-    fn get_uq_ud_limit(&mut self) -> Result<[f32; 1], IOError> {
+    fn get_uq_ud_limit(&mut self) -> Result<[i16; 1], IOError> {
         match self {
             VentouseKind::A(va) => va.get_uq_ud_limit(),
             VentouseKind::B(vb) => vb.get_uq_ud_limit(),
@@ -864,7 +869,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
     /// Set the uq_ud limit of the motors (in Nm)
-    fn set_uq_ud_limit(&mut self, uq_ud: [f32; 1]) -> Result<(), IOError> {
+    fn set_uq_ud_limit(&mut self, uq_ud: [i16; 1]) -> Result<(), IOError> {
         match self {
             VentouseKind::A(va) => va.set_uq_ud_limit(uq_ud),
             VentouseKind::B(vb) => vb.set_uq_ud_limit(uq_ud),

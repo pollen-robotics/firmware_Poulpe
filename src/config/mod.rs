@@ -9,7 +9,7 @@ pub const N_AXIS: usize = 2;
 #[cfg(feature = "orbita3d")]
 pub const N_AXIS: usize = 3;
 
-pub static DXL_ID: u8 = 43;
+pub static DXL_ID: u8 = 42;
 
 pub type DynamixelUart = Uart<'static, p::USART1, p::DMA1_CH0, p::DMA1_CH1>;
 
