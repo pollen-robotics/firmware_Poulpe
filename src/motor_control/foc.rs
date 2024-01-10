@@ -34,11 +34,14 @@ const ABN_DECODER_PPR: u32 = 0x00001000;
 const ABN_DECODER_PHI_E_PHI_M_OFFSET: u32 = 0x00000000;
 
 // Limits
-// const PID_TORQUE_FLUX_LIMITS: u32 = 0x00001000; // 4000
-const PID_TORQUE_FLUX_LIMITS: u32 = 0x00005a81;
+// const PID_TORQUE_FLUX_LIMITS: u32 = 0x00001000; // 4096
+const PID_TORQUE_FLUX_LIMITS: u32 = 0x00005a81; //tuned ok at 500Hz
+// const PID_TORQUE_FLUX_LIMITS: u32 = 0x00000800; // 2048
 
 // const PID_VELOCITY_LIMIT: u32 = 0x0000_FFFF;
-const PID_VELOCITY_LIMIT: u32 = 0x0000_7D00;
+const PID_VELOCITY_LIMIT: u32 = 0x0000_7D00; //32000 //tuned ok at 500Hz
+// const PID_VELOCITY_LIMIT: u32 = 0x0000_0FA0; //4000
+
 
 
 // Motor alignment
@@ -194,7 +197,7 @@ where
     pub(crate) enable: Output<'static, EnablePin>,
     //     #[allow(dead_code)]
     //     foc_status: Input<'d, FocStat>,
-    brushless_motor_config: config::BrushlessMotor,
+    pub brushless_motor_config: config::BrushlessMotor,
     pub(crate) ppr: Option<f32>,
 }
 
@@ -378,7 +381,7 @@ where
         )
     }
 
-    pub fn tmc4671_set_target_velocity(
+    pub fn tmc4671_set_target_velocity( //TODO Conversion
         &mut self,
         velocity_target: i32,
     ) -> Result<u32, embassy_stm32::spi::Error> {
@@ -411,7 +414,7 @@ where
 
 
 
-    pub fn tmc4671_get_actual_velocity(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
+    pub fn tmc4671_get_actual_velocity(&mut self) -> Result<i32, embassy_stm32::spi::Error> { //TODO conversion
         self.tmc4671_get_i32(Tmc4671Registers::PID_VELOCITY_ACTUAL as u8)
     }
 

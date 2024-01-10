@@ -378,6 +378,8 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     //Find index for Orbita3D motors
     #[cfg(feature = "orbita3d")]
+    actuator.set_torque([false,false,false]).unwrap();
+    #[cfg(feature = "orbita3d")]
     let indices= actuator.find_index(&mut donut_hall).unwrap_or_else(|e|
 								    {
 									error!("Error finding index: {:?}", e);
@@ -401,6 +403,28 @@ pub async fn control_loop(config: ActuatorConfig) {
     actuator.set_torque([false,false]).unwrap();
     #[cfg(feature = "orbita3d")]
     actuator.set_torque([false,false,false]).unwrap();
+
+    let init_sensors=actuator.get_axis_sensors().unwrap();
+    let res = actuator.set_current_position(init_sensors);
+    match res {
+	Ok(_) => {
+	}
+	Err(e) => {
+	    init_error=true;
+	    error!("Error setting current position: {:?}", e);
+	}
+    }
+    let res=actuator.set_target_position(init_sensors);
+    match res {
+	Ok(_) => {
+	}
+	Err(e) => {
+	    init_error=true;
+	    error!("Error setting target position: {:?}", e);
+	}
+    }
+
+
     info!("init done");
     // Init SharedMemory with real values before actually running the control loop
     SHARED_MEMORY.lock().await.init(&mut actuator);
@@ -495,7 +519,16 @@ pub async fn control_loop(config: ActuatorConfig) {
 	//Filtered
         let mut target = { SHARED_MEMORY.lock().await.get_target_position() };
 	#[cfg(feature = "cmd_filter")]
-	target.iter_mut().enumerate().for_each(|(i,t)| {*t=cmd_filter[i].run(*t)});
+	target.iter_mut().enumerate().for_each(|(i,t)|
+					       {
+						   if !torque_on[i]
+						   {//Trick to make the filter converge => reset target
+						       for _ in 0..1000{
+							   cmd_filter[i].run(*t);
+						       }
+						   }
+						   *t=cmd_filter[i].run(*t)
+					       });
 
 	actuator.set_target_position(target).unwrap_or_else(|e|
 							    {

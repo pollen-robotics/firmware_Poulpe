@@ -305,13 +305,22 @@ where
     }
 
 
-    /// Get the current position of the motors (in radians)
+    /// Set the current position of the motors (in radians)
+    fn set_current_position(&mut self, pos:[f32;1]) -> Result<(), IOError> {
+	self
+            .foc
+            .tmc4671_set_actual_position(conversion::rads_to_encoder(pos[0],self.foc.ppr.unwrap()/self.foc.brushless_motor_config.gearbox_ratio())).map_err(IOError::SpiError)?;
+	Ok(())
+
+    }
+
+    /// Get the current position of the motors output (in radians)
     fn get_current_position(&mut self) -> Result<[f32; 1], IOError> {
         let encoder = self
             .foc
             .tmc4671_get_actual_position()
             .map_err(IOError::SpiError)?;
-        let rads = conversion::encoder_to_rads(encoder, self.foc.ppr.unwrap());
+        let rads = conversion::encoder_to_rads(encoder, self.foc.ppr.unwrap())*self.foc.brushless_motor_config.gearbox_ratio();
         Ok([rads])
     }
     /// Get the current velocity of the motors (in radians per second)
@@ -343,12 +352,12 @@ where
 	// Ok([0.0])
 
     }
-    /// Set the current target position of the motors (in radians)
+    /// Set the current target position of the motors output (in radians)
     fn set_target_position(&mut self, position: [f32; 1]) -> Result<(), IOError> {
         self.foc
             .tmc4671_set_target_position(conversion::rads_to_encoder(
                 position[0],
-                self.foc.ppr.unwrap(),
+                self.foc.ppr.unwrap()/self.foc.brushless_motor_config.gearbox_ratio(),
             ))
             .map(|_| ())
             .map_err(IOError::SpiError)
@@ -565,6 +574,7 @@ where
 	// - Returns the index of the Hall that changed
 	// - setup the motor back
 
+	self.set_torque([true])?;
 	let d=donut_sensor.read().unwrap_or_else(|e| {
 	    error!("FIND INDEX error: {:?}",e);
 	    0
@@ -596,16 +606,21 @@ where
 	};
 
 
-	self.set_target_velocity([5000.0])?;
+	self.set_target_velocity([5500.0])?;
 	self.set_control_mode(MotionMode::Velocity)?;
-	block_for(Duration::from_millis(500));
-
+	block_for(Duration::from_millis(500)); //It should move the arm roughly 11°
+	//debug
+	let pos=self.foc.tmc4671_get_actual_position().unwrap_or_else(|e| {
+	    error!("GET POS error: {:?}",e);
+	    0
+	});
+	let rads = conversion::encoder_to_rads(pos, self.foc.ppr.unwrap())*self.foc.brushless_motor_config.gearbox_ratio()*self.foc.brushless_motor_config.axis_ratio();
 	let start_indices=compute_idx(d);
-	debug!("Start indices: {:?}",start_indices);
+	debug!("Start indices: {:?} start pos: {:?}",start_indices, rads.to_degrees());
 
 
 
-	self.set_target_velocity([-5000.0])?;
+	self.set_target_velocity([-5500.0])?;
 	// self.set_control_mode(MotionMode::Velocity)?;
 	let t0=Instant::now();
 	let mut dd=donut_sensor.read().unwrap_or_else(|e| {
@@ -613,23 +628,36 @@ where
 	    0
 	});
 	while dd==d && t0.elapsed().as_millis()<500
-	{
+	{ //We move back until we see a change in the Hall state
+
 	    // debug!("FIND INDEX: {:#x} {:#x} {:?}",d,dd,self.kind);
 	    dd=donut_sensor.read().unwrap_or_else(|e| {
 		error!("FIND INDEX error: {:?}",e);
 		0
 	    });
 	}
+
+	//debug
+	let pos=self.foc.tmc4671_get_actual_position().unwrap_or_else(|e| {
+	    error!("GET POS error: {:?}",e);
+	    0
+	});
+	let rads2 = conversion::encoder_to_rads(pos, self.foc.ppr.unwrap())*self.foc.brushless_motor_config.gearbox_ratio()*self.foc.brushless_motor_config.axis_ratio();
+
+
+
+
 	// self.set_target_velocity([0.0])?;
 	// self.set_target_velocity([-5000.0])?;
 	// block_for(Duration::from_millis(500));
 	let _=self.foc.tmc4671_set_actual_position(0);
 	let _=self.foc.tmc4671_set_target_position(0);
 	self.set_control_mode(MotionMode::Position)?;
+	self.set_torque([false])?;
 
 	let end_indices=compute_idx(dd);
-	debug!("end indices: {:?}",end_indices);
-
+	debug!("end indices: {:?} end pos: {:?}",end_indices, rads2.to_degrees());
+	error!("MOVED: {:?}",(rads2-rads).to_degrees());
 	for index in end_indices.iter()
 	{
 	    if !start_indices.contains(index)
@@ -749,6 +777,13 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
             VentouseKind::A(va) => va.get_current_position(),
             VentouseKind::B(vb) => vb.get_current_position(),
             VentouseKind::C(vc) => vc.get_current_position(),
+        }
+    }
+    fn set_current_position(&mut self, pos:[f32;1]) -> Result<(), IOError> {
+        match self {
+            VentouseKind::A(va) => va.set_current_position(pos),
+            VentouseKind::B(vb) => vb.set_current_position(pos),
+            VentouseKind::C(vc) => vc.set_current_position(pos),
         }
     }
     /// Get the current velocity of the motors (in radians per second)

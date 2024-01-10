@@ -38,6 +38,9 @@ pub trait RawMotorsIO<const N: usize> {
 
     /// Get the current position of the motors (in radians)
     fn get_current_position(&mut self) -> Result<[f32; N]>;
+
+    fn set_current_position(&mut self, pos:[f32;N]) -> Result<()>;
+
     /// Get the current velocity of the motors (in radians per second)
     fn get_current_velocity(&mut self) -> Result<[f32; N]>;
     /// Get the current torque of the motors (in Nm)
