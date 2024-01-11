@@ -401,11 +401,16 @@ pub async fn control_loop(config: ActuatorConfig) {
     block_for(Duration::from_millis(100));
     #[cfg(feature = "orbita2d")]
     actuator.set_torque([false,false]).unwrap();
+
+
+    // For compatibility with Orbita3d Houston
     #[cfg(feature = "orbita3d")]
     actuator.set_torque([false,false,false]).unwrap();
-
+    #[cfg(feature = "orbita3d")]
     let init_sensors=actuator.get_axis_sensors().unwrap();
+    #[cfg(feature = "orbita3d")]
     let res = actuator.set_current_position(init_sensors);
+    #[cfg(feature = "orbita3d")]
     match res {
 	Ok(_) => {
 	}
@@ -414,7 +419,9 @@ pub async fn control_loop(config: ActuatorConfig) {
 	    error!("Error setting current position: {:?}", e);
 	}
     }
+    #[cfg(feature = "orbita3d")]
     let res=actuator.set_target_position(init_sensors);
+    #[cfg(feature = "orbita3d")]
     match res {
 	Ok(_) => {
 	}
