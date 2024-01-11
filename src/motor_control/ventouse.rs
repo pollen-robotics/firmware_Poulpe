@@ -348,7 +348,7 @@ where
 	    foc.
 	    tmc4671_get_target_position()
 	    .map_err(IOError::SpiError)?;
-	Ok([pos as f32])
+	Ok([conversion::encoder_to_rads(pos, self.foc.ppr.unwrap())*self.foc.brushless_motor_config.gearbox_ratio()])
 	// Ok([0.0])
 
     }
