@@ -30,7 +30,7 @@ const DS_ADC_MDEC_B_MDEC_A: u32 = 0x014E014E;
 
 // ABN encoder settings
 const ABN_DECODER_MODE: u32 = 0x00000000;
-const ABN_DECODER_PPR: u32 = 0x00001000;
+// const ABN_DECODER_PPR: u32 = 0x00001000;
 const ABN_DECODER_PHI_E_PHI_M_OFFSET: u32 = 0x00000000;
 
 // Limits
@@ -456,7 +456,7 @@ where
     }
 
     pub fn tmc4671_set_encoder_ppr(&mut self, ppr: i32) -> Result<u32, embassy_stm32::spi::Error> {
-        self.tmc4671_write_register(Tmc4671Registers::PID_VELOCITY_TARGET as u8, ppr as u32)
+        self.tmc4671_write_register(Tmc4671Registers::ABN_DECODER_PPR as u8, ppr as u32)
     }
 
     pub async fn tmc4671_init_registers(&mut self) -> Result<(), embassy_stm32::spi::Error> {
@@ -502,7 +502,7 @@ where
 
         // ABN encoder settings
         self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_MODE as u8, ABN_DECODER_MODE)?;
-        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_PPR as u8, ABN_DECODER_PPR)?;
+        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_PPR as u8, self.brushless_motor_config.abn_decoder_ppr())?;
         self.tmc4671_checked_write(
             Tmc4671Registers::ABN_DECODER_PHI_E_PHI_M_OFFSET as u8,
             ABN_DECODER_PHI_E_PHI_M_OFFSET,

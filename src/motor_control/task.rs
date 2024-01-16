@@ -197,7 +197,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     let foc = Foc::new(
         foc_spi,
         config.b.foc_enable,
-	#[cfg(all(feature = "orbita2d", not(feature = "ec60")))]
+	#[cfg(all(feature = "orbita2d", feature = "ec45"))]
         config::BrushlessMotor::ec45(),
 	#[cfg(all(feature = "orbita2d", feature = "ec60"))]
         config::BrushlessMotor::ec60(),
@@ -237,7 +237,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     let foc = Foc::new(
         foc_spi,
         config.c.foc_enable,
-	#[cfg(all(feature = "orbita2d", not(feature = "ec60")))]
+	#[cfg(all(feature = "orbita2d", feature = "ec45"))]
         config::BrushlessMotor::ec45(),
 	#[cfg(all(feature = "orbita2d", feature = "ec60"))]
         config::BrushlessMotor::ec60(),
@@ -331,7 +331,17 @@ pub async fn control_loop(config: ActuatorConfig) {
 	}
     }
 
+    #[cfg(feature = "orbita2d")]
+    actuator.set_torque([false,false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
+    #[cfg(feature = "orbita2d")]
+    Timer::after(Duration::from_micros(1000)).await;
+    #[cfg(feature = "orbita2d")]
     let init_sensors=actuator.get_axis_sensors().unwrap();
+    #[cfg(feature = "orbita2d")]
+    Timer::after(Duration::from_micros(1000)).await;
+    #[cfg(feature = "orbita2d")]
+    actuator.set_torque([true,true]).unwrap();
+
     let res = actuator.check_motors_1().await;
     match res {
 	Ok(_v) => {
@@ -344,8 +354,17 @@ pub async fn control_loop(config: ActuatorConfig) {
     }
 
 
-
+    #[cfg(feature = "orbita2d")]
+    actuator.set_torque([false,false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
+    #[cfg(feature = "orbita2d")]
+    Timer::after(Duration::from_micros(1000)).await;
+    #[cfg(feature = "orbita2d")]
     let moved_sensors = actuator.get_axis_sensors().unwrap();
+    #[cfg(feature = "orbita2d")]
+    Timer::after(Duration::from_micros(1000)).await;
+    #[cfg(feature = "orbita2d")]
+    actuator.set_torque([true,true]).unwrap();
+
     let res =actuator.check_motors_2().await;
     match res {
 	Ok(_v) => {
@@ -365,7 +384,14 @@ pub async fn control_loop(config: ActuatorConfig) {
 	}
 
 	//Orbita3D
-	if (diff[i]<0.0 && diff[i]>-0.1) || (diff[i]>0.0) {
+	#[cfg(feature = "orbita3d")]
+	if (diff[i]<=0.0 && diff[i]>-0.1) || (diff[i]>0.0 || diff[i].is_nan()) {
+	    error!("Axis sensor {:?} moved too little: {:?} Check sensor connection??", i, diff[i]);
+	    init_error=true;
+
+	}
+	#[cfg(feature = "orbita2d")]
+	if (diff[i]<=0.0 && diff[i]>-0.02) || (diff[i]>0.0 || diff[i].is_nan()) {
 	    error!("Axis sensor {:?} moved too little: {:?} Check sensor connection??", i, diff[i]);
 	    init_error=true;
 
@@ -489,6 +515,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 	    });
         {
 	    // warn!("ELAPSED 0 {:?}",t0.elapsed().as_micros());
+	    // info!("pos: {:?}", pos);
             SHARED_MEMORY.lock().await.set_current_position(pos);
 	    // warn!("ELAPSED 1 {:?}",t0.elapsed().as_micros());
         }

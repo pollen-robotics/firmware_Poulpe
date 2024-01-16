@@ -209,7 +209,12 @@ where
         // Rotate right
         info!("[Ventouse{:?}] Rotate right...",self.kind);
 	#[cfg(feature = "orbita2d")]
-        self.foc.tmc4671_set_target_velocity(50).map_err(IOError::SpiError)?;
+	if self.kind=='B'{
+	    self.foc.tmc4671_set_target_velocity(1000).map_err(IOError::SpiError)?;
+	}
+	else{
+            self.foc.tmc4671_set_target_velocity(50).map_err(IOError::SpiError)?;
+	}
 	#[cfg(feature = "orbita3d")]
         self.foc.tmc4671_set_target_velocity(500).map_err(IOError::SpiError)?;
         let _ = Timer::after(Duration::from_millis(1000)).await;
@@ -220,7 +225,12 @@ where
 
 	let diff=position.saturating_sub(initial_position);
 	//TODO is it the same for Orbita3D and Orbita2D?
-	if diff<100000{
+	#[cfg(feature = "orbita2d")]
+	const MIN_DIFF: i32 = 10000;
+	#[cfg(feature = "orbita3d")]
+	const MIN_DIFF: i32 = 100000;
+
+	if diff<MIN_DIFF{
 	    error!("[Ventouse{:?}] Motor has not moved enough: {} Check motor/encoder connection",self.kind, diff);
 	    return Err(IOError::InitError);
 	}
@@ -238,7 +248,13 @@ where
         // Rotate left
         info!("[Ventouse{:?}] Rotate left...",self.kind);
 	#[cfg(feature = "orbita2d")]
-        self.foc.tmc4671_set_target_velocity(-50).map_err(IOError::SpiError)?;
+	if self.kind=='B'{
+	    self.foc.tmc4671_set_target_velocity(-1000).map_err(IOError::SpiError)?;
+	}
+	else{
+            self.foc.tmc4671_set_target_velocity(-50).map_err(IOError::SpiError)?;
+	}
+        // self.foc.tmc4671_set_target_velocity(-150).map_err(IOError::SpiError)?;
 	#[cfg(feature = "orbita3d")]
         self.foc.tmc4671_set_target_velocity(-500).map_err(IOError::SpiError)?;
         let _ = Timer::after(Duration::from_millis(1000)).await;

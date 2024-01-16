@@ -114,7 +114,7 @@ pub fn pid_to_bytes<const N:usize>(pid: [Pid;N]) -> [u8; 4*N] {
 }
 
 pub fn bytes_to_pid<const N:usize>(data: &[u8]) -> [Pid;N] {
-    assert!(data.len() == N * 4);
+    assert!(data.len() == N * 4); //FIXME: remove assert!!
     let mut result = [Pid{p:0,i:0}; N];
 
     for i in 0..N {

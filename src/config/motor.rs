@@ -7,7 +7,7 @@ pub struct BrushlessMotor {
     pid_torque_p_torque_i: u32,
     pid_velocity_p_velocity_i: u32,
     pid_position_p_position_i: u32,
-
+    abn_decoder_ppr: u32,
     gearbox_ratio: f32,
     axis_ratio: f32,
 
@@ -23,7 +23,7 @@ impl BrushlessMotor {
 	    adc_i0_scale_offset: 0x010081D3,
 	    adc_i1_scale_offset: 0x0100825B,
 
-
+	    abn_decoder_ppr: 0x00001000,
             pid_flux_p_flux_i: 0x02000200,
             pid_torque_p_torque_i: 0x02000200,
             pid_velocity_p_velocity_i: 0x02000008,
@@ -43,6 +43,7 @@ impl BrushlessMotor {
 	    adc_i0_scale_offset: 0x010081FA,
 	    adc_i1_scale_offset: 0x0100826C,
 
+	    abn_decoder_ppr: 0x00001000,
             pid_flux_p_flux_i: 0x03200000,
             pid_torque_p_torque_i: 0x03200000,
             pid_velocity_p_velocity_i: 0x01F401C2,
@@ -61,14 +62,14 @@ impl BrushlessMotor {
 	    adc_i0_scale_offset: 0x0100819E,
 	    adc_i1_scale_offset: 0x0100821C,
 
-
+	    abn_decoder_ppr: 0x00000800,
 
             // pid_flux_p_flux_i: 0x02000200,
             pid_flux_p_flux_i: 0x01000100,
             pid_torque_p_torque_i: 0x01000100,
 
-            pid_velocity_p_velocity_i: 0x04000040,
-            pid_position_p_position_i: 0x00800000,
+            pid_velocity_p_velocity_i: 0x08000000,
+            pid_position_p_position_i: 0x01000000,
 	    gearbox_ratio: 1.0/35.0,
 	    axis_ratio: 20.0/38.0,
 
@@ -108,6 +109,10 @@ impl BrushlessMotor {
     }
     pub fn axis_ratio(&self) -> f32 {
 	self.axis_ratio
+    }
+
+    pub fn abn_decoder_ppr(&self) -> u32 {
+	self.abn_decoder_ppr
     }
 
 
