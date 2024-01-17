@@ -334,11 +334,11 @@ pub async fn control_loop(config: ActuatorConfig) {
     #[cfg(feature = "orbita2d")]
     actuator.set_torque([false,false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
     #[cfg(feature = "orbita2d")]
-    Timer::after(Duration::from_micros(1000)).await;
+    Timer::after(Duration::from_micros(10000)).await;
     #[cfg(feature = "orbita2d")]
     let init_sensors=actuator.get_axis_sensors().unwrap();
     #[cfg(feature = "orbita2d")]
-    Timer::after(Duration::from_micros(1000)).await;
+    Timer::after(Duration::from_micros(10000)).await;
     #[cfg(feature = "orbita2d")]
     actuator.set_torque([true,true]).unwrap();
 
@@ -357,11 +357,11 @@ pub async fn control_loop(config: ActuatorConfig) {
     #[cfg(feature = "orbita2d")]
     actuator.set_torque([false,false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
     #[cfg(feature = "orbita2d")]
-    Timer::after(Duration::from_micros(1000)).await;
+    Timer::after(Duration::from_micros(10000)).await;
     #[cfg(feature = "orbita2d")]
     let moved_sensors = actuator.get_axis_sensors().unwrap();
     #[cfg(feature = "orbita2d")]
-    Timer::after(Duration::from_micros(1000)).await;
+    Timer::after(Duration::from_micros(10000)).await;
     #[cfg(feature = "orbita2d")]
     actuator.set_torque([true,true]).unwrap();
 
@@ -383,19 +383,13 @@ pub async fn control_loop(config: ActuatorConfig) {
 	    diff[i]=diff[i]-2.0*3.141592;
 	}
 
-	//Orbita3D
-	#[cfg(feature = "orbita3d")]
+
 	if (diff[i]<=0.0 && diff[i]>-0.1) || (diff[i]>0.0 || diff[i].is_nan()) {
 	    error!("Axis sensor {:?} moved too little: {:?} Check sensor connection??", i, diff[i]);
 	    init_error=true;
 
 	}
-	#[cfg(feature = "orbita2d")]
-	if (diff[i]<=0.0 && diff[i]>-0.02) || (diff[i]>0.0 || diff[i].is_nan()) {
-	    error!("Axis sensor {:?} moved too little: {:?} Check sensor connection??", i, diff[i]);
-	    init_error=true;
 
-	}
     }
     debug!("init sensors: {:?}", init_sensors);
     debug!("moved sensors: {:?}", moved_sensors);
