@@ -331,6 +331,11 @@ pub async fn control_loop(config: ActuatorConfig) {
 	}
     }
 
+
+
+
+
+
     #[cfg(feature = "orbita2d")]
     actuator.set_torque([false,false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
     #[cfg(feature = "orbita2d")]
@@ -360,6 +365,8 @@ pub async fn control_loop(config: ActuatorConfig) {
     Timer::after(Duration::from_micros(100000)).await;
     #[cfg(feature = "orbita2d")]
     let moved_sensors = actuator.get_axis_sensors().unwrap();
+    #[cfg(feature = "orbita2d")]
+    SHARED_MEMORY.lock().await.set_axis_sensor(moved_sensors);
     #[cfg(feature = "orbita2d")]
     Timer::after(Duration::from_micros(100000)).await;
     #[cfg(feature = "orbita2d")]
@@ -391,6 +398,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 	}
 
     }
+
     debug!("init sensors: {:?}", init_sensors);
     debug!("moved sensors: {:?}", moved_sensors);
     debug!("diff sensors: {:?}", diff);
@@ -503,7 +511,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 	//TODO match and set error led for every call
 
 
-	/*
+
         let pos = actuator.get_current_position().unwrap_or_else(|e|
 	    {
 		error!("Error reading position: {:?}", e);
@@ -554,24 +562,11 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 
 	);
-	*/
-
-	let sensors=actuator.get_axis_sensors();
-	match sensors {
-	    Ok(sensors) => {
-		SHARED_MEMORY.lock().await.set_axis_sensor(sensors);
-		// info!("sensors: {:?}", sensors);
-	    },
-	    Err(_e) => {
-		// SHARED_MEMORY.lock().await.set_axis_sensor([999999.0, 999999.0]);
-		error_led=true;
-		error!("Axis sensors error");
-	    }
-	}
 
 
 
-	/*
+
+
 	let torque=actuator.get_current_torque();
 	match torque {
 	    Ok(mut torque) => {
@@ -601,6 +596,26 @@ pub async fn control_loop(config: ActuatorConfig) {
 	    }
 	}
 	// warn!("ELAPSED 6 {:?}",t0.elapsed().as_micros());
+
+	let sensors=actuator.get_axis_sensors();
+	match sensors {
+	    Ok(sensors) => {
+		if ! sensors.iter().any(|s| s.is_nan()) {
+		    SHARED_MEMORY.lock().await.set_axis_sensor(sensors);
+		}
+
+
+		info!("sensors: {:?}", sensors);
+	    },
+	    Err(_e) => {
+		// SHARED_MEMORY.lock().await.set_axis_sensor([999999.0, 999999.0]);
+		error_led=true;
+		error!("Axis sensors error");
+	    }
+	}
+
+
+
 
 
 	if error_led!=prev_error_led {
@@ -702,6 +717,24 @@ pub async fn control_loop(config: ActuatorConfig) {
 	    }
 
 
+	    // //Less error at lower frequency...
+	    // let sensors=actuator.get_axis_sensors();
+	    // match sensors {
+	    // 	Ok(sensors) => {
+	    // 	    SHARED_MEMORY.lock().await.set_axis_sensor(sensors);
+	    // 	    info!("sensors: {:?}", sensors);
+	    // 	},
+	    // 	Err(_e) => {
+	    // 	    // SHARED_MEMORY.lock().await.set_axis_sensor([999999.0, 999999.0]);
+	    // 	    error_led=true;
+	    // 	    error!("Axis sensors error");
+	    // 	}
+	    // }
+
+
+
+
+
 	    slow_timer=1000;
 
 
@@ -710,7 +743,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 	{
 	    slow_timer-=1;
 	}
-	*/
+
 	// let elapsed=t0.elapsed().as_micros();
 	// warn!("ELAPSED: {:?}",elapsed);
         // Timer::after(Duration::from_micros(1000-elapsed)).await;

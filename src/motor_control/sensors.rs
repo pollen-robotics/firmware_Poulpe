@@ -494,8 +494,7 @@ impl<'d> RawSensorsIO<1> for SensorKind<'d> {
     fn get_axis_sensors(&mut self) -> Result<[f32; 1], IOError> {
         match self {
             SensorKind::Ring(ring) => ring.get_axis_sensor(),
-	    // SensorKind::Center(center) => center.get_axis_sensor(),
-	    SensorKind::Center(center) => Ok([0.0]),
+	    SensorKind::Center(center) => center.get_axis_sensor(),
 	    SensorKind::DonutTop(top) => top.get_axis_sensor(),
 	    SensorKind::DonutMid(mid) => mid.get_axis_sensor(),
 	    SensorKind::DonutBot(bot) => bot.get_axis_sensor(),
