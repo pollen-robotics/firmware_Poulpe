@@ -48,7 +48,7 @@ impl BrushlessMotor {
             pid_torque_p_torque_i: 0x03200000,
             pid_velocity_p_velocity_i: 0x01F401C2,
             pid_position_p_position_i: 0x00500000,
-	    gearbox_ratio: 1.0/35.0,
+	    gearbox_ratio: 1.0,
 	    axis_ratio: 20.0/38.0,
 
         }
@@ -70,7 +70,7 @@ impl BrushlessMotor {
 
             pid_velocity_p_velocity_i: 0x08000000,
             pid_position_p_position_i: 0x01000000,
-	    gearbox_ratio: 1.0/35.0,
+	    gearbox_ratio: 1.0,
 	    axis_ratio: 20.0/38.0,
 
 

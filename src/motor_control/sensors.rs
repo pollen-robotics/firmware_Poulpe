@@ -312,7 +312,7 @@ where T:Instance,
 	// error >>= 9;
 	let _warning:bool = ((encoder_data & 0x0000000000000100)>>8) != 0x1; // 8th bit, active low
 	if error {
-	    // error!("Ring sensor error",);
+	    error!("Ring sensor error",);
 	    Err(IOError::InvalidData)
 	}
 
@@ -323,7 +323,7 @@ where T:Instance,
 	    let calculated_crc = !CRC_SPI_97_64bit(datapacket) ;
 
 	    if calculated_crc != crc{
-		// error!("Ring sensor CRC error. crc: {:#02x} computed: {:#02x} data: {:#x} datapacket: {:#x}", crc, calculated_crc, encoder_data, datapacket);
+		error!("Ring sensor CRC error. crc: {:#02x} computed: {:#02x} data: {:#x} datapacket: {:#x}", crc, calculated_crc, encoder_data, datapacket);
 		Err(IOError::InvalidData)
 	    }
 	    else {
@@ -494,7 +494,8 @@ impl<'d> RawSensorsIO<1> for SensorKind<'d> {
     fn get_axis_sensors(&mut self) -> Result<[f32; 1], IOError> {
         match self {
             SensorKind::Ring(ring) => ring.get_axis_sensor(),
-	    SensorKind::Center(center) => center.get_axis_sensor(),
+	    // SensorKind::Center(center) => center.get_axis_sensor(),
+	    SensorKind::Center(center) => Ok([0.0]),
 	    SensorKind::DonutTop(top) => top.get_axis_sensor(),
 	    SensorKind::DonutMid(mid) => mid.get_axis_sensor(),
 	    SensorKind::DonutBot(bot) => bot.get_axis_sensor(),

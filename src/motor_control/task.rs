@@ -334,11 +334,11 @@ pub async fn control_loop(config: ActuatorConfig) {
     #[cfg(feature = "orbita2d")]
     actuator.set_torque([false,false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
     #[cfg(feature = "orbita2d")]
-    Timer::after(Duration::from_micros(10000)).await;
+    Timer::after(Duration::from_micros(100000)).await;
     #[cfg(feature = "orbita2d")]
     let init_sensors=actuator.get_axis_sensors().unwrap();
     #[cfg(feature = "orbita2d")]
-    Timer::after(Duration::from_micros(10000)).await;
+    Timer::after(Duration::from_micros(100000)).await;
     #[cfg(feature = "orbita2d")]
     actuator.set_torque([true,true]).unwrap();
 
@@ -357,11 +357,11 @@ pub async fn control_loop(config: ActuatorConfig) {
     #[cfg(feature = "orbita2d")]
     actuator.set_torque([false,false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
     #[cfg(feature = "orbita2d")]
-    Timer::after(Duration::from_micros(10000)).await;
+    Timer::after(Duration::from_micros(100000)).await;
     #[cfg(feature = "orbita2d")]
     let moved_sensors = actuator.get_axis_sensors().unwrap();
     #[cfg(feature = "orbita2d")]
-    Timer::after(Duration::from_micros(10000)).await;
+    Timer::after(Duration::from_micros(100000)).await;
     #[cfg(feature = "orbita2d")]
     actuator.set_torque([true,true]).unwrap();
 
@@ -501,6 +501,9 @@ pub async fn control_loop(config: ActuatorConfig) {
 	// let t0=Instant::now();
 	// warn!("ELAPSED -1 {:?}",t0.elapsed().as_micros());
 	//TODO match and set error led for every call
+
+
+	/*
         let pos = actuator.get_current_position().unwrap_or_else(|e|
 	    {
 		error!("Error reading position: {:?}", e);
@@ -524,21 +527,6 @@ pub async fn control_loop(config: ActuatorConfig) {
 	);
 
 
-	/*
-	if torque_on != init_torque_on{
-            actuator.set_torque(torque_on).unwrap_or_else(|e|
-							  {
-							      error!("Error setting torque: {:?}", e);
-							      error_led=true;
-							  }
-	    );
-
-	    init_torque_on=torque_on;
-
-	}
-	*/
-
-	// warn!("ELAPSED 2 {:?}",t0.elapsed().as_micros());
 
 	//Unfiltered
 	#[cfg(not(feature = "cmd_filter"))]
@@ -566,22 +554,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 
 	);
-	/*
-	if target != init_target_position{
-	    actuator.set_target_position(target).unwrap_or_else(|e|
-								{
-								    error!("Error setting target pos: {:?}", e);
-								    error_led=true;
-								}
-
-
-	    );
-	    init_target_position=target;
-	}
-	// warn!("ELAPSED 3 {:?}",t0.elapsed().as_micros());
 	*/
-
-
 
 	let sensors=actuator.get_axis_sensors();
 	match sensors {
@@ -595,10 +568,10 @@ pub async fn control_loop(config: ActuatorConfig) {
 		error!("Axis sensors error");
 	    }
 	}
-	// warn!("ELAPSED 4 {:?}",t0.elapsed().as_micros());
 
 
 
+	/*
 	let torque=actuator.get_current_torque();
 	match torque {
 	    Ok(mut torque) => {
@@ -612,7 +585,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 		error!("Torque error");
 	    }
 	}
-	// warn!("ELAPSED 5 {:?}",t0.elapsed().as_micros());
+
 
 	let vel=actuator.get_current_velocity();
 	match vel {
@@ -737,7 +710,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 	{
 	    slow_timer-=1;
 	}
-
+	*/
 	// let elapsed=t0.elapsed().as_micros();
 	// warn!("ELAPSED: {:?}",elapsed);
         // Timer::after(Duration::from_micros(1000-elapsed)).await;

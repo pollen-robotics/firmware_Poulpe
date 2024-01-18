@@ -630,7 +630,7 @@ where
 	    error!("GET POS error: {:?}",e);
 	    0
 	});
-	let rads = conversion::encoder_to_rads(pos, self.foc.ppr.unwrap())*self.foc.brushless_motor_config.gearbox_ratio()*self.foc.brushless_motor_config.axis_ratio();
+	let rads = conversion::encoder_to_rads(pos, self.foc.ppr.unwrap())*self.foc.brushless_motor_config.gearbox_ratio();//*self.foc.brushless_motor_config.axis_ratio();
 	let start_indices=compute_idx(d);
 	debug!("Start indices: {:?} start pos: {:?}",start_indices, rads.to_degrees());
 
@@ -658,7 +658,7 @@ where
 	    error!("GET POS error: {:?}",e);
 	    0
 	});
-	let rads2 = conversion::encoder_to_rads(pos, self.foc.ppr.unwrap())*self.foc.brushless_motor_config.gearbox_ratio()*self.foc.brushless_motor_config.axis_ratio();
+	let rads2 = conversion::encoder_to_rads(pos, self.foc.ppr.unwrap())*self.foc.brushless_motor_config.gearbox_ratio();//*self.foc.brushless_motor_config.axis_ratio();
 
 
 
