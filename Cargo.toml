@@ -36,30 +36,42 @@ cmd_filter = []
 
 
 #local
-embassy-stm32 = { version = "0.1.0", path = "../embassy_tests/embassy-stm32", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x", "unstable-pac", "unstable-traits"] }
-embassy-sync = { version = "0.4.0", path = "../embassy_tests/embassy-sync", features = ["defmt"] }
-embassy-executor = { version = "0.3.0", path = "../embassy_tests/embassy-executor", features = ["nightly", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers"] }
+# embassy-stm32 = { version = "0.1.0", path = "../embassy_tests/embassy-stm32", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x", "unstable-pac", "unstable-traits"] }
+# embassy-sync = { version = "0.4.0", path = "../embassy_tests/embassy-sync", features = ["defmt"] }
+# embassy-executor = { version = "0.3.0", path = "../embassy_tests/embassy-executor", features = ["nightly", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers"] }
 
-embassy-time = { version = "0.1.5", path = "../embassy_tests/embassy-time", features = ["defmt", "defmt-timestamp-uptime", "unstable-traits", "tick-hz-32_768"] }
-embassy-net = { version = "0.2.1", path = "../embassy_tests/embassy-net", features = ["defmt", "nightly", "tcp", "dhcpv4", "medium-ethernet", "proto-ipv6"] }
-embedded-io-async = { version = "0.5.0" }
-embassy-usb = { version = "0.1.0", path = "../embassy_tests/embassy-usb", features = ["defmt"] }
-embassy-futures = { version = "0.1.0", path = "../embassy_tests/embassy-futures", features = ["defmt"] }
-embassy-embedded-hal = { version = "0.1.0", path = "../embassy_tests/embassy-embedded-hal" }
+# embassy-time = { version = "0.1.5", path = "../embassy_tests/embassy-time", features = ["defmt", "defmt-timestamp-uptime", "unstable-traits", "tick-hz-32_768"] }
+# embassy-net = { version = "0.2.1", path = "../embassy_tests/embassy-net", features = ["defmt", "nightly", "tcp", "dhcpv4", "medium-ethernet", "proto-ipv6"] }
+# embedded-io-async = { version = "0.5.0" }
+# embassy-usb = { version = "0.1.0", path = "../embassy_tests/embassy-usb", features = ["defmt"] }
+# embassy-futures = { version = "0.1.0", path = "../embassy_tests/embassy-futures", features = ["defmt"] }
+# embassy-embedded-hal = { version = "0.1.0", path = "../embassy_tests/embassy-embedded-hal" }
 
 
 
 #Pollen fork...
-# embassy-stm32 = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x", "unstable-pac", "unstable-traits"] }
-# embassy-sync = { version = "0.4.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["defmt"] }
-# embassy-executor = { version = "0.3.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["nightly", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers"] }
+embassy-stm32 = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x","unstable-pac", "unstable-traits"] }
+embassy-sync = { version = "0.4.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["defmt"] }
+embassy-executor = { version = "0.3.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["nightly", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers"] }
 
-# embassy-time = { version = "0.1.5", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["defmt", "defmt-timestamp-uptime", "unstable-traits", "tick-hz-32_768"] }
-# embassy-net = { version = "0.2.1", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["defmt", "nightly", "tcp", "dhcpv4", "medium-ethernet", "proto-ipv6"] }
+embassy-time = { version = "0.1.5", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["defmt", "defmt-timestamp-uptime", "unstable-traits", "tick-hz-32_768"] }
+embassy-net = { version = "0.2.1", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["defmt", "nightly", "tcp", "dhcpv4", "medium-ethernet", "proto-ipv6"] }
+embedded-io-async = { version = "0.5.0" }
+embassy-usb = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["defmt"] }
+embassy-futures = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["defmt"] }
+embassy-embedded-hal = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta" }
+
+#Specific commit which works
+# embassy-stm32 = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", rev="9472b7beeda62c856726686b695359b37ffb120c", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x","unstable-pac", "unstable-traits"] }
+# embassy-sync = { version = "0.4.0", git = "https://github.com/pollen-robotics/embassy", rev="9472b7beeda62c856726686b695359b37ffb120c", features = ["defmt"] }
+# embassy-executor = { version = "0.3.0", git = "https://github.com/pollen-robotics/embassy", rev="9472b7beeda62c856726686b695359b37ffb120c", features = ["nightly", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers"] }
+
+# embassy-time = { version = "0.1.5", git = "https://github.com/pollen-robotics/embassy", rev="9472b7beeda62c856726686b695359b37ffb120c", features = ["defmt", "defmt-timestamp-uptime", "unstable-traits", "tick-hz-32_768"] }
+# embassy-net = { version = "0.2.1", git = "https://github.com/pollen-robotics/embassy", rev="9472b7beeda62c856726686b695359b37ffb120c", features = ["defmt", "nightly", "tcp", "dhcpv4", "medium-ethernet", "proto-ipv6"] }
 # embedded-io-async = { version = "0.5.0" }
-# embassy-usb = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["defmt"] }
-# embassy-futures = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["defmt"] }
-# embassy-embedded-hal = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta" }
+# embassy-usb = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", rev="9472b7beeda62c856726686b695359b37ffb120c", features = ["defmt"] }
+# embassy-futures = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", rev="9472b7beeda62c856726686b695359b37ffb120c", features = ["defmt"] }
+# embassy-embedded-hal = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", rev="9472b7beeda62c856726686b695359b37ffb120c" }
 
 
 
@@ -73,6 +85,10 @@ embedded-hal = "0.2.6"
 embedded-hal-1 = { package = "embedded-hal", version = "=1.0.0-rc.1" }
 embedded-hal-async = { version = "=1.0.0-rc.1" }
 embedded-nal-async = { version = "0.5.0" }
+
+
+
+
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 futures = { version = "0.3.17", default-features = false, features = ["async-await"] }
 heapless = { version = "0.7.5", default-features = false }

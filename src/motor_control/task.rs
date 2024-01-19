@@ -340,7 +340,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     actuator.set_torque([false,false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
     #[cfg(feature = "orbita2d")]
     Timer::after(Duration::from_micros(100000)).await;
-    #[cfg(feature = "orbita2d")]
+
     let init_sensors=actuator.get_axis_sensors().unwrap();
     #[cfg(feature = "orbita2d")]
     Timer::after(Duration::from_micros(100000)).await;
@@ -363,7 +363,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     actuator.set_torque([false,false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
     #[cfg(feature = "orbita2d")]
     Timer::after(Duration::from_micros(100000)).await;
-    #[cfg(feature = "orbita2d")]
+
     let moved_sensors = actuator.get_axis_sensors().unwrap();
     #[cfg(feature = "orbita2d")]
     SHARED_MEMORY.lock().await.set_axis_sensor(moved_sensors);
