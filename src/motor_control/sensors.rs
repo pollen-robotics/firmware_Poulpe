@@ -284,12 +284,17 @@ where T:Instance,
     {
 	 // RLS Aksim2
         let mut data_read = [0x00u8, 0x00u8, 0x00u8, 0x00u8];
-
-	let _= SpiDevice::transfer_in_place(&mut self.spi, &mut data_read)
+	// block_for(Duration::from_micros(10000));
+	let _ = SpiDevice::transfer_in_place(&mut self.spi, &mut data_read)
 	    .map_err(|e| {
                 error!("!!! Error SPI {:?}!!!", e);
                 IOError::SpiError
             });
+
+	// let _ = SpiDevice::read(&mut self.spi, &mut data_read).map_err(|e| {
+        //         error!("!!! Error SPI {:?}!!!", e);
+        //         IOError::SpiError
+        //     });
 
 
         // debug!("read via spi: {:#02x}  {:#02x}  {:#02x} {:#02x}.", &data_read[0], &data_read[1], &data_read[2], &data_read[3]);
@@ -438,12 +443,14 @@ where
 	//     return Err(result.err().unwrap());
         // }
 
+	// block_for(Duration::from_micros(10));
 
 	let _= SpiDevice::transfer_in_place(&mut self.spi, &mut data_write)
 	    .map_err(|e| {
                 error!("!!! Error SPI {:?}!!!", e);
                 IOError::SpiError
             });
+	// block_for(Duration::from_micros(10));
 
 
 
