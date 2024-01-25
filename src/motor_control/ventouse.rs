@@ -354,6 +354,22 @@ where
             .map_err(IOError::SpiError)
     }
 
+    /// Set the current target position of the motors (in radians)
+    fn set_velocity_feedforward(&mut self, velocity: [f32; 1]) -> Result<(), IOError> {
+        self.foc
+            .tmc4671_set_velocity_offset(velocity[0] as i32 )
+            .map(|_| ())
+            .map_err(IOError::SpiError)
+    }
+    // get velocity feedforward
+    fn get_velocity_feedforward(&mut self) -> Result<[f32; 1], IOError> {
+        let vel=self.
+        foc.
+        tmc4671_get_velocity_offset()
+        .map_err(IOError::SpiError)?;
+        Ok([vel as f32]) //TODO convert to rad/s
+    }
+
 
 
     fn get_target_velocity(&mut self) -> Result<[f32; 1], IOError> {
@@ -782,6 +798,23 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
             VentouseKind::A(va) => va.set_target_position(position),
             VentouseKind::B(vb) => vb.set_target_position(position),
             VentouseKind::C(vc) => vc.set_target_position(position),
+        }
+    }
+
+    // Set velocity feedforward
+    fn set_velocity_feedforward(&mut self, velocity: [f32; 1]) -> Result<(), IOError> {
+        match self {
+            VentouseKind::A(va) => va.set_velocity_feedforward(velocity),
+            VentouseKind::B(vb) => vb.set_velocity_feedforward(velocity),
+            VentouseKind::C(vc) => vc.set_velocity_feedforward(velocity),
+        }
+    }
+    // get velocity feedforward
+    fn get_velocity_feedforward(&mut self) -> Result<[f32; 1], IOError> {
+        match self {
+            VentouseKind::A(va) => va.get_velocity_feedforward(),
+            VentouseKind::B(vb) => vb.get_velocity_feedforward(),
+            VentouseKind::C(vc) => vc.get_velocity_feedforward(),
         }
     }
 

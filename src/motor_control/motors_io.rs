@@ -47,7 +47,9 @@ pub trait RawMotorsIO<const N: usize> {
     fn get_target_position(&mut self) -> Result<[f32; N]>;
     /// Set the current target position of the motors (in radians)
     fn set_target_position(&mut self, position: [f32; N]) -> Result<()>;
-
+    // Set the velocity feedforward of the motors (in radians per second)
+    fn set_velocity_feedforward(&mut self, velocity: [f32; N]) -> Result<()>;
+    fn get_velocity_feedforward(&mut self) -> Result<[f32; N]>;
 
 
     /// Get the current target velocity of the motors (in rpm)
