@@ -6,8 +6,8 @@ license = "MIT OR Apache-2.0"
 
 [features]
 #motor specifig config
-# default = ["orbita2d", "ec60", "cmd_filter"]
-default = ["orbita2d", "ec45","cmd_filter"]
+default = ["orbita2d", "ec45", "velocity_feedforward","cmd_filter" ]
+# default = ["orbita2d", "ec60", "velocity_feedforward","cmd_filter" ]
 # default = ["orbita3d", "cmd_filter"]
 # default = ["orbita3d"]
 orbita2d = []
@@ -15,6 +15,7 @@ orbita3d = []
 ec60 = []
 ec45=[]
 cmd_filter = []
+velocity_feedforward = []
 
 [dependencies]
 # rustypot = "0.4.2"

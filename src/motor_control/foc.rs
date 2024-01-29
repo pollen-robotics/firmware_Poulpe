@@ -439,6 +439,20 @@ where
         )
     }
 
+    
+    pub fn tmc4671_set_velocity_offset(
+        &mut self,
+        velocity_offset: i32,
+    ) -> Result<u32, embassy_stm32::spi::Error> {
+        self.tmc4671_write_register(
+            Tmc4671Registers::PID_VELOCITY_OFFSET as u8,
+            velocity_offset as u32,
+        )
+    }
+    pub fn tmc4671_get_velocity_offset(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
+        self.tmc4671_get_i32(Tmc4671Registers::PID_VELOCITY_OFFSET as u8)
+    }
+
     pub fn tmc4671_get_target_position(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
         self.tmc4671_get_i32(Tmc4671Registers::PID_POSITION_TARGET as u8)  //TODO should probably check INTERIM_DATA
     }

@@ -503,8 +503,14 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 
     let mut cmd_filter=[DirectForm2Transposed::<f32>::new(coeffs); config::N_AXIS];
+    // velocity feedforward filter
+    let f0_ff = 30.hz();
+    let coeffs_vel = Coefficients::<f32>::from_params(Type::LowPass, fs, f0_ff, Q_BUTTERWORTH_F32).unwrap();
+    let mut vel_ff_filter=[DirectForm2Transposed::<f32>::new(coeffs_vel); config::N_AXIS];
 
     let mut slow_timer:u32=1000;
+
+    let mut target_old = { SHARED_MEMORY.lock().await.get_target_position() };
 
     let mut ticker = Ticker::every(Duration::from_micros(1000));
     loop {
@@ -561,9 +567,23 @@ pub async fn control_loop(config: ActuatorConfig) {
 								error!("Error setting target pos: {:?}", e);
 								error_led=true;
 							    }
-
-
 	);
+
+    // add the feedforward control to the velocity loop
+    #[cfg(feature = "velocity_feedforward")]
+    {
+        // velocity feedforward from shared memory
+        let mut velocity_ff = { SHARED_MEMORY.lock().await.get_velocity_feedforward() };
+        // filter the velocity feedforward
+        velocity_ff.iter_mut().enumerate().for_each(|(i,v)| {*v=vel_ff_filter[i].run(*v)});
+        // set the velocity feedforward
+        actuator.set_velocity_feedforward(velocity_ff).unwrap_or_else(|e|
+            {
+                error!("Error setting velocity feedforward: {:?}", e);
+                error_led=true;
+            }
+        );
+    }
 
 
 

@@ -17,6 +17,7 @@ pub struct Memory<const N: usize> {
     target_position: [f32; N],
     target_velocity: [f32; N],
     target_torque: [f32; N],
+    velocity_feedforward: [f32; N],
 
     flux_pid_gains: [Pid;N],
     torque_pid_gains: [Pid;N],
@@ -93,6 +94,14 @@ impl<const N: usize> SharedMemory<N> {
         self.inner.borrow_mut().target_velocity = vel;
     }
 
+    // set velocity feedforward 
+    pub fn set_velocity_feedforward(&self, vel: [f32; N]) {
+        self.inner.borrow_mut().velocity_feedforward = vel;
+    }
+    // get velocity feedforward
+    pub fn get_velocity_feedforward(&self) -> [f32; N] {
+        self.inner.borrow().velocity_feedforward
+    }
 
     pub fn get_current_torque(&self) -> [f32; N] {
         self.inner.borrow().current_torque
@@ -242,6 +251,7 @@ impl<const N: usize> SharedMemory<N> {
 		uq_ud_limit: [0;N],
 		torque_flux_limit: [0;N],
 		velocity_limit: [0;N],
+        velocity_feedforward: [0.0; N],
 
 
 		error_led: false,
@@ -275,6 +285,7 @@ impl<const N: usize> SharedMemory<N> {
 	    uq_ud_limit: actuator.get_uq_ud_limit().unwrap_or([0;N]),
 	    torque_flux_limit: actuator.get_torque_flux_limit().unwrap_or([0;N]),
 	    velocity_limit: actuator.get_velocity_limit().unwrap_or([0;N]),
+        velocity_feedforward: actuator.get_velocity_feedforward().unwrap_or([0.0; N]),
 
 	    #[cfg(feature = "orbita3d")]
 	    index_sensor: actuator.get_index_sensor(),
