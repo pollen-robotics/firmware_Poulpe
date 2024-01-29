@@ -197,7 +197,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     let foc = Foc::new(
         foc_spi,
         config.b.foc_enable,
-	#[cfg(all(feature = "orbita2d", not(feature = "ec60")))]
+	#[cfg(all(feature = "orbita2d", feature = "ec45"))]
         config::BrushlessMotor::ec45(),
 	#[cfg(all(feature = "orbita2d", feature = "ec60"))]
         config::BrushlessMotor::ec60(),
@@ -237,7 +237,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     let foc = Foc::new(
         foc_spi,
         config.c.foc_enable,
-	#[cfg(all(feature = "orbita2d", not(feature = "ec60")))]
+	#[cfg(all(feature = "orbita2d", feature = "ec45"))]
         config::BrushlessMotor::ec45(),
 	#[cfg(all(feature = "orbita2d", feature = "ec60"))]
         config::BrushlessMotor::ec60(),
@@ -331,7 +331,22 @@ pub async fn control_loop(config: ActuatorConfig) {
 	}
     }
 
+
+
+
+
+
+    #[cfg(feature = "orbita2d")]
+    actuator.set_torque([false,false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
+    #[cfg(feature = "orbita2d")]
+    Timer::after(Duration::from_micros(100000)).await;
+
     let init_sensors=actuator.get_axis_sensors().unwrap();
+    #[cfg(feature = "orbita2d")]
+    Timer::after(Duration::from_micros(100000)).await;
+    #[cfg(feature = "orbita2d")]
+    actuator.set_torque([true,true]).unwrap();
+
     let res = actuator.check_motors_1().await;
     match res {
 	Ok(_v) => {
@@ -344,8 +359,19 @@ pub async fn control_loop(config: ActuatorConfig) {
     }
 
 
+    #[cfg(feature = "orbita2d")]
+    actuator.set_torque([false,false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
+    #[cfg(feature = "orbita2d")]
+    Timer::after(Duration::from_micros(100000)).await;
 
     let moved_sensors = actuator.get_axis_sensors().unwrap();
+    #[cfg(feature = "orbita2d")]
+    SHARED_MEMORY.lock().await.set_axis_sensor(moved_sensors);
+    #[cfg(feature = "orbita2d")]
+    Timer::after(Duration::from_micros(100000)).await;
+    #[cfg(feature = "orbita2d")]
+    actuator.set_torque([true,true]).unwrap();
+
     let res =actuator.check_motors_2().await;
     match res {
 	Ok(_v) => {
@@ -364,13 +390,15 @@ pub async fn control_loop(config: ActuatorConfig) {
 	    diff[i]=diff[i]-2.0*3.141592;
 	}
 
-	//Orbita3D
-	if (diff[i]<0.0 && diff[i]>-0.1) || (diff[i]>0.0) {
+
+	if (diff[i]<=0.0 && diff[i]>-0.1) || (diff[i]>0.0 || diff[i].is_nan()) {
 	    error!("Axis sensor {:?} moved too little: {:?} Check sensor connection??", i, diff[i]);
 	    init_error=true;
 
 	}
+
     }
+
     debug!("init sensors: {:?}", init_sensors);
     debug!("moved sensors: {:?}", moved_sensors);
     debug!("diff sensors: {:?}", diff);
@@ -378,6 +406,9 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     //Find index for Orbita3D motors
     #[cfg(feature = "orbita3d")]
+    {
+    actuator.set_torque([false,false,false]).unwrap();
+    // #[cfg(feature = "orbita3d")]
     let indices= actuator.find_index(&mut donut_hall).unwrap_or_else(|e|
 								    {
 									error!("Error finding index: {:?}", e);
@@ -385,11 +416,11 @@ pub async fn control_loop(config: ActuatorConfig) {
 									[255;config::N_AXIS]
 								    }
     );
-    #[cfg(feature = "orbita3d")]
+    // #[cfg(feature = "orbita3d")]
     actuator.set_index_sensor(indices);
-    #[cfg(feature = "orbita3d")]
+    // #[cfg(feature = "orbita3d")]
     debug!("indices: {:?}", indices);
-
+    }
     // - Get the "closest" Hall for each motor
     // - Get the "absolute" position of each motor
     // - Set the index of the detected Hall for each motor
@@ -399,8 +430,38 @@ pub async fn control_loop(config: ActuatorConfig) {
     block_for(Duration::from_millis(100));
     #[cfg(feature = "orbita2d")]
     actuator.set_torque([false,false]).unwrap();
+
+
+    // For compatibility with Orbita3d Houston
     #[cfg(feature = "orbita3d")]
+    {
     actuator.set_torque([false,false,false]).unwrap();
+    // #[cfg(feature = "orbita3d")]
+    let init_sensors=actuator.get_axis_sensors().unwrap();
+    // #[cfg(feature = "orbita3d")]
+    let res = actuator.set_current_position(init_sensors);
+    // #[cfg(feature = "orbita3d")]
+    match res {
+	Ok(_) => {
+	}
+	Err(e) => {
+	    init_error=true;
+	    error!("Error setting current position: {:?}", e);
+	}
+    }
+    // #[cfg(feature = "orbita3d")]
+    let res=actuator.set_target_position(init_sensors);
+    // #[cfg(feature = "orbita3d")]
+    match res {
+	Ok(_) => {
+	}
+	Err(e) => {
+	    init_error=true;
+	    error!("Error setting target position: {:?}", e);
+	}
+    }
+    }
+
     info!("init done");
     // Init SharedMemory with real values before actually running the control loop
     SHARED_MEMORY.lock().await.init(&mut actuator);
@@ -442,14 +503,23 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 
     let mut cmd_filter=[DirectForm2Transposed::<f32>::new(coeffs); config::N_AXIS];
+    // velocity feedforward filter
+    let f0_ff = 30.hz();
+    let coeffs_vel = Coefficients::<f32>::from_params(Type::LowPass, fs, f0_ff, Q_BUTTERWORTH_F32).unwrap();
+    let mut vel_ff_filter=[DirectForm2Transposed::<f32>::new(coeffs_vel); config::N_AXIS];
 
     let mut slow_timer:u32=1000;
+
+    let mut target_old = { SHARED_MEMORY.lock().await.get_target_position() };
 
     let mut ticker = Ticker::every(Duration::from_micros(1000));
     loop {
 	// let t0=Instant::now();
 	// warn!("ELAPSED -1 {:?}",t0.elapsed().as_micros());
 	//TODO match and set error led for every call
+
+
+
         let pos = actuator.get_current_position().unwrap_or_else(|e|
 	    {
 		error!("Error reading position: {:?}", e);
@@ -458,6 +528,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 	    });
         {
 	    // warn!("ELAPSED 0 {:?}",t0.elapsed().as_micros());
+	    // info!("pos: {:?}", pos);
             SHARED_MEMORY.lock().await.set_current_position(pos);
 	    // warn!("ELAPSED 1 {:?}",t0.elapsed().as_micros());
         }
@@ -472,21 +543,6 @@ pub async fn control_loop(config: ActuatorConfig) {
 	);
 
 
-	/*
-	if torque_on != init_torque_on{
-            actuator.set_torque(torque_on).unwrap_or_else(|e|
-							  {
-							      error!("Error setting torque: {:?}", e);
-							      error_led=true;
-							  }
-	    );
-
-	    init_torque_on=torque_on;
-
-	}
-	*/
-
-	// warn!("ELAPSED 2 {:?}",t0.elapsed().as_micros());
 
 	//Unfiltered
 	#[cfg(not(feature = "cmd_filter"))]
@@ -495,46 +551,41 @@ pub async fn control_loop(config: ActuatorConfig) {
 	//Filtered
         let mut target = { SHARED_MEMORY.lock().await.get_target_position() };
 	#[cfg(feature = "cmd_filter")]
-	target.iter_mut().enumerate().for_each(|(i,t)| {*t=cmd_filter[i].run(*t)});
+	target.iter_mut().enumerate().for_each(|(i,t)|
+					       {
+						   if !torque_on[i]
+						   {//Trick to make the filter converge => reset target
+						       for _ in 0..1000{
+							   cmd_filter[i].run(*t);
+						       }
+						   }
+						   *t=cmd_filter[i].run(*t)
+					       });
 
 	actuator.set_target_position(target).unwrap_or_else(|e|
 							    {
 								error!("Error setting target pos: {:?}", e);
 								error_led=true;
 							    }
-
-
 	);
-	/*
-	if target != init_target_position{
-	    actuator.set_target_position(target).unwrap_or_else(|e|
-								{
-								    error!("Error setting target pos: {:?}", e);
-								    error_led=true;
-								}
+
+    // add the feedforward control to the velocity loop
+    #[cfg(feature = "velocity_feedforward")]
+    {
+        // velocity feedforward from shared memory
+        let mut velocity_ff = { SHARED_MEMORY.lock().await.get_velocity_feedforward() };
+        // filter the velocity feedforward
+        velocity_ff.iter_mut().enumerate().for_each(|(i,v)| {*v=vel_ff_filter[i].run(*v)});
+        // set the velocity feedforward
+        actuator.set_velocity_feedforward(velocity_ff).unwrap_or_else(|e|
+            {
+                error!("Error setting velocity feedforward: {:?}", e);
+                error_led=true;
+            }
+        );
+    }
 
 
-	    );
-	    init_target_position=target;
-	}
-	// warn!("ELAPSED 3 {:?}",t0.elapsed().as_micros());
-	*/
-
-
-
-	let sensors=actuator.get_axis_sensors();
-	match sensors {
-	    Ok(sensors) => {
-		SHARED_MEMORY.lock().await.set_axis_sensor(sensors);
-		// info!("sensors: {:?}", sensors);
-	    },
-	    Err(_e) => {
-		// SHARED_MEMORY.lock().await.set_axis_sensor([999999.0, 999999.0]);
-		error_led=true;
-		error!("Axis sensors error");
-	    }
-	}
-	// warn!("ELAPSED 4 {:?}",t0.elapsed().as_micros());
 
 
 
@@ -551,7 +602,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 		error!("Torque error");
 	    }
 	}
-	// warn!("ELAPSED 5 {:?}",t0.elapsed().as_micros());
+
 
 	let vel=actuator.get_current_velocity();
 	match vel {
@@ -567,6 +618,26 @@ pub async fn control_loop(config: ActuatorConfig) {
 	    }
 	}
 	// warn!("ELAPSED 6 {:?}",t0.elapsed().as_micros());
+
+	let sensors=actuator.get_axis_sensors();
+	match sensors {
+	    Ok(sensors) => {
+		if ! sensors.iter().any(|s| s.is_nan()) { //FIXME: hope it the sensor reading will better work to remove this
+		    SHARED_MEMORY.lock().await.set_axis_sensor(sensors);
+		}
+
+
+		// info!("sensors: {:?}", sensors);
+	    },
+	    Err(_e) => {
+		// SHARED_MEMORY.lock().await.set_axis_sensor([999999.0, 999999.0]);
+		// error_led=true;
+		// error!("Axis sensors error");
+	    }
+	}
+
+
+
 
 
 	if error_led!=prev_error_led {
@@ -666,6 +737,24 @@ pub async fn control_loop(config: ActuatorConfig) {
 		);
 		init_velocitylimit=velocitylimit;
 	    }
+
+
+	    // //Less error at lower frequency...
+	    // let sensors=actuator.get_axis_sensors();
+	    // match sensors {
+	    // 	Ok(sensors) => {
+	    // 	    SHARED_MEMORY.lock().await.set_axis_sensor(sensors);
+	    // 	    info!("sensors: {:?}", sensors);
+	    // 	},
+	    // 	Err(_e) => {
+	    // 	    // SHARED_MEMORY.lock().await.set_axis_sensor([999999.0, 999999.0]);
+	    // 	    error_led=true;
+	    // 	    error!("Axis sensors error");
+	    // 	}
+	    // }
+
+
+
 
 
 	    slow_timer=1000;

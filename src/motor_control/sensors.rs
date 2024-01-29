@@ -284,12 +284,17 @@ where T:Instance,
     {
 	 // RLS Aksim2
         let mut data_read = [0x00u8, 0x00u8, 0x00u8, 0x00u8];
-
-	let _= SpiDevice::transfer_in_place(&mut self.spi, &mut data_read)
+	// block_for(Duration::from_micros(10000));
+	let _ = SpiDevice::transfer_in_place(&mut self.spi, &mut data_read)
 	    .map_err(|e| {
                 error!("!!! Error SPI {:?}!!!", e);
                 IOError::SpiError
             });
+
+	// let _ = SpiDevice::read(&mut self.spi, &mut data_read).map_err(|e| {
+        //         error!("!!! Error SPI {:?}!!!", e);
+        //         IOError::SpiError
+        //     });
 
 
         // debug!("read via spi: {:#02x}  {:#02x}  {:#02x} {:#02x}.", &data_read[0], &data_read[1], &data_read[2], &data_read[3]);
@@ -312,7 +317,7 @@ where T:Instance,
 	// error >>= 9;
 	let _warning:bool = ((encoder_data & 0x0000000000000100)>>8) != 0x1; // 8th bit, active low
 	if error {
-	    // error!("Ring sensor error",);
+	    error!("Ring sensor error",);
 	    Err(IOError::InvalidData)
 	}
 
@@ -323,7 +328,7 @@ where T:Instance,
 	    let calculated_crc = !CRC_SPI_97_64bit(datapacket) ;
 
 	    if calculated_crc != crc{
-		// error!("Ring sensor CRC error. crc: {:#02x} computed: {:#02x} data: {:#x} datapacket: {:#x}", crc, calculated_crc, encoder_data, datapacket);
+		error!("Ring sensor CRC error. crc: {:#02x} computed: {:#02x} data: {:#x} datapacket: {:#x}", crc, calculated_crc, encoder_data, datapacket);
 		Err(IOError::InvalidData)
 	    }
 	    else {
@@ -438,12 +443,14 @@ where
 	//     return Err(result.err().unwrap());
         // }
 
+	// block_for(Duration::from_micros(10));
 
 	let _= SpiDevice::transfer_in_place(&mut self.spi, &mut data_write)
 	    .map_err(|e| {
                 error!("!!! Error SPI {:?}!!!", e);
                 IOError::SpiError
             });
+	// block_for(Duration::from_micros(10));
 
 
 

@@ -137,6 +137,17 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
 
         Ok(res)
     }
+
+
+    fn set_current_position(&mut self, pos:[f32;N]) -> Result<()> {
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            axis.set_current_position([pos[i]])?;
+        }
+
+        Ok(())
+    }
+
+
     /// Get the current velocity of the motors (in radians per second)
     fn get_current_velocity(&mut self) -> Result<[f32; N]> {
         let mut res = [0.0; N];
@@ -175,6 +186,23 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
         Ok(())
     }
 
+    // Set velocity feedforward
+    fn set_velocity_feedforward(&mut self, velocity: [f32; N]) -> Result<()> {
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            axis.set_velocity_feedforward([velocity[i]])?;
+        }
+
+        Ok(())
+    }
+    // get velocity feedforward
+    fn get_velocity_feedforward(&mut self) -> Result<[f32; N]> {
+        let mut res = [0.0; N];
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            res[i] = axis.get_velocity_feedforward()?[0];
+        }
+
+        Ok(res)
+    }
 
 
 

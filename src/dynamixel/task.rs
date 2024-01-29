@@ -78,6 +78,17 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                 }
                             }
 
+                            // reading velocity feedforward
+                            DynamixelRegister::FeedforwardVelocity => {
+                                let value = { SHARED_MEMORY.lock().await.get_velocity_feedforward() };
+                                let value = conversion::float_to_bytes(value);
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
                             DynamixelRegister::TargetPosition => {
                                 let value = { SHARED_MEMORY.lock().await.get_target_position() };
                                 let value = conversion::float_to_bytes(value);
@@ -87,7 +98,6 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                     error!("Error: {:?}", e);
                                 }
                             }
-
 
                             DynamixelRegister::AxisSensor => {
                                 let value = { SHARED_MEMORY.lock().await.get_axis_sensor() };
@@ -366,6 +376,22 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
 				    error!("Error: {:?}", e);
 				}
                             }
+                            
+
+                            DynamixelRegister::FeedforwardVelocity => {
+
+                                let velocity_feedforward: [f32; config::N_AXIS] =
+                                    conversion::bytes_to_float(write_data_packet.data);
+                                {
+                                    SHARED_MEMORY.lock().await.set_velocity_feedforward(velocity_feedforward);
+                                }
+                
+                                let sp = StatusPacket::ack(id, dxl_error);
+                                debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                                            }
 
 
 
@@ -375,6 +401,36 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                     conversion::bytes_to_float(write_data_packet.data);
                                 {
                                     SHARED_MEMORY.lock().await.set_target_position(target);
+                                }
+
+
+				//return the full state
+				let value={ SHARED_MEMORY.lock().await.get_full_state() };
+                                let value  = conversion::float_to_bytes(value);
+
+
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+
+
+
+                            }
+                            // parse the target position and velocity feedforward message
+                            DynamixelRegister::TargetPositionWithVelocityFF => {
+                                // first the target position
+                                let target: [f32; config::N_AXIS] =
+                                    conversion::bytes_to_float(write_data_packet.data[0..4*config::N_AXIS].try_into().unwrap());
+                                {
+                                    SHARED_MEMORY.lock().await.set_target_position(target);
+                                }
+                                // then the velocity feedforward
+                                let velocity_feedforward: [f32; config::N_AXIS] =
+                                    conversion::bytes_to_float(write_data_packet.data[4*config::N_AXIS..8*config::N_AXIS].try_into().unwrap());
+                                {
+                                    SHARED_MEMORY.lock().await.set_velocity_feedforward(velocity_feedforward);
                                 }
 
 

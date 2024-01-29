@@ -20,7 +20,9 @@ pub enum DynamixelRegister {
     CurrentTorque,
     TargetTorque,
     TargetVelocity,
+    FeedforwardVelocity,
     TargetPosition,
+    TargetPositionWithVelocityFF,
 
     AxisSensor,
 
@@ -53,11 +55,13 @@ impl DynamixelRegister {
 
 
 
-            40 => Some(DynamixelRegister::TorqueEnable),
-            50 => Some(DynamixelRegister::CurrentPosition),
-            51 => Some(DynamixelRegister::CurrentVelocity),
-            52 => Some(DynamixelRegister::CurrentTorque),
-            60 => Some(DynamixelRegister::TargetPosition),
+        40 => Some(DynamixelRegister::TorqueEnable),
+        50 => Some(DynamixelRegister::CurrentPosition),
+        51 => Some(DynamixelRegister::CurrentVelocity),
+        52 => Some(DynamixelRegister::CurrentTorque),
+	    54 => Some(DynamixelRegister::FeedforwardVelocity),
+        60 => Some(DynamixelRegister::TargetPosition),
+        62 => Some(DynamixelRegister::TargetPositionWithVelocityFF),
 
 	    90 => Some(DynamixelRegister::AxisSensor),
 
@@ -67,6 +71,7 @@ impl DynamixelRegister {
 
 
 	    100 => Some(DynamixelRegister::FullState),
+
 
 	    _ => None
 
