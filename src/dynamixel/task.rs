@@ -180,7 +180,7 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
 
                             DynamixelRegister::VelocityLimit => {
                                 let value = { SHARED_MEMORY.lock().await.get_velocity_limit() };
-                                let value = conversion::u32_to_bytes(value);
+                                let value = conversion::float_to_bytes(value);
                                 let sp = StatusPacket::with_value(id, dxl_error, value);
                                 trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
                                 if let Some(e) = dxl.write(&sp).await.err() {
@@ -364,8 +364,8 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
 
                             DynamixelRegister::VelocityLimit => {
 
-				let limits: [u32; config::N_AXIS] =
-				    conversion::bytes_to_u32(write_data_packet.data);
+				let limits: [f32; config::N_AXIS] =
+				    conversion::bytes_to_float(write_data_packet.data);
 				{
 				    SHARED_MEMORY.lock().await.set_velocity_limit(limits);
 				}

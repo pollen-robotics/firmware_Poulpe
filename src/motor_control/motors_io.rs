@@ -78,9 +78,9 @@ pub trait RawMotorsIO<const N: usize> {
     fn set_torque_flux_limit(&mut self, limit: [u16; N]) -> Result<()>;
 
     /// Get the velocity limit of the motors (in radians per second)
-    fn get_velocity_limit(&mut self) -> Result<[u32; N]>;
+    fn get_velocity_limit(&mut self) -> Result<[f32; N]>;
     /// Set the velocity limit of the motors (in radians per second)
-    fn set_velocity_limit(&mut self, limit: [u32; N]) -> Result<()>;
+    fn set_velocity_limit(&mut self, limit: [f32; N]) -> Result<()>;
 
     // /// Get the torque limit of the motors (in Nm)
     // fn get_torque_limit(&mut self) -> Result<[f32; N]>;
