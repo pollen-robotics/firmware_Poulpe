@@ -6,7 +6,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 #motor specifig config
-default = ["orbita2d", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" ]
+default = ["orbita2d", "ec45", "velocity_feedforward", "cmd_filter", "axis_output"] # "gearbox_output" ]
 # default = ["orbita2d", "ec60", "velocity_feedforward","cmd_filter", "axis_output"] #"gearbox_output" ]
 # default = ["orbita3d", "cmd_filter"]
 # default = ["orbita3d"]
