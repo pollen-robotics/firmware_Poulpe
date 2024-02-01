@@ -4,6 +4,7 @@ use defmt::Format;
 
 use crate::motor_control::{Actuator, RawMotorsIO, RawSensorsIO, Pid};
 use crate::{motor_control::foc::MotionMode};
+use embassy_time::{Instant};
 
 #[derive(Clone, Format)]
 pub struct Memory<const N: usize> {
@@ -18,6 +19,9 @@ pub struct Memory<const N: usize> {
     target_velocity: [f32; N],
     target_torque: [f32; N],
     velocity_feedforward: [f32; N],
+
+    velocity_feedforward_timestamp: Option<Instant>,
+    get_target_set_timestamp: Option<Instant>,
 
     flux_pid_gains: [Pid;N],
     torque_pid_gains: [Pid;N],
@@ -77,6 +81,8 @@ impl<const N: usize> SharedMemory<N> {
     }
     pub fn set_target_position(&self, pos: [f32; N]) {
         self.inner.borrow_mut().target_position = pos;
+        // set timestamp
+        self.inner.borrow_mut().get_target_set_timestamp = Some(Instant::now());
     }
 
 
@@ -97,6 +103,8 @@ impl<const N: usize> SharedMemory<N> {
     // set velocity feedforward 
     pub fn set_velocity_feedforward(&self, vel: [f32; N]) {
         self.inner.borrow_mut().velocity_feedforward = vel;
+        // set the timestamp
+        self.inner.borrow_mut().velocity_feedforward_timestamp = Some(Instant::now());
     }
     // get velocity feedforward
     pub fn get_velocity_feedforward(&self) -> [f32; N] {
@@ -193,7 +201,12 @@ impl<const N: usize> SharedMemory<N> {
     pub fn set_velocity_limit(&self, limit: [f32;N]) {
 	self.inner.borrow_mut().velocity_limit=limit;
     }
-
+    pub fn get_velocity_feedforward_timestamp(&self) -> Option<Instant> {
+        self.inner.borrow().velocity_feedforward_timestamp
+    }
+    pub fn get_target_set_timestamp(&self) -> Option<Instant> {
+        self.inner.borrow().get_target_set_timestamp
+    }       
 
     #[cfg(feature = "orbita3d")]
     pub fn get_index_sensor(&self) -> [u8;N] {
@@ -236,6 +249,9 @@ impl<const N: usize> SharedMemory<N> {
                 target_torque: [0.0; N],
 		axis_sensor: [0.0; N],
 
+                velocity_feedforward_timestamp: None,
+                get_target_set_timestamp: None,
+
 		#[cfg(feature = "orbita3d")]
 		index_sensor: [0xff; N],
 
@@ -272,6 +288,9 @@ impl<const N: usize> SharedMemory<N> {
             target_position: actuator.get_target_position().unwrap_or([f32::NAN; N]),
             target_velocity: actuator.get_target_velocity().unwrap_or([f32::NAN; N]),
             target_torque: actuator.get_target_torque().unwrap_or([f32::NAN; N]),
+
+            velocity_feedforward_timestamp: Some(Instant::now()),
+            get_target_set_timestamp: Some(Instant::now()),
 
 	    axis_sensor: actuator.get_axis_sensors().unwrap_or([f32::NAN; N]),
 

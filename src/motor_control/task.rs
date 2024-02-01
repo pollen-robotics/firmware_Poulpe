@@ -577,6 +577,21 @@ pub async fn control_loop(config: ActuatorConfig) {
         {
                 // velocity feedforward from shared memory
                 let mut velocity_ff = { SHARED_MEMORY.lock().await.get_velocity_feedforward() };
+                
+                // get velocity feedforward timestamp
+                let velocity_ff_timestamp = { SHARED_MEMORY.lock().await.get_velocity_feedforward_timestamp() };
+                // check if the velocity feedforward value has been set and is it too old (older than 200ms)
+                match velocity_ff_timestamp {
+                    Some(timestamp) => {
+                        if timestamp.elapsed().as_millis() > 200 {
+                            velocity_ff = [0.0; config::N_AXIS];
+                        }
+                    },
+                    None => {
+                        velocity_ff = [0.0; config::N_AXIS];
+                    }
+                }
+                
                 // filter the velocity feedforward
                 velocity_ff.iter_mut().enumerate().for_each(|(i,v)| {*v=vel_ff_filter[i].run(*v)});
                 // set the velocity feedforward
