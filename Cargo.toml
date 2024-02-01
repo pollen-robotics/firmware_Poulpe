@@ -67,7 +67,7 @@ embassy-net = { version = "0.2.1", git = "https://github.com/pollen-robotics/emb
 embedded-io-async = { version = "0.6.1" }
 embassy-usb = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta",  rev="38082c0942f7cce294ebc2a471716473b7a95136", features = ["defmt"] }
 embassy-futures = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta",  rev="38082c0942f7cce294ebc2a471716473b7a95136", features = ["defmt"] }
-embassy-embedded-hal = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta" }
+embassy-embedded-hal = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", rev="38082c0942f7cce294ebc2a471716473b7a95136"}
 
 #Specific commit which works 
 # embassy-stm32 = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", rev="9472b7beeda62c856726686b695359b37ffb120c", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x","unstable-pac", "unstable-traits"] }
