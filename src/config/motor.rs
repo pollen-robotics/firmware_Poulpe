@@ -111,31 +111,59 @@ impl BrushlessMotor {
 	self.abn_decoder_ppr
     }
 
-    
+    // conversion from electrical to mechanical angle
+    // depending on the features enabled, 
+    // feature "gearbox_output" returns the angle after the gearbox
+    // feature "axis_output" returns the angle after the gearbox and axis
+    // if neither of the above features are enabled, the motor angle is returned
+    pub fn angle_elec_to_mech(&self, angle: f32) -> f32 {
+        #[cfg(feature = "gearbox_output")]
+        return self.elec_to_gearbox(angle);
+        #[cfg(feature = "axis_output")]
+        return self.elec_to_axis(angle);
+        // ide neither of the above features are enabled, the motor angle is returned
+        #[cfg(not(any(feature = "gearbox_output", feature = "axis_output")))]
+        return self.elec_to_shaft(angle);
+    }
+    // conversion from mechanical to electrical angle
+    // depends on the features enabled
+    // feature "gearbox_output" considers the angle after the gearbox
+    // feature "axis_output" considers the angle after the gearbox and axis
+    // if neither of the above features are enabled, the motor angle is returned
+    pub fn angle_mech_to_elec(&self, angle: f32) -> f32 {
+
+        #[cfg(feature = "gearbox_output")]
+        return self.gearbox_to_elec(angle);
+        #[cfg(feature = "axis_output")]
+        return self.axis_to_elec(angle);
+        // ide neither of the above features are enabled, the motor angle is returned
+        #[cfg(not(any(feature = "gearbox_output", feature = "axis_output")))]
+        return self.shaft_to_elec(angle);
+    }
 
     // conversion from electrical to mechanical angle
-    pub fn elec_to_mech(&self, angle: f32) -> f32 {
+    pub fn elec_to_shaft(&self, angle: f32) -> f32 {
         angle / self.pole_pairs()
     }
     // from electrical angle to the angle of the motor after the gearbox
-    pub fn elec_to_mech_gearbox(&self, angle: f32) -> f32 {
-        self.elec_to_mech(angle) * self.gearbox_ratio
+    pub fn elec_to_gearbox(&self, angle: f32) -> f32 {
+        self.elec_to_shaft(angle) * self.gearbox_ratio
     }
     // from electrical angle to the angle of the motor after the gearbox and axis
-    pub fn elec_to_mech_axis(&self, angle: f32) -> f32 {
-        self.elec_to_mech_axis(angle) * self.axis_ratio
+    pub fn elec_to_axis(&self, angle: f32) -> f32 {
+        self.elec_to_gearbox(angle) * self.axis_ratio
     }
     // conversion from mechanical to electrical angle
-    pub fn mech_to_elec(&self, angle: f32) -> f32 {
+    pub fn shaft_to_elec(&self, angle: f32) -> f32 {
         angle * self.pole_pairs() 
     }
     // from mechanical angle after the gearbox to electrical angle
-    pub fn mech_gearbox_to_elec(&self, angle: f32) -> f32 {
-        self.mech_to_elec(angle) / self.gearbox_ratio
+    pub fn gearbox_to_elec(&self, angle: f32) -> f32 {
+        self.shaft_to_elec(angle) / self.gearbox_ratio
     }
     // from mechanical angle after the gearbox and axis to electrical angle
-    pub fn mech_axis_to_elec(&self, angle: f32) -> f32 {
-        self.mech_axis_to_elec(angle) / self.axis_ratio
+    pub fn axis_to_elec(&self, angle: f32) -> f32 {
+        self.gearbox_to_elec(angle) / self.axis_ratio
     }
 
 }

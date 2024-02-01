@@ -320,7 +320,7 @@ where
 	self
             .foc
             .tmc4671_set_actual_position(conversion::rad_to_encoder(
-                self.foc.brushless_motor_config.mech_gearbox_to_elec(pos[0]), // mechanical to electrical angle
+                self.foc.brushless_motor_config.angle_mech_to_elec(pos[0]), // mechanical to electrical angle
                 self.foc.ppr)
             ).map_err(IOError::SpiError)?;
 	Ok(())
@@ -333,7 +333,7 @@ where
             .foc
             .tmc4671_get_actual_position()
             .map_err(IOError::SpiError)?;
-        Ok([self.foc.brushless_motor_config.elec_to_mech_gearbox( // electrical to mechanical angle
+        Ok([self.foc.brushless_motor_config.angle_elec_to_mech( // electrical to mechanical angle
                 conversion::encoder_to_rad(
                         encoder, 
                         self.foc.ppr
@@ -346,7 +346,7 @@ where
 	    foc.
 	    tmc4671_get_actual_velocity()
 	    .map_err(IOError::SpiError)?;
-        Ok([self.foc.brushless_motor_config.elec_to_mech_gearbox(
+        Ok([self.foc.brushless_motor_config.angle_elec_to_mech(
                 conversion::rpm_to_rads(vel as f32)
         )]) 
     }
@@ -368,7 +368,7 @@ where
 	    foc.
 	    tmc4671_get_target_position()
 	    .map_err(IOError::SpiError)?;
-    	Ok([self.foc.brushless_motor_config.elec_to_mech_gearbox( // electrical to mechanical position
+    	Ok([self.foc.brushless_motor_config.angle_elec_to_mech( // electrical to mechanical position
                 conversion::encoder_to_rad(
                         pos, 
                         self.foc.ppr
@@ -379,7 +379,7 @@ where
     fn set_target_position(&mut self, position: [f32; 1]) -> Result<(), IOError> {
         self.foc
             .tmc4671_set_target_position(conversion::rad_to_encoder(
-                self.foc.brushless_motor_config.mech_gearbox_to_elec(position[0]), // mechanical to electrical angle
+                self.foc.brushless_motor_config.angle_mech_to_elec(position[0]), // mechanical to electrical angle
                 self.foc.ppr)
             )
             .map(|_| ())
@@ -388,7 +388,7 @@ where
 
     /// Set the current velocity feedforward (in radians per second)
     fn set_velocity_feedforward(&mut self, velocity: [f32; 1]) -> Result<(), IOError> {
-        let vel_rpm =self.foc.brushless_motor_config.mech_gearbox_to_elec(
+        let vel_rpm =self.foc.brushless_motor_config.angle_mech_to_elec(
                 conversion::rads_to_rpm(velocity[0] as f32)
             );
         self.foc
@@ -402,7 +402,7 @@ where
            foc.
            tmc4671_get_velocity_offset()
            .map_err(IOError::SpiError)?;
-        Ok([self.foc.brushless_motor_config.elec_to_mech_gearbox(
+        Ok([self.foc.brushless_motor_config.angle_elec_to_mech(
                 conversion::rpm_to_rads(vel as f32)
         )]) 
     }
@@ -416,13 +416,13 @@ where
 	    tmc4671_get_target_velocity()
 	    .map_err(IOError::SpiError)?;
         
-        Ok([self.foc.brushless_motor_config.elec_to_mech_gearbox(
+        Ok([self.foc.brushless_motor_config.angle_elec_to_mech(
             conversion::rpm_to_rads(vel as f32)
         )]) 
     }
     // set new target velocity (in radians per second)
     fn set_target_velocity(&mut self, velocity: [f32; 1]) -> Result<(), IOError> {
-        let vel_rpm = self.foc.brushless_motor_config.mech_gearbox_to_elec(
+        let vel_rpm = self.foc.brushless_motor_config.angle_mech_to_elec(
                 conversion::rads_to_rpm(velocity[0] as f32)
             );
         self.foc
@@ -494,14 +494,14 @@ where
         let limit=self.foc.tmc4671_get_velocity_limit()
             .map_err(IOError::SpiError)?;
         // limit in rad/s
-        Ok([self.foc.brushless_motor_config.elec_to_mech_gearbox(
+        Ok([self.foc.brushless_motor_config.angle_elec_to_mech(
                 conversion::rpm_to_rads(limit as f32)
             )]) 
 
     }
     /// Set the velocity limit of the motors (in radians per second)
     fn set_velocity_limit(&mut self, limit: [f32; 1]) -> Result<(), IOError> {
-        let limit_rpm = self.foc.brushless_motor_config.mech_gearbox_to_elec(
+        let limit_rpm = self.foc.brushless_motor_config.angle_mech_to_elec(
                 conversion::rads_to_rpm(limit[0] as f32)
             );
 	self.foc.tmc4671_set_velocity_limit(limit_rpm as u32)
@@ -670,7 +670,7 @@ where
 	    error!("GET POS error: {:?}",e);
 	    0
 	});
-	let rads = self.foc.brushless_motor_config.elec_to_mech_gearbox(conversion::encoder_to_rad(pos, self.foc.ppr));
+	let rads = self.foc.brushless_motor_config.angle_elec_to_mech(conversion::encoder_to_rad(pos, self.foc.ppr));
 	let start_indices=compute_idx(d);
 	debug!("Start indices: {:?} start pos: {:?}",start_indices, rads.to_degrees());
 
@@ -698,7 +698,7 @@ where
 	    error!("GET POS error: {:?}",e);
 	    0
 	});
-	let rads2 = self.foc.brushless_motor_config.elec_to_mech_gearbox(conversion::encoder_to_rad(pos, self.foc.ppr));
+	let rads2 = self.foc.brushless_motor_config.angle_elec_to_mech(conversion::encoder_to_rad(pos, self.foc.ppr));
 
 
 
