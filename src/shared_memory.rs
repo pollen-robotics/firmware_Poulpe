@@ -25,7 +25,7 @@ pub struct Memory<const N: usize> {
     position_pid_gains: [Pid;N],
 
     uq_ud_limit: [i16;N],
-    torque_flux_limit: [u16;N],
+    torque_flux_limit: [f32;N],
     velocity_limit: [f32;N],
 
 
@@ -180,10 +180,10 @@ impl<const N: usize> SharedMemory<N> {
 	self.inner.borrow_mut().uq_ud_limit=limit;
     }
 
-    pub fn get_torque_flux_limit(&self) -> [u16;N] {
+    pub fn get_torque_flux_limit(&self) -> [f32;N] {
 	self.inner.borrow().torque_flux_limit
     }
-    pub fn set_torque_flux_limit(&self, limit: [u16;N]) {
+    pub fn set_torque_flux_limit(&self, limit: [f32;N]) {
 	self.inner.borrow_mut().torque_flux_limit=limit;
     }
 
@@ -249,7 +249,7 @@ impl<const N: usize> SharedMemory<N> {
 		position_pid_gains: [Pid{p:0,i:0};N],
 
 		uq_ud_limit: [0;N],
-		torque_flux_limit: [0;N],
+		torque_flux_limit: [0.0;N],
 		velocity_limit: [0.0;N],
                 velocity_feedforward: [0.0; N],
 
@@ -283,7 +283,7 @@ impl<const N: usize> SharedMemory<N> {
 	    // torque_flux_limit: actuator.get_torque_flux_limit().unwrap_or([f32::NAN;N]),
 	    // velocity_limit: actuator.get_velocity_limit().unwrap_or([f32::NAN;N]),
 	    uq_ud_limit: actuator.get_uq_ud_limit().unwrap_or([0;N]),
-	    torque_flux_limit: actuator.get_torque_flux_limit().unwrap_or([0;N]),
+	    torque_flux_limit: actuator.get_torque_flux_limit().unwrap_or([0.0;N]),
 	    velocity_limit: actuator.get_velocity_limit().unwrap_or([0.0;N]),
             velocity_feedforward: actuator.get_velocity_feedforward().unwrap_or([0.0; N]),
 

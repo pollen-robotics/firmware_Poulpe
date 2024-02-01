@@ -1,9 +1,6 @@
 pub struct BrushlessMotor {
     // 0x00030004: 3-phase brushless motor, 4 pole pairs - register MOTOR_TYPE_N_POLE_PAIRS
     motor_type_n_pole_pairs: u32,
-    // adc offset and scale values - register ADC_I0_SCALE_OFFSET and ADC_I1_SCALE_OFFSET
-    adc_i0_scale_offset: u32,
-    adc_i1_scale_offset: u32,
 
     // pid flux and torque P and I gains - register PID_FLUX_P_FLUX_I and PID_TORQUE_P_TORQUE_I
     pid_flux_p_flux_i: u32,
@@ -17,8 +14,8 @@ pub struct BrushlessMotor {
     gearbox_ratio: f32,
     // additional reduction ration of the axis
     axis_ratio: f32,
-
 }
+
 
 impl BrushlessMotor {
     #[allow(dead_code)]
@@ -26,10 +23,6 @@ impl BrushlessMotor {
         Self {
             // 0x00030004: 3-phase brushless motor, 4 pole pairs
             motor_type_n_pole_pairs: 0x00030004,
-
-            //TODO!
-            adc_i0_scale_offset: 0x010081D3,
-            adc_i1_scale_offset: 0x0100825B,
 
             // the encoder with 4096 ppr
             abn_decoder_ppr: 0x00001000,
@@ -41,7 +34,8 @@ impl BrushlessMotor {
 
             // gearing ratios
             gearbox_ratio: 1.0/35.0,
-            axis_ratio: 12.0/64.0
+            axis_ratio: 12.0/64.0,
+
         }
     }
     #[allow(dead_code)]
@@ -49,10 +43,6 @@ impl BrushlessMotor {
         Self {
             // 0x00030007: 3-phase brushless motor, 7 pole pairs
             motor_type_n_pole_pairs: 0x00030007,
-
-            //TODO!
-            adc_i0_scale_offset: 0x010081FA,
-            adc_i1_scale_offset: 0x0100826C,
 
             // the encoder with 4096 ppr
             abn_decoder_ppr: 0x00001000,
@@ -63,9 +53,8 @@ impl BrushlessMotor {
             pid_position_p_position_i: 0x00500000,
 
             // gearing ratios
-            gearbox_ratio: 1.0/25.0,
-            axis_ratio: 20.0/38.0
-
+            gearbox_ratio: 1.0/25.01,
+            axis_ratio: 28.0/52.0,
         }
     }
     #[allow(dead_code)]
@@ -73,11 +62,6 @@ impl BrushlessMotor {
         Self {
             // 0x00030007: 3-phase brushless motor, 8 pole pairs
             motor_type_n_pole_pairs: 0x00030008,
-
-            // adc_i0_scale_offset: 0x002A819E, //Ventouse?
-            // adc_i1_scale_offset: 0x002A821C,
-            adc_i0_scale_offset: 0x0100819E,
-            adc_i1_scale_offset: 0x0100821C,
 
             // the encoder with 4096 ppr
             abn_decoder_ppr: 0x00001000,
@@ -92,23 +76,14 @@ impl BrushlessMotor {
             // gearing ratios
             gearbox_ratio: 1.0,
             axis_ratio: 20.0/38.0,
-
         }
     }
 }
 
 impl BrushlessMotor {
     pub fn motor_type_n_pole_pairs(&self) -> u32 {
-		self.motor_type_n_pole_pairs
+	self.motor_type_n_pole_pairs
     }
-    pub fn adc_i0_scale_offset(&self) -> u32 {
-	self.adc_i0_scale_offset
-    }
-    pub fn adc_i1_scale_offset(&self) -> u32 {
-	self.adc_i1_scale_offset
-    }
-
-
     pub fn pid_flux_p_flux_i(&self) -> u32 {
         self.pid_flux_p_flux_i
     }
@@ -131,14 +106,36 @@ impl BrushlessMotor {
     pub fn pole_pairs(&self) -> f32 {
 	(self.motor_type_n_pole_pairs & 0x0000FFFF) as f32
     }
-    // transformation gain form mechanical to electrical revolutions 
-    pub fn mech_to_elec(&self) -> f32 {
-	self.pole_pairs()/self.gearbox_ratio()
-    }
-
+    
     pub fn abn_decoder_ppr(&self) -> u32 {
 	self.abn_decoder_ppr
     }
 
+    
+
+    // conversion from electrical to mechanical angle
+    pub fn elec_to_mech(&self, angle: f32) -> f32 {
+        angle / self.pole_pairs()
+    }
+    // from electrical angle to the angle of the motor after the gearbox
+    pub fn elec_to_mech_gearbox(&self, angle: f32) -> f32 {
+        self.elec_to_mech(angle) * self.gearbox_ratio
+    }
+    // from electrical angle to the angle of the motor after the gearbox and axis
+    pub fn elec_to_mech_axis(&self, angle: f32) -> f32 {
+        self.elec_to_mech_axis(angle) * self.axis_ratio
+    }
+    // conversion from mechanical to electrical angle
+    pub fn mech_to_elec(&self, angle: f32) -> f32 {
+        angle * self.pole_pairs() 
+    }
+    // from mechanical angle after the gearbox to electrical angle
+    pub fn mech_gearbox_to_elec(&self, angle: f32) -> f32 {
+        self.mech_to_elec(angle) / self.gearbox_ratio
+    }
+    // from mechanical angle after the gearbox and axis to electrical angle
+    pub fn mech_axis_to_elec(&self, angle: f32) -> f32 {
+        self.mech_axis_to_elec(angle) / self.axis_ratio
+    }
 
 }

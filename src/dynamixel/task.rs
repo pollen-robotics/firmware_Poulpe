@@ -169,7 +169,7 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
 
                             DynamixelRegister::TorqueFluxLimit => {
                                 let value = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
-                                let value = conversion::u16_to_bytes(value);
+                                let value = conversion::float_to_bytes(value);
                                 let sp = StatusPacket::with_value(id, dxl_error, value);
                                 trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
                                 if let Some(e) = dxl.write(&sp).await.err() {
@@ -349,8 +349,8 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
 
                             DynamixelRegister::TorqueFluxLimit => {
 
-				let limits: [u16; config::N_AXIS] =
-				    conversion::bytes_to_u16(write_data_packet.data);
+				let limits: [f32; config::N_AXIS] =
+				    conversion::bytes_to_float(write_data_packet.data);
 				{
 				    SHARED_MEMORY.lock().await.set_torque_flux_limit(limits);
 				}
@@ -403,7 +403,6 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                     SHARED_MEMORY.lock().await.set_target_position(target);
                                 }
 
-
 				//return the full state
 				let value={ SHARED_MEMORY.lock().await.get_full_state() };
                                 let value  = conversion::float_to_bytes(value);
@@ -426,13 +425,13 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                 {
                                     SHARED_MEMORY.lock().await.set_target_position(target);
                                 }
+
                                 // then the velocity feedforward
                                 let velocity_feedforward: [f32; config::N_AXIS] =
                                     conversion::bytes_to_float(write_data_packet.data[4*config::N_AXIS..8*config::N_AXIS].try_into().unwrap());
                                 {
                                     SHARED_MEMORY.lock().await.set_velocity_feedforward(velocity_feedforward);
                                 }
-
 
 				//return the full state
 				let value={ SHARED_MEMORY.lock().await.get_full_state() };
@@ -444,7 +443,6 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                 if let Some(e) = dxl.write(&sp).await.err() {
                                     error!("Error: {:?}", e);
                                 }
-
 
 
                             }
