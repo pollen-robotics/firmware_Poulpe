@@ -102,12 +102,6 @@ where
 
 	}
 
-
-        // self.foc.ppr = Some(self.foc.tmc4671_get_encoder_ppr()? as f32);
-	self.foc.ppr=Some(524288.0/(2.0*3.141592)); //It seems that 524288=360° motor (0x80000)
-
-
-
         match self.align_motor().await
 	{
 	    Ok(_) => info!("[Ventouse{:?}] align done",self.kind),
@@ -325,7 +319,10 @@ where
     fn set_current_position(&mut self, pos:[f32;1]) -> Result<(), IOError> {
 	self
             .foc
-            .tmc4671_set_actual_position(conversion::rads_to_encoder(pos[0],self.foc.ppr.unwrap()/self.foc.brushless_motor_config.gearbox_ratio())).map_err(IOError::SpiError)?;
+            .tmc4671_set_actual_position(conversion::rad_to_encoder(
+                self.foc.brushless_motor_config.angle_mech_to_elec(pos[0]), // mechanical to electrical angle
+                self.foc.ppr)
+            ).map_err(IOError::SpiError)?;
 	Ok(())
 
     }
@@ -336,8 +333,12 @@ where
             .foc
             .tmc4671_get_actual_position()
             .map_err(IOError::SpiError)?;
-        let rads = conversion::encoder_to_rads(encoder, self.foc.ppr.unwrap())*self.foc.brushless_motor_config.gearbox_ratio();
-        Ok([rads])
+        Ok([self.foc.brushless_motor_config.angle_elec_to_mech( // electrical to mechanical angle
+                conversion::encoder_to_rad(
+                        encoder, 
+                        self.foc.ppr
+                )
+        )])
     }
     /// Get the current velocity of the motors (in radians per second)
     fn get_current_velocity(&mut self) -> Result<[f32; 1], IOError> {
@@ -345,16 +346,19 @@ where
 	    foc.
 	    tmc4671_get_actual_velocity()
 	    .map_err(IOError::SpiError)?;
-	Ok([vel as f32]) //Should be rpm
-
+        Ok([self.foc.brushless_motor_config.angle_elec_to_mech(
+                conversion::rpm_to_rads(vel as f32)
+        )]) 
     }
-    /// Get the current torque of the motors (in Nm)
+
+    /// Get the current torque of the motors (in Nm) 
+    /// for now its in mAmps
     fn get_current_torque(&mut self) -> Result<[f32; 1], IOError> {
 	let torque=self.
 	    foc.
 	    tmc4671_get_torque_actual()
 	    .map_err(IOError::SpiError)?;
-	Ok([torque as f32]) //TODO is there a conversion to do?
+        Ok([self.foc.current_sensing_config.adc_to_mAmps(torque as f32, self.foc.adc_resolution)]) 
 
     }
 
@@ -364,72 +368,87 @@ where
 	    foc.
 	    tmc4671_get_target_position()
 	    .map_err(IOError::SpiError)?;
-	Ok([conversion::encoder_to_rads(pos, self.foc.ppr.unwrap())*self.foc.brushless_motor_config.gearbox_ratio()])
-	// Ok([0.0])
-
+    	Ok([self.foc.brushless_motor_config.angle_elec_to_mech( // electrical to mechanical position
+                conversion::encoder_to_rad(
+                        pos, 
+                        self.foc.ppr
+                )
+        )])
     }
     /// Set the current target position of the motors output (in radians)
     fn set_target_position(&mut self, position: [f32; 1]) -> Result<(), IOError> {
         self.foc
-            .tmc4671_set_target_position(conversion::rads_to_encoder(
-                position[0],
-                self.foc.ppr.unwrap()/self.foc.brushless_motor_config.gearbox_ratio(),
-            ))
+            .tmc4671_set_target_position(conversion::rad_to_encoder(
+                self.foc.brushless_motor_config.angle_mech_to_elec(position[0]), // mechanical to electrical angle
+                self.foc.ppr)
+            )
             .map(|_| ())
             .map_err(IOError::SpiError)
     }
 
-    /// Set the current target position of the motors (in radians)
+    /// Set the current velocity feedforward (in radians per second)
     fn set_velocity_feedforward(&mut self, velocity: [f32; 1]) -> Result<(), IOError> {
+        let vel_rpm =self.foc.brushless_motor_config.angle_mech_to_elec(
+                conversion::rads_to_rpm(velocity[0] as f32)
+            );
         self.foc
-            .tmc4671_set_velocity_offset(velocity[0] as i32 )
+            .tmc4671_set_velocity_offset(vel_rpm as i32 )
             .map(|_| ())
             .map_err(IOError::SpiError)
     }
-    // get velocity feedforward
+    // get current velocity feedforward (in radians per second)
     fn get_velocity_feedforward(&mut self) -> Result<[f32; 1], IOError> {
         let vel=self.
-        foc.
-        tmc4671_get_velocity_offset()
-        .map_err(IOError::SpiError)?;
-        Ok([vel as f32]) //TODO convert to rad/s
+           foc.
+           tmc4671_get_velocity_offset()
+           .map_err(IOError::SpiError)?;
+        Ok([self.foc.brushless_motor_config.angle_elec_to_mech(
+                conversion::rpm_to_rads(vel as f32)
+        )]) 
     }
 
 
 
+    // get current target velocity (in radians per second)
     fn get_target_velocity(&mut self) -> Result<[f32; 1], IOError> {
         let vel=self.
 	    foc.
 	    tmc4671_get_target_velocity()
 	    .map_err(IOError::SpiError)?;
-	Ok([vel as f32]) //TODO convert to rad/s
-
-
+        
+        Ok([self.foc.brushless_motor_config.angle_elec_to_mech(
+            conversion::rpm_to_rads(vel as f32)
+        )]) 
     }
-
+    // set new target velocity (in radians per second)
     fn set_target_velocity(&mut self, velocity: [f32; 1]) -> Result<(), IOError> {
+        let vel_rpm = self.foc.brushless_motor_config.angle_mech_to_elec(
+                conversion::rads_to_rpm(velocity[0] as f32)
+            );
         self.foc
             .tmc4671_set_target_velocity(
-                velocity[0] as i32) // TODO convert to rpm
+                vel_rpm as i32) 
             .map(|_| ())
             .map_err(IOError::SpiError)
     }
 
 
+    /// Get the target torque of the motors (in Nm) 
+    /// for now its in mAmps
     fn get_target_torque(&mut self) -> Result<[f32; 1], IOError> {
-        let pos=self.
+        let torque =self.
 	    foc.
 	    tmc4671_get_target_torque()
 	    .map_err(IOError::SpiError)?;
-	Ok([pos as f32])
-
-
+	Ok([self.foc.current_sensing_config.adc_to_mAmps(torque as f32, self.foc.adc_resolution)])
     }
 
     fn set_target_torque(&mut self, torque: [f32; 1]) -> Result<(), IOError> {
+        // torque from mAmps to ADC counts
+        let torque_adc = self.foc.current_sensing_config.mAmps_tp_adc(torque[0], self.foc.adc_resolution);
         self.foc
             .tmc4671_set_target_torque(
-                torque[0] as i32)// TODO convert to mA
+                torque_adc as i32)// TODO convert to mA
             .map(|_| ())
             .map_err(IOError::SpiError)
     }
@@ -438,7 +457,7 @@ where
 
     /// Get the uq_ud limit of the motors
     fn get_uq_ud_limit(&mut self) -> Result<[i16; 1], IOError> {
-	//TODO Conversion. Is it in rpm?
+	//TODO Conversion 
         let limit=self.foc.tmc4671_get_uq_ud_limit()
             .map_err(IOError::SpiError)?;
 	Ok([limit as i16])
@@ -453,34 +472,39 @@ where
     }
 
 
-    /// Get the torque_flux limit of the motors
-    fn get_torque_flux_limit(&mut self) -> Result<[u16; 1], IOError> {
-	//TODO Conversion. Is it in rpm?
+    /// Get the flux torque limits of the motors mAmps
+    fn get_torque_flux_limit(&mut self) -> Result<[f32; 1], IOError> {
         let limit=self.foc.tmc4671_get_torque_flux_limit()
             .map_err(IOError::SpiError)?;
-	Ok([limit as u16])
+	Ok([self.foc.current_sensing_config.adc_to_mAmps(limit as f32, self.foc.adc_resolution)])
 
     }
     /// Set the torque_flux limit of the motors
-    fn set_torque_flux_limit(&mut self, limit: [u16; 1]) -> Result<(), IOError> {
-	self.foc.tmc4671_set_torque_flux_limit(limit[0] as u16)
+    fn set_torque_flux_limit(&mut self, limit: [f32; 1]) -> Result<(), IOError> {
+        // limit from mAmps to ADC counts
+        let limit_adc = self.foc.current_sensing_config.mAmps_tp_adc(limit[0], self.foc.adc_resolution);
+	self.foc.tmc4671_set_torque_flux_limit(limit_adc as u16)
 			.map(|_| ())
 			.map_err(IOError::SpiError)
-
     }
 
 
     /// Get the velocity limit of the motors (in radians per second)
-    fn get_velocity_limit(&mut self) -> Result<[u32; 1], IOError> {
-	//TODO Conversion. Is it in rpm?
+    fn get_velocity_limit(&mut self) -> Result<[f32; 1], IOError> {
         let limit=self.foc.tmc4671_get_velocity_limit()
             .map_err(IOError::SpiError)?;
-	Ok([limit as u32])
+        // limit in rad/s
+        Ok([self.foc.brushless_motor_config.angle_elec_to_mech(
+                conversion::rpm_to_rads(limit as f32)
+            )]) 
 
     }
     /// Set the velocity limit of the motors (in radians per second)
-    fn set_velocity_limit(&mut self, limit: [u32; 1]) -> Result<(), IOError> {
-	self.foc.tmc4671_set_velocity_limit(limit[0] as u32)
+    fn set_velocity_limit(&mut self, limit: [f32; 1]) -> Result<(), IOError> {
+        let limit_rpm = self.foc.brushless_motor_config.angle_mech_to_elec(
+                conversion::rads_to_rpm(limit[0] as f32)
+            );
+	self.foc.tmc4671_set_velocity_limit(limit_rpm as u32)
 			.map(|_| ())
 			.map_err(IOError::SpiError)
 
@@ -638,7 +662,7 @@ where
 	};
 
 
-	self.set_target_velocity([5500.0])?;
+	self.set_target_velocity([10.0])?; // move with 10 rad/s (on gearbox side)
 	self.set_control_mode(MotionMode::Velocity)?;
 	block_for(Duration::from_millis(500)); //It should move the arm roughly 11°
 	//debug
@@ -646,13 +670,13 @@ where
 	    error!("GET POS error: {:?}",e);
 	    0
 	});
-	let rads = conversion::encoder_to_rads(pos, self.foc.ppr.unwrap())*self.foc.brushless_motor_config.gearbox_ratio();//*self.foc.brushless_motor_config.axis_ratio();
+	let rads = self.foc.brushless_motor_config.angle_elec_to_mech(conversion::encoder_to_rad(pos, self.foc.ppr));
 	let start_indices=compute_idx(d);
 	debug!("Start indices: {:?} start pos: {:?}",start_indices, rads.to_degrees());
 
 
 
-	self.set_target_velocity([-5500.0])?;
+	self.set_target_velocity([10.0])?; // move with -10 rad/s (on gearbox side)
 	// self.set_control_mode(MotionMode::Velocity)?;
 	let t0=Instant::now();
 	let mut dd=donut_sensor.read().unwrap_or_else(|e| {
@@ -674,8 +698,7 @@ where
 	    error!("GET POS error: {:?}",e);
 	    0
 	});
-	let rads2 = conversion::encoder_to_rads(pos, self.foc.ppr.unwrap())*self.foc.brushless_motor_config.gearbox_ratio();//*self.foc.brushless_motor_config.axis_ratio();
-
+	let rads2 = self.foc.brushless_motor_config.angle_elec_to_mech(conversion::encoder_to_rad(pos, self.foc.ppr));
 
 
 
@@ -890,8 +913,6 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     }
 
 
-
-
     fn get_target_torque(&mut self) -> Result<[f32; 1], IOError> {
         match self {
             VentouseKind::A(va) => va.get_target_torque(),
@@ -911,7 +932,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
 
 
     /// Get the velocity limit of the motors (in radians per second)
-    fn get_velocity_limit(&mut self) -> Result<[u32; 1], IOError> {
+    fn get_velocity_limit(&mut self) -> Result<[f32; 1], IOError> {
         match self {
             VentouseKind::A(va) => va.get_velocity_limit(),
             VentouseKind::B(vb) => vb.get_velocity_limit(),
@@ -919,7 +940,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
     /// Set the velocity limit of the motors (in radians per second)
-    fn set_velocity_limit(&mut self, velocity: [u32; 1]) -> Result<(), IOError> {
+    fn set_velocity_limit(&mut self, velocity: [f32; 1]) -> Result<(), IOError> {
         match self {
             VentouseKind::A(va) => va.set_velocity_limit(velocity),
             VentouseKind::B(vb) => vb.set_velocity_limit(velocity),
@@ -927,16 +948,16 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
 
-    /// Get the torque_flux limit of the motors (in Nm)
-    fn get_torque_flux_limit(&mut self) -> Result<[u16; 1], IOError> {
+    /// Get the torque_flux limit of the motors (in mAmps)
+    fn get_torque_flux_limit(&mut self) -> Result<[f32; 1], IOError> {
         match self {
             VentouseKind::A(va) => va.get_torque_flux_limit(),
             VentouseKind::B(vb) => vb.get_torque_flux_limit(),
             VentouseKind::C(vc) => vc.get_torque_flux_limit(),
         }
     }
-    /// Set the torque_flux limit of the motors (in Nm)
-    fn set_torque_flux_limit(&mut self, torque_flux: [u16; 1]) -> Result<(), IOError> {
+    /// Set the torque_flux limit of the motors (in mAmps)
+    fn set_torque_flux_limit(&mut self, torque_flux: [f32; 1]) -> Result<(), IOError> {
         match self {
             VentouseKind::A(va) => va.set_torque_flux_limit(torque_flux),
             VentouseKind::B(vb) => vb.set_torque_flux_limit(torque_flux),
@@ -944,7 +965,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
 
-    /// Get the uq_ud limit of the motors (in Nm)
+    /// Get the uq_ud limit of the motors 
     fn get_uq_ud_limit(&mut self) -> Result<[i16; 1], IOError> {
         match self {
             VentouseKind::A(va) => va.get_uq_ud_limit(),
@@ -952,7 +973,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
             VentouseKind::C(vc) => vc.get_uq_ud_limit(),
         }
     }
-    /// Set the uq_ud limit of the motors (in Nm)
+    /// Set the uq_ud limit of the motors 
     fn set_uq_ud_limit(&mut self, uq_ud: [i16; 1]) -> Result<(), IOError> {
         match self {
             VentouseKind::A(va) => va.set_uq_ud_limit(uq_ud),
@@ -1085,10 +1106,19 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
 }
 
 mod conversion {
-    pub fn encoder_to_rads(enc: i32, ppr: f32) -> f32 {
-        enc as f32 / ppr
+    // functions to convert encoder values to radians and vice versa
+    pub fn encoder_to_rad(enc: i32, ppr: f32) -> f32 {
+        enc as f32 / ppr  * 6.28318530718 // 2*pi = 6.28
     }
-    pub fn rads_to_encoder(rads: f32, ppr: f32) -> i32 {
-        (rads * ppr) as i32
+    pub fn rad_to_encoder(rads: f32, ppr: f32) -> i32 {
+        (rads * ppr / 6.28318530718) as i32 // 2*pi = 6.28
     }
+    // functions to convert from rpm to radians per second and vice versa
+    pub fn rpm_to_rads(rpm: f32) -> f32 {
+        rpm * 0.10471975512 // 2*pi/60 = 0.1047
+    }
+    pub fn rads_to_rpm(rads: f32) -> f32 {
+        rads * 9.54929658551 // 60/2*pi = 9.549
+    }
+
 }

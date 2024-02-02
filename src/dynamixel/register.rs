@@ -55,13 +55,13 @@ impl DynamixelRegister {
 
 
 
-        40 => Some(DynamixelRegister::TorqueEnable),
-        50 => Some(DynamixelRegister::CurrentPosition),
-        51 => Some(DynamixelRegister::CurrentVelocity),
-        52 => Some(DynamixelRegister::CurrentTorque),
+            40 => Some(DynamixelRegister::TorqueEnable),
+            51 => Some(DynamixelRegister::CurrentVelocity),
+            50 => Some(DynamixelRegister::CurrentPosition),
 	    54 => Some(DynamixelRegister::FeedforwardVelocity),
-        60 => Some(DynamixelRegister::TargetPosition),
-        62 => Some(DynamixelRegister::TargetPositionWithVelocityFF),
+            52 => Some(DynamixelRegister::CurrentTorque),
+            62 => Some(DynamixelRegister::TargetPositionWithVelocityFF),
+            60 => Some(DynamixelRegister::TargetPosition),
 
 	    90 => Some(DynamixelRegister::AxisSensor),
 

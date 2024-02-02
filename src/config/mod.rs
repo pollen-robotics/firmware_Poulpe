@@ -72,3 +72,5 @@ pub struct ActuatorConfig {
 
 mod motor;
 pub use motor::BrushlessMotor;
+mod current_sense;
+pub use current_sense::CurrentSensing;

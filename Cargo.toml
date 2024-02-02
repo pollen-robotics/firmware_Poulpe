@@ -6,16 +6,23 @@ license = "MIT OR Apache-2.0"
 
 [features]
 #motor specifig config
-default = ["orbita2d", "ec45", "velocity_feedforward","cmd_filter" ]
-# default = ["orbita2d", "ec60", "velocity_feedforward","cmd_filter" ]
+default = ["orbita2d", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" ]
+# default = ["orbita2d", "ec60", "velocity_feedforward","cmd_filter", "axis_output"] #"gearbox_output" ]
 # default = ["orbita3d", "cmd_filter"]
 # default = ["orbita3d"]
 orbita2d = []
 orbita3d = []
 ec60 = []
 ec45=[]
+# use command filter to reduce the jerk of the motor
 cmd_filter = []
-velocity_feedforward = []
+# using velocity feedforward to improve the velocity tracking performance
+# if not included in `defaults` the velocity feedforward is not used
+velocity_feedforward = [] 
+# deciding which output angle of the motor to control
+# after gearbox, after axis reduction, or directly the motor angle (by not specifying any of the following features in `defaults`)
+gearbox_output = []  # control the motor angle after the gearbox
+axis_output = []  # control the motor angle after the gearbox and axis reduction
 
 [dependencies]
 # rustypot = "0.4.2"
