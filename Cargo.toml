@@ -58,16 +58,16 @@ axis_output = []  # control the motor angle after the gearbox and axis reduction
 
 
 #Pollen fork...
-embassy-stm32 = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", rev="38082c0942f7cce294ebc2a471716473b7a95136", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x","unstable-pac", "unstable-traits"] }
-embassy-sync = { version = "0.4.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", rev="38082c0942f7cce294ebc2a471716473b7a95136", features = ["defmt"] }
-embassy-executor = { version = "0.3.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta",  rev="38082c0942f7cce294ebc2a471716473b7a95136",features = ["nightly", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers"] }
+embassy-stm32 = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x","unstable-pac", "unstable-traits"] }
+embassy-sync = { version = "0.4.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["defmt"] }
+embassy-executor = { version = "0.3.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["nightly", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers"] }
 
-embassy-time = { version = "0.1.5", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta",  rev="38082c0942f7cce294ebc2a471716473b7a95136", features = ["defmt", "defmt-timestamp-uptime", "unstable-traits", "tick-hz-32_768"] }
-embassy-net = { version = "0.2.1", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta",  rev="38082c0942f7cce294ebc2a471716473b7a95136", features = ["defmt", "nightly", "tcp", "dhcpv4", "medium-ethernet", "proto-ipv6"] }
+embassy-time = { version = "0.1.5", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["defmt", "defmt-timestamp-uptime", "unstable-traits", "tick-hz-32_768"] }
+embassy-net = { version = "0.2.1", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["defmt", "nightly", "tcp", "dhcpv4", "medium-ethernet", "proto-ipv6"] }
 embedded-io-async = { version = "0.6.1" }
-embassy-usb = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta",  rev="38082c0942f7cce294ebc2a471716473b7a95136", features = ["defmt"] }
-embassy-futures = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta",  rev="38082c0942f7cce294ebc2a471716473b7a95136", features = ["defmt"] }
-embassy-embedded-hal = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", rev="38082c0942f7cce294ebc2a471716473b7a95136"}
+embassy-usb = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["defmt"] }
+embassy-futures = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["defmt"] }
+embassy-embedded-hal = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta"}
 
 #Specific commit which works 
 # embassy-stm32 = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", rev="9472b7beeda62c856726686b695359b37ffb120c", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x","unstable-pac", "unstable-traits"] }
