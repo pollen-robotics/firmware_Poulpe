@@ -23,6 +23,7 @@ pub enum DynamixelRegister {
     FeedforwardVelocity,
     TargetPosition,
     TargetPositionWithVelocityFF,
+    TargetPositionEstimateVelocityFF,
 
     AxisSensor,
 
@@ -41,9 +42,6 @@ impl DynamixelRegister {
 	    6 => Some(DynamixelRegister::FirmwareVersion),
 	    7 => Some(DynamixelRegister::Id),
 
-
-
-
 	    10 => Some(DynamixelRegister::VelocityLimit),
 	    14 => Some(DynamixelRegister::TorqueFluxLimit),
 	    18 => Some(DynamixelRegister::UqUdLimit),
@@ -60,8 +58,9 @@ impl DynamixelRegister {
             50 => Some(DynamixelRegister::CurrentPosition),
 	    54 => Some(DynamixelRegister::FeedforwardVelocity),
             52 => Some(DynamixelRegister::CurrentTorque),
-            62 => Some(DynamixelRegister::TargetPositionWithVelocityFF),
             60 => Some(DynamixelRegister::TargetPosition),
+            62 => Some(DynamixelRegister::TargetPositionWithVelocityFF),
+            64 => Some(DynamixelRegister::TargetPositionEstimateVelocityFF),
 
 	    90 => Some(DynamixelRegister::AxisSensor),
 
