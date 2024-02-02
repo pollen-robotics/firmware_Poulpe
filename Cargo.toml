@@ -87,25 +87,25 @@ defmt = "0.3"
 defmt-rtt = "0.4"
 
 
-cortex-m = { version = "0.7.6", features = ["inline-asm", "critical-section-single-core"] }
-cortex-m-rt = "0.7.0"
-embedded-hal = "0.2.6"
+cortex-m = { version = "=0.7.7", features = ["inline-asm", "critical-section-single-core"] }
+cortex-m-rt = "=0.7.3"
+embedded-hal = "=0.2.7"
 embedded-hal-1 = { package = "embedded-hal", version = "=1.0.0-rc.1" }
 embedded-hal-async = { version = "=1.0.0-rc.1" }
-embedded-nal-async = { version = "0.5.0" }
+embedded-nal-async = { version = "=0.5.0" }
 
 
 
 
 panic-probe = { version = "0.3", features = ["print-defmt"] }
-futures = { version = "0.3.17", default-features = false, features = ["async-await"] }
-heapless = { version = "0.7.5", default-features = false }
+futures = { version = "=0.3.28", default-features = false, features = ["async-await"] }
+# heapless = { version = "=0.7.15", default-features = false }
 rand_core = "0.6.3"
-critical-section = "1.1"
+critical-section = "=1.1"
 micromath = "2.0.0"
-stm32-fmc = "0.2.4"
-embedded-storage = "0.3.0"
-static_cell = { version = "1.1", features = ["nightly"]}
+stm32-fmc = "=0.2.4"
+embedded-storage = "=0.3.0"
+static_cell = { version = "=1.1", features = ["nightly"]}
 paste = "1.0.14"
 modular-bitfield = "0.11.2"
 biquad = "0.4.1"
