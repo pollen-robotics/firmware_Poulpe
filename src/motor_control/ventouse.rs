@@ -698,7 +698,7 @@ where
         // - Move the motor anticlockwise for about 12° (while the other motors are Off in case they are touching)
         // - Record the Hall state
         // - Move the motor clockwise until the Hall state changes
-        self.set_target_velocity([-0.4])?;
+        self.set_target_velocity([-1.0])?;
         self.set_control_mode(MotionMode::Velocity)?;
         block_for(Duration::from_millis(500)); //It should move the arm roughly 12°
 
@@ -719,7 +719,7 @@ where
             rads.to_degrees()
         );
 
-        self.set_target_velocity([0.4])?;
+        self.set_target_velocity([1.0])?;
         // self.set_control_mode(MotionMode::Velocity)?;
         let t0 = Instant::now();
         let mut dd = donut_sensor.read().unwrap_or_else(|e| {
