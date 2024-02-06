@@ -27,11 +27,20 @@ const DS_ADC_MCFG_B_MCFG_A: u32 = 0x00100010;
 const DS_ADC_MCLK_A: u32 = 0x20000000;
 const DS_ADC_MCLK_B: u32 = 0x00000000;
 const DS_ADC_MDEC_B_MDEC_A: u32 = 0x014E014E;
+// full resolution of the ADC is 2^16 - 1
+// bidirectional current measurement is used
+// center is around 2^15 - 1
+pub const ADC_RESOLUTION: f32 = 65535.0; // 16 bit 
 
 // ABN encoder settings
 const ABN_DECODER_MODE: u32 = 0x00000000;
 // const ABN_DECODER_PPR: u32 = 0x00001000;
 const ABN_DECODER_PHI_E_PHI_M_OFFSET: u32 = 0x00000000;
+
+
+// in TMC4671 one electrical revolution 
+// is always represented with 16 bits
+pub const PPR_PER_ELECTRICAL_REVOLUTION: f32 = 65535.0; // 16 bit
 
 // Limits
 // const PID_TORQUE_FLUX_LIMITS: u32 = 0x00001000; // 4096
@@ -48,7 +57,6 @@ const PID_VELOCITY_LIMIT: u32 = 0x0000_7D00; //32000 //tuned ok at 500Hz
 pub const OPENLOOP_ACCELERATION: u32 = 0x0000003c; // Wizard default
 // pub const UQ_UD_EXT: u32 = 0x000007D0; // Openloop "torque_target" 2000
 pub const UQ_UD_EXT: u32 = 0x000001000; // Openloop "torque_target" 2000
-
 
 
 #[allow(non_camel_case_types)]
@@ -198,7 +206,9 @@ where
     //     #[allow(dead_code)]
     //     foc_status: Input<'d, FocStat>,
     pub brushless_motor_config: config::BrushlessMotor,
-    pub(crate) ppr: Option<f32>,
+    pub current_sensing_config: config::CurrentSensing,
+    pub ppr: f32,
+    pub adc_resolution: f32,
 }
 
 impl<'d, T, P, EnablePin> Foc<'d, T, P, EnablePin>
@@ -216,6 +226,7 @@ where
         >,
         enable: EnablePin,
         brushless_motor_config: config::BrushlessMotor,
+        current_sensing_config: config::CurrentSensing
     ) -> Self {
         let mut enable = Output::new(enable, Level::Low, Speed::Low);
         enable.set_low();
@@ -224,7 +235,9 @@ where
             spi,
             enable,
             brushless_motor_config,
-            ppr: None,
+            current_sensing_config,
+            ppr: PPR_PER_ELECTRICAL_REVOLUTION,
+            adc_resolution: ADC_RESOLUTION,
         }
     }
 
@@ -306,7 +319,7 @@ where
 	self.tmc4671_get_lower_u16(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8)
     }
     pub fn tmc4671_set_torque_flux_limit(&mut self, limit:u16) -> Result<u32, embassy_stm32::spi::Error> {
-	self.tmc4671_write_register(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, limit as u32 &0x7FFF as u32)
+	self.tmc4671_write_register(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, limit as u32 & 0x7FFF as u32)
     }
 
     pub fn tmc4671_get_velocity_limit(&mut self) -> Result<u32, embassy_stm32::spi::Error> {
@@ -507,11 +520,11 @@ where
         )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::ADC_I1_SCALE_OFFSET as u8,
-            self.brushless_motor_config.adc_i1_scale_offset(),
+            self.current_sensing_config.adc_i1_scale_offset(),
         )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::ADC_I0_SCALE_OFFSET as u8,
-            self.brushless_motor_config.adc_i0_scale_offset(),
+            self.current_sensing_config.adc_i0_scale_offset(),
         )?;
 
         // ABN encoder settings

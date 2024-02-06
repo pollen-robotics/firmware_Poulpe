@@ -199,11 +199,12 @@ pub async fn control_loop(config: ActuatorConfig) {
         config.b.foc_enable,
 	#[cfg(all(feature = "orbita2d", feature = "ec45"))]
         config::BrushlessMotor::ec45(),
-	#[cfg(all(feature = "orbita2d", feature = "ec60"))]
+        #[cfg(all(feature = "orbita2d", feature = "ec60"))]
         config::BrushlessMotor::ec60(),
 	#[cfg(feature = "orbita3d")]
         config::BrushlessMotor::ecx22(),
-
+        // current sense for wailer B2 board
+        config::CurrentSensing::wailer_B2()
     );
 
     let driver_spi = SpiDeviceWithConfig::new(
@@ -243,6 +244,8 @@ pub async fn control_loop(config: ActuatorConfig) {
         config::BrushlessMotor::ec60(),
 	#[cfg(feature = "orbita3d")]
         config::BrushlessMotor::ecx22(),
+        // current sense for wailer B2 board
+        config::CurrentSensing::wailer_B2()
     );
 
     let driver_spi = SpiDeviceWithConfig::new(
@@ -569,21 +572,36 @@ pub async fn control_loop(config: ActuatorConfig) {
 							    }
 	);
 
-    // add the feedforward control to the velocity loop
-    #[cfg(feature = "velocity_feedforward")]
-    {
-        // velocity feedforward from shared memory
-        let mut velocity_ff = { SHARED_MEMORY.lock().await.get_velocity_feedforward() };
-        // filter the velocity feedforward
-        velocity_ff.iter_mut().enumerate().for_each(|(i,v)| {*v=vel_ff_filter[i].run(*v)});
-        // set the velocity feedforward
-        actuator.set_velocity_feedforward(velocity_ff).unwrap_or_else(|e|
-            {
-                error!("Error setting velocity feedforward: {:?}", e);
-                error_led=true;
-            }
-        );
-    }
+        // add the feedforward control to the velocity loop
+        #[cfg(feature = "velocity_feedforward")]
+        {
+                // velocity feedforward from shared memory
+                let mut velocity_ff = { SHARED_MEMORY.lock().await.get_velocity_feedforward() };
+                
+                // get velocity feedforward timestamp
+                let velocity_ff_timestamp = { SHARED_MEMORY.lock().await.get_velocity_feedforward_timestamp() };
+                // check if the velocity feedforward value has been set and is it too old (older than 200ms)
+                match velocity_ff_timestamp {
+                    Some(timestamp) => {
+                        if timestamp.elapsed().as_millis() > 200 {
+                            velocity_ff = [0.0; config::N_AXIS];
+                        }
+                    },
+                    None => {
+                        velocity_ff = [0.0; config::N_AXIS];
+                    }
+                }
+                
+                // filter the velocity feedforward
+                velocity_ff.iter_mut().enumerate().for_each(|(i,v)| {*v=vel_ff_filter[i].run(*v)});
+                // set the velocity feedforward
+                actuator.set_velocity_feedforward(velocity_ff).unwrap_or_else(|e|
+                {
+                        error!("Error setting velocity feedforward: {:?}", e);
+                        error_led=true;
+                }
+                );
+        }
 
 
 
@@ -625,6 +643,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 		if ! sensors.iter().any(|s| s.is_nan()) { //FIXME: hope it the sensor reading will better work to remove this
 		    SHARED_MEMORY.lock().await.set_axis_sensor(sensors);
 		}
+
 
 
 		// info!("sensors: {:?}", sensors);

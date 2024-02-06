@@ -250,8 +250,8 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
 
 
     /// Get the velocity limit of the motors (in radians per second)
-    fn get_velocity_limit(&mut self) -> Result<[u32; N]> {
-        let mut res = [0; N];
+    fn get_velocity_limit(&mut self) -> Result<[f32; N]> {
+        let mut res = [0.0; N];
         for (i, axis) in self.axes.iter_mut().enumerate() {
             res[i] = axis.get_velocity_limit()?[0];
         }
@@ -259,7 +259,7 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
         Ok(res)
     }
     /// Set the velocity limit of the motors (in radians per second)
-    fn set_velocity_limit(&mut self, velocity: [u32; N]) -> Result<()> {
+    fn set_velocity_limit(&mut self, velocity: [f32; N]) -> Result<()> {
         for (i, axis) in self.axes.iter_mut().enumerate() {
             axis.set_velocity_limit([velocity[i]])?;
         }
@@ -268,8 +268,8 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
     }
 
     /// Get the torque limit of the motors (in Nm)
-    fn get_torque_flux_limit(&mut self) -> Result<[u16; N]> {
-        let mut res = [0; N];
+    fn get_torque_flux_limit(&mut self) -> Result<[f32; N]> {
+        let mut res = [0.0; N];
         for (i, axis) in self.axes.iter_mut().enumerate() {
             res[i] = axis.get_torque_flux_limit()?[0];
         }
@@ -277,7 +277,7 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
         Ok(res)
     }
     /// Set the torque limit of the motors (in Nm)
-    fn set_torque_flux_limit(&mut self, torque: [u16; N]) -> Result<()> {
+    fn set_torque_flux_limit(&mut self, torque: [f32; N]) -> Result<()> {
         for (i, axis) in self.axes.iter_mut().enumerate() {
             axis.set_torque_flux_limit([torque[i]])?;
         }

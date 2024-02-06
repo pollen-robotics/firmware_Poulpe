@@ -7,10 +7,11 @@ use embassy_embedded_hal::shared_bus::blocking::i2c::I2cDevice;
 use embassy_embedded_hal::SetConfig;
 use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{Input, Level, Output, Pin, Pull, Speed};
+
 use embassy_stm32::i2c::{Error, I2c, Instance as I2cInstance};
 use embassy_stm32::peripherals::SPI4;
 use embassy_stm32::spi::{Config, Instance, MisoPin, MosiPin, SckPin, Spi};
-use embassy_stm32::{i2c, spi};
+use embassy_stm32::{i2c, spi, Peripheral};
 use embassy_time::*;
 // use embassy_embedded_hal::shared_bus::blocking::spi::SpiDevice;
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
@@ -401,6 +402,8 @@ where
 
         // block_for(Duration::from_micros(1));
 
+        // block_for(Duration::from_micros(1));
+
         let mut data_read = [0x00u8, 0x00u8];
 
         let _ = SpiDevice::transfer_in_place(&mut self.spi, &mut data_read).map_err(|e| {
@@ -416,6 +419,11 @@ where
 
         // Combine the two u8 values into a 16-bit integer
         let mut combined_value: u16 = ((data_read[0] as u16) << 8) | (data_read[1] as u16);
+        // check if data has good parity
+        if (combined_value.count_ones() % 2) != 0 {
+            error!("Parity error reading Center sensor");
+            return Err(IOError::InvalidData);
+        }
         combined_value &= 0x3FFF;
 
         let angle = ((combined_value as f64 / 16383.0) * Self::ANGLE_RANGE) as f32;

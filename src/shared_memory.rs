@@ -4,6 +4,7 @@ use defmt::Format;
 
 use crate::motor_control::{Actuator, RawMotorsIO, RawSensorsIO, Pid};
 use crate::{motor_control::foc::MotionMode};
+use embassy_time::{Instant};
 
 #[derive(Clone, Format)]
 pub struct Memory<const N: usize> {
@@ -19,14 +20,17 @@ pub struct Memory<const N: usize> {
     target_torque: [f32; N],
     velocity_feedforward: [f32; N],
 
+    velocity_feedforward_timestamp: Option<Instant>,
+    get_target_set_timestamp: Option<Instant>,
+
     flux_pid_gains: [Pid;N],
     torque_pid_gains: [Pid;N],
     velocity_pid_gains: [Pid;N],
     position_pid_gains: [Pid;N],
 
     uq_ud_limit: [i16;N],
-    torque_flux_limit: [u16;N],
-    velocity_limit: [u32;N],
+    torque_flux_limit: [f32;N],
+    velocity_limit: [f32;N],
 
 
     axis_sensor: [f32; N],
@@ -77,6 +81,8 @@ impl<const N: usize> SharedMemory<N> {
     }
     pub fn set_target_position(&self, pos: [f32; N]) {
         self.inner.borrow_mut().target_position = pos;
+        // set timestamp
+        self.inner.borrow_mut().get_target_set_timestamp = Some(Instant::now());
     }
 
 
@@ -97,6 +103,8 @@ impl<const N: usize> SharedMemory<N> {
     // set velocity feedforward 
     pub fn set_velocity_feedforward(&self, vel: [f32; N]) {
         self.inner.borrow_mut().velocity_feedforward = vel;
+        // set the timestamp
+        self.inner.borrow_mut().velocity_feedforward_timestamp = Some(Instant::now());
     }
     // get velocity feedforward
     pub fn get_velocity_feedforward(&self) -> [f32; N] {
@@ -180,20 +188,25 @@ impl<const N: usize> SharedMemory<N> {
 	self.inner.borrow_mut().uq_ud_limit=limit;
     }
 
-    pub fn get_torque_flux_limit(&self) -> [u16;N] {
+    pub fn get_torque_flux_limit(&self) -> [f32;N] {
 	self.inner.borrow().torque_flux_limit
     }
-    pub fn set_torque_flux_limit(&self, limit: [u16;N]) {
+    pub fn set_torque_flux_limit(&self, limit: [f32;N]) {
 	self.inner.borrow_mut().torque_flux_limit=limit;
     }
 
-    pub fn get_velocity_limit(&self) -> [u32;N] {
+    pub fn get_velocity_limit(&self) -> [f32;N] {
 	self.inner.borrow().velocity_limit
     }
-    pub fn set_velocity_limit(&self, limit: [u32;N]) {
+    pub fn set_velocity_limit(&self, limit: [f32;N]) {
 	self.inner.borrow_mut().velocity_limit=limit;
     }
-
+    pub fn get_velocity_feedforward_timestamp(&self) -> Option<Instant> {
+        self.inner.borrow().velocity_feedforward_timestamp
+    }
+    pub fn get_target_set_timestamp(&self) -> Option<Instant> {
+        self.inner.borrow().get_target_set_timestamp
+    }       
 
     #[cfg(feature = "orbita3d")]
     pub fn get_index_sensor(&self) -> [u8;N] {
@@ -236,6 +249,9 @@ impl<const N: usize> SharedMemory<N> {
                 target_torque: [0.0; N],
 		axis_sensor: [0.0; N],
 
+                velocity_feedforward_timestamp: None,
+                get_target_set_timestamp: None,
+
 		#[cfg(feature = "orbita3d")]
 		index_sensor: [0xff; N],
 
@@ -249,9 +265,9 @@ impl<const N: usize> SharedMemory<N> {
 		position_pid_gains: [Pid{p:0,i:0};N],
 
 		uq_ud_limit: [0;N],
-		torque_flux_limit: [0;N],
-		velocity_limit: [0;N],
-        velocity_feedforward: [0.0; N],
+		torque_flux_limit: [0.0;N],
+		velocity_limit: [0.0;N],
+                velocity_feedforward: [0.0; N],
 
 
 		error_led: false,
@@ -273,6 +289,9 @@ impl<const N: usize> SharedMemory<N> {
             target_velocity: actuator.get_target_velocity().unwrap_or([f32::NAN; N]),
             target_torque: actuator.get_target_torque().unwrap_or([f32::NAN; N]),
 
+            velocity_feedforward_timestamp: Some(Instant::now()),
+            get_target_set_timestamp: Some(Instant::now()),
+
 	    axis_sensor: actuator.get_axis_sensors().unwrap_or([f32::NAN; N]),
 
 	    flux_pid_gains: actuator.get_flux_pid_gains().unwrap_or([Pid{p:0,i:0};N]),
@@ -283,9 +302,9 @@ impl<const N: usize> SharedMemory<N> {
 	    // torque_flux_limit: actuator.get_torque_flux_limit().unwrap_or([f32::NAN;N]),
 	    // velocity_limit: actuator.get_velocity_limit().unwrap_or([f32::NAN;N]),
 	    uq_ud_limit: actuator.get_uq_ud_limit().unwrap_or([0;N]),
-	    torque_flux_limit: actuator.get_torque_flux_limit().unwrap_or([0;N]),
-	    velocity_limit: actuator.get_velocity_limit().unwrap_or([0;N]),
-        velocity_feedforward: actuator.get_velocity_feedforward().unwrap_or([0.0; N]),
+	    torque_flux_limit: actuator.get_torque_flux_limit().unwrap_or([0.0;N]),
+	    velocity_limit: actuator.get_velocity_limit().unwrap_or([0.0;N]),
+            velocity_feedforward: actuator.get_velocity_feedforward().unwrap_or([0.0; N]),
 
 	    #[cfg(feature = "orbita3d")]
 	    index_sensor: actuator.get_index_sensor(),
