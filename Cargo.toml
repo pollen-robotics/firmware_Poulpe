@@ -8,12 +8,13 @@ license = "MIT OR Apache-2.0"
 #motor specifig config
 # default = ["orbita2d", "ec45", "velocity_feedforward", "cmd_filter", "axis_output"] # "gearbox_output" ]
 # default = ["orbita2d", "ec60", "velocity_feedforward","cmd_filter", "axis_output"] #"gearbox_output" ]
-default = ["orbita3d", "cmd_filter","gearbox_output"]
+default = ["orbita3d", "ecx22", "cmd_filter","gearbox_output"]
 # default = ["orbita3d"]
 orbita2d = []
 orbita3d = []
 ec60 = []
 ec45=[]
+ecx22=[]
 # use command filter to reduce the jerk of the motor
 cmd_filter = []
 # using velocity feedforward to improve the velocity tracking performance

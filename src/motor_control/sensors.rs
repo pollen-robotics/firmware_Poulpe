@@ -128,6 +128,8 @@ where
     pub fn read(&mut self) -> Result<u16, IOError> {
         let mut data = [0u8; 1];
         let mut hall_detected = 0u16;
+        // debug!("Reading Hall sensor");
+
         match self.i2c.blocking_read(ADDRESS_A, &mut data) {
             Ok(()) => {
                 // debug!("Inputs_A: {:#010b}", data[0]);

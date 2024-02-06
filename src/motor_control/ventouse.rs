@@ -698,7 +698,7 @@ where
         // - Move the motor anticlockwise for about 12° (while the other motors are Off in case they are touching)
         // - Record the Hall state
         // - Move the motor clockwise until the Hall state changes
-        self.set_target_velocity([-1.0])?;
+        self.set_target_velocity([-0.43 / self.foc.brushless_motor_config.axis_ratio()])?;
         self.set_control_mode(MotionMode::Velocity)?;
         block_for(Duration::from_millis(500)); //It should move the arm roughly 12°
 
@@ -719,7 +719,7 @@ where
             rads.to_degrees()
         );
 
-        self.set_target_velocity([1.0])?;
+        self.set_target_velocity([0.43 / self.foc.brushless_motor_config.axis_ratio()])?;
         // self.set_control_mode(MotionMode::Velocity)?;
         let t0 = Instant::now();
         let mut dd = donut_sensor.read().unwrap_or_else(|e| {
@@ -729,7 +729,7 @@ where
         while dd == d && t0.elapsed().as_millis() < 500 {
             //We move back until we see a change in the Hall state
 
-            // debug!("FIND INDEX: {:#x} {:#x} {:?}",d,dd,self.kind);
+            debug!("READ INDEX: {:#018b} {:#018b} {:?}", d, dd, self.kind);
             dd = donut_sensor.read().unwrap_or_else(|e| {
                 error!("FIND INDEX error: {:?}", e);
                 0
@@ -766,7 +766,10 @@ where
             dd,
             rads2.to_degrees()
         );
-        debug!("MOVED: {:?}", (rads2 - rads).to_degrees());
+        debug!(
+            "MOVED: {:?}",
+            (rads2 - rads).to_degrees() * self.foc.brushless_motor_config.axis_ratio()
+        );
         //If we end up in a dead zone (255), starting from a detected sensor
         for index in start_indices.iter() {
             if !end_indices.contains(index) && *index != 255 {
