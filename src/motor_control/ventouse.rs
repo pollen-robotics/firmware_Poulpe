@@ -1,6 +1,6 @@
-use defmt::{info, error, debug};
+use defmt::{debug, error, info};
 use embassy_stm32::{gpio::Pin, spi};
-use embassy_time::{Duration, Timer, Instant, block_for};
+use embassy_time::{block_for, Duration, Instant, Timer};
 
 use crate::{
     config::{self, DonutHall},
@@ -45,7 +45,6 @@ where
     pub foc_enable: FocEnb,
 
     pub driver_cs: DrvCs,
-
 }
 
 impl<'d, T, FocP, FocEnb, DrvP> Ventouse<'d, T, FocP, FocEnb, DrvP>
@@ -56,29 +55,32 @@ where
     DrvP: Pin,
 {
     pub fn new(foc: Foc<'d, T, FocP, FocEnb>, driver: Driver<'d, T, DrvP>) -> Self {
-        Self { foc, driver, kind:'?' }
+        Self {
+            foc,
+            driver,
+            kind: '?',
+        }
     }
 
-    pub async fn init(&mut self, kind:char) -> Result<(), IOError> {
-	self.kind=kind;
-	self.foc.tmc4671_disable();
-	let mut ret_err=false;
-	let mut err=IOError::InitError;
-	info!("[Ventouse{:?}] Initializing register...", self.kind);
+    pub async fn init(&mut self, kind: char) -> Result<(), IOError> {
+        self.kind = kind;
+        self.foc.tmc4671_disable();
+        let mut ret_err = false;
+        let mut err = IOError::InitError;
+        info!("[Ventouse{:?}] Initializing register...", self.kind);
 
-	match self.driver.tmc6200_checked_write(0x00u8, 0x00000000u32)
-	{
-	    Ok(_) => info!("[Ventouse{:?}] TMC6200 init done",self.kind),
-	    Err(e) => {
-		ret_err=true;
-		error!("[Ventouse{:?}] TMC6200 init failed: {:?} => check SPI and power connection", self.kind,e);
-		err=IOError::SpiError(e);
-
-
-	    }
-
-	}
-	match self.driver.tmc6200_checked_write(0x0au8, 0x00000000u32) // DRVSRENGTH=0 for BOB
+        match self.driver.tmc6200_checked_write(0x00u8, 0x00000000u32) {
+            Ok(_) => info!("[Ventouse{:?}] TMC6200 init done", self.kind),
+            Err(e) => {
+                ret_err = true;
+                error!(
+                    "[Ventouse{:?}] TMC6200 init failed: {:?} => check SPI and power connection",
+                    self.kind, e
+                );
+                err = IOError::SpiError(e);
+            }
+        }
+        match self.driver.tmc6200_checked_write(0x0au8, 0x00000000u32) // DRVSRENGTH=0 for BOB
 	{
 	    Ok(_) => info!("[Ventouse{:?}] TMC6200 init done",self.kind),
 	    Err(e) => {
@@ -90,50 +92,44 @@ where
 
 	}
 
-        match self.foc.tmc4671_init_registers().await
-	{
-	    Ok(_) => info!("[Ventouse{:?}] TMC4671 init done",self.kind),
-	    Err(e) => {
-		ret_err=true;
-		error!("[Ventouse{:?}] TMC467100 init failed: {:?}  => check SPI and power connection", self.kind,e);
-		err=IOError::SpiError(e);
-
-	    }
-
-	}
-
+        match self.foc.tmc4671_init_registers().await {
+            Ok(_) => info!("[Ventouse{:?}] TMC4671 init done", self.kind),
+            Err(e) => {
+                ret_err = true;
+                error!(
+                    "[Ventouse{:?}] TMC467100 init failed: {:?}  => check SPI and power connection",
+                    self.kind, e
+                );
+                err = IOError::SpiError(e);
+            }
+        }
 
         // self.foc.ppr = Some(self.foc.tmc4671_get_encoder_ppr()? as f32);
-	self.foc.ppr=Some(524288.0/(2.0*3.141592)); //It seems that 524288=360° motor (0x80000)
+        self.foc.ppr = Some(524288.0 / (2.0 * 3.141592)); //It seems that 524288=360° motor (0x80000)
 
+        match self.align_motor().await {
+            Ok(_) => info!("[Ventouse{:?}] align done", self.kind),
+            Err(e) => {
+                ret_err = true;
+                error!(
+                    "[Ventouse{:?}] align failed: {:?}  => check SPI and power connection",
+                    self.kind, e
+                );
+                err = IOError::SpiError(e);
+            }
+        }
 
-
-        match self.align_motor().await
-	{
-	    Ok(_) => info!("[Ventouse{:?}] align done",self.kind),
-	    Err(e) => {
-		ret_err=true;
-		error!("[Ventouse{:?}] align failed: {:?}  => check SPI and power connection", self.kind,e);
-		err=IOError::SpiError(e);
-
-	    }
-
-	}
-
-
-        match self.foc.tmc4671_set_mode(MotionMode::Position)
-	{
-	    Ok(_) => {}
-	    Err(e) => {
-		ret_err=true;
-		err=IOError::SpiError(e);
-	    }
-	}
-        info!("[Ventouse{:?}] Motor set to position mode done",self.kind);
-	if ret_err
-	{
-	    return Err(err);
-	}
+        match self.foc.tmc4671_set_mode(MotionMode::Position) {
+            Ok(_) => {}
+            Err(e) => {
+                ret_err = true;
+                err = IOError::SpiError(e);
+            }
+        }
+        info!("[Ventouse{:?}] Motor set to position mode done", self.kind);
+        if ret_err {
+            return Err(err);
+        }
         Ok(())
     }
 
@@ -174,101 +170,129 @@ where
         self.foc
             .tmc4671_checked_write(Tmc4671Registers::VELOCITY_SELECTION as u8, 0x00000000)?; // PHI_E_SELECTION
 
-
-	// set everything to 0
+        // set everything to 0
         self.foc.tmc4671_set_target_velocity(0)?;
-	self.foc.tmc4671_set_actual_position(0)?;
-	self.foc.tmc4671_set_target_position(0)?;
+        self.foc.tmc4671_set_actual_position(0)?;
+        self.foc.tmc4671_set_target_position(0)?;
         self.foc.tmc4671_set_mode(MotionMode::Stopped)?;
         //put max value
         // self.foc.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, 0x00007D00)?; // ~4000
-
-
-
 
         Ok(())
     }
     //check motors
     pub async fn check_motors_1(&mut self) -> Result<(), IOError> {
-	//Assume that the registers are already initialized and the motors aligned
+        //Assume that the registers are already initialized and the motors aligned
 
-	// - Read the initial position and axis sensors
-	// - Move the motors
-	// - Read the final position and axis sensors
-	// - check that it has moved "accordingly"
+        // - Read the initial position and axis sensors
+        // - Move the motors
+        // - Read the final position and axis sensors
+        // - check that it has moved "accordingly"
 
-
-	// Get initial position
-	let initial_position = self.foc.tmc4671_get_actual_position().map_err(IOError::SpiError)?;
-	debug!("[Ventouse{:?}] Initial position: {}",self.kind, initial_position);
-
+        // Get initial position
+        let initial_position = self
+            .foc
+            .tmc4671_get_actual_position()
+            .map_err(IOError::SpiError)?;
+        debug!(
+            "[Ventouse{:?}] Initial position: {}",
+            self.kind, initial_position
+        );
 
         // Move!
-        self.foc.tmc4671_set_mode(MotionMode::Velocity).map_err(IOError::SpiError)?;
+        self.foc
+            .tmc4671_set_mode(MotionMode::Velocity)
+            .map_err(IOError::SpiError)?;
 
         // Rotate right
-        info!("[Ventouse{:?}] Rotate right...",self.kind);
-	#[cfg(feature = "orbita2d")]
-	if self.kind=='B'{
-	    self.foc.tmc4671_set_target_velocity(1000).map_err(IOError::SpiError)?;
-	}
-	else{
-            self.foc.tmc4671_set_target_velocity(50).map_err(IOError::SpiError)?;
-	}
-	#[cfg(feature = "orbita3d")]
-        self.foc.tmc4671_set_target_velocity(500).map_err(IOError::SpiError)?;
+        info!("[Ventouse{:?}] Rotate right...", self.kind);
+        #[cfg(feature = "orbita2d")]
+        if self.kind == 'B' {
+            self.foc
+                .tmc4671_set_target_velocity(1000)
+                .map_err(IOError::SpiError)?;
+        } else {
+            self.foc
+                .tmc4671_set_target_velocity(50)
+                .map_err(IOError::SpiError)?;
+        }
+        #[cfg(feature = "orbita3d")]
+        self.foc
+            .tmc4671_set_target_velocity(500)
+            .map_err(IOError::SpiError)?;
         let _ = Timer::after(Duration::from_millis(1000)).await;
-        self.foc.tmc4671_set_target_velocity(0).map_err(IOError::SpiError)?;
-	let position = self.foc.tmc4671_get_actual_position().map_err(IOError::SpiError)?;
-	debug!("[Ventouse{:?}] position: {}",self.kind, position);
-	// check that it has moved
+        self.foc
+            .tmc4671_set_target_velocity(0)
+            .map_err(IOError::SpiError)?;
+        let position = self
+            .foc
+            .tmc4671_get_actual_position()
+            .map_err(IOError::SpiError)?;
+        debug!("[Ventouse{:?}] position: {}", self.kind, position);
+        // check that it has moved
 
-	let diff=position.saturating_sub(initial_position);
-	//TODO is it the same for Orbita3D and Orbita2D?
-	#[cfg(feature = "orbita2d")]
-	const MIN_DIFF: i32 = 10000;
-	#[cfg(feature = "orbita3d")]
-	const MIN_DIFF: i32 = 100000;
+        let diff = position.saturating_sub(initial_position);
+        //TODO is it the same for Orbita3D and Orbita2D?
+        #[cfg(feature = "orbita2d")]
+        const MIN_DIFF: i32 = 10000;
+        #[cfg(feature = "orbita3d")]
+        const MIN_DIFF: i32 = 100000;
 
-	if diff<MIN_DIFF{
-	    error!("[Ventouse{:?}] Motor has not moved enough: {} Check motor/encoder connection",self.kind, diff);
-	    return Err(IOError::InitError);
-	}
-	else{
-	    info!("[Ventouse{:?}] Motor has moved: {}",self.kind, diff);
+        if diff < MIN_DIFF {
+            error!(
+                "[Ventouse{:?}] Motor has not moved enough: {} Check motor/encoder connection",
+                self.kind, diff
+            );
+            return Err(IOError::InitError);
+        } else {
+            info!("[Ventouse{:?}] Motor has moved: {}", self.kind, diff);
+        }
 
-	}
-
-	Ok(())
+        Ok(())
     }
 
     pub async fn check_motors_2(&mut self) -> Result<(), IOError> {
-	//Assume that check_motors_1 has been called
+        //Assume that check_motors_1 has been called
 
         // Rotate left
-        info!("[Ventouse{:?}] Rotate left...",self.kind);
-	#[cfg(feature = "orbita2d")]
-	if self.kind=='B'{
-	    self.foc.tmc4671_set_target_velocity(-1000).map_err(IOError::SpiError)?;
-	}
-	else{
-            self.foc.tmc4671_set_target_velocity(-50).map_err(IOError::SpiError)?;
-	}
+        info!("[Ventouse{:?}] Rotate left...", self.kind);
+        #[cfg(feature = "orbita2d")]
+        if self.kind == 'B' {
+            self.foc
+                .tmc4671_set_target_velocity(-1000)
+                .map_err(IOError::SpiError)?;
+        } else {
+            self.foc
+                .tmc4671_set_target_velocity(-50)
+                .map_err(IOError::SpiError)?;
+        }
         // self.foc.tmc4671_set_target_velocity(-150).map_err(IOError::SpiError)?;
-	#[cfg(feature = "orbita3d")]
-        self.foc.tmc4671_set_target_velocity(-500).map_err(IOError::SpiError)?;
+        #[cfg(feature = "orbita3d")]
+        self.foc
+            .tmc4671_set_target_velocity(-500)
+            .map_err(IOError::SpiError)?;
         let _ = Timer::after(Duration::from_millis(1000)).await;
 
         // Stop
         info!("[Ventouse{:?}] Stop...", self.kind);
-        self.foc.tmc4671_set_target_velocity(0).map_err(IOError::SpiError)?;
-        self.foc.tmc4671_set_mode(MotionMode::Stopped).map_err(IOError::SpiError)?;
+        self.foc
+            .tmc4671_set_target_velocity(0)
+            .map_err(IOError::SpiError)?;
+        self.foc
+            .tmc4671_set_mode(MotionMode::Stopped)
+            .map_err(IOError::SpiError)?;
 
-	//Start everything at 0
-	self.foc.tmc4671_set_actual_position(0).map_err(IOError::SpiError)?;
-	self.foc.tmc4671_set_target_position(0).map_err(IOError::SpiError)?;
-        self.foc.tmc4671_set_mode(MotionMode::Position).map_err(IOError::SpiError)?;
-	Ok(())
+        //Start everything at 0
+        self.foc
+            .tmc4671_set_actual_position(0)
+            .map_err(IOError::SpiError)?;
+        self.foc
+            .tmc4671_set_target_position(0)
+            .map_err(IOError::SpiError)?;
+        self.foc
+            .tmc4671_set_mode(MotionMode::Position)
+            .map_err(IOError::SpiError)?;
+        Ok(())
     }
 
     // pub async fn find_index(&mut self, donut_sensor: &mut DonutHall<'_>) -> Result<(), IOError> //TODO
@@ -276,12 +300,7 @@ where
     // 	let d=donut_sensor.read();
     // 	Ok(())
     // }
-
 }
-
-
-
-
 
 impl<'d, T, FocP, FocEnb, DrvP> RawMotorsIO<1> for Ventouse<'d, T, FocP, FocEnb, DrvP>
 where
@@ -304,30 +323,27 @@ where
         Ok(())
     }
 
-
     // Get control mode
-    fn get_control_mode(&mut self) -> Result<[MotionMode;1], IOError> {
-	let mode =self
-	    .foc
-	    .tmc4671_get_mode()
-	    .map_err(IOError::SpiError)?;
-	Ok([mode])
+    fn get_control_mode(&mut self) -> Result<[MotionMode; 1], IOError> {
+        let mode = self.foc.tmc4671_get_mode().map_err(IOError::SpiError)?;
+        Ok([mode])
     }
 
     // Set control mode
     fn set_control_mode(&mut self, mode: MotionMode) -> Result<(), IOError> {
-	self.foc.tmc4671_set_mode(mode).map_err(IOError::SpiError)?;
-	Ok(())
+        self.foc.tmc4671_set_mode(mode).map_err(IOError::SpiError)?;
+        Ok(())
     }
 
-
     /// Set the current position of the motors (in radians)
-    fn set_current_position(&mut self, pos:[f32;1]) -> Result<(), IOError> {
-	self
-            .foc
-            .tmc4671_set_actual_position(conversion::rads_to_encoder(pos[0],self.foc.ppr.unwrap()/self.foc.brushless_motor_config.gearbox_ratio())).map_err(IOError::SpiError)?;
-	Ok(())
-
+    fn set_current_position(&mut self, pos: [f32; 1]) -> Result<(), IOError> {
+        self.foc
+            .tmc4671_set_actual_position(conversion::rads_to_encoder(
+                pos[0],
+                self.foc.ppr.unwrap() / self.foc.brushless_motor_config.gearbox_ratio(),
+            ))
+            .map_err(IOError::SpiError)?;
+        Ok(())
     }
 
     /// Get the current position of the motors output (in radians)
@@ -336,44 +352,43 @@ where
             .foc
             .tmc4671_get_actual_position()
             .map_err(IOError::SpiError)?;
-        let rads = conversion::encoder_to_rads(encoder, self.foc.ppr.unwrap())*self.foc.brushless_motor_config.gearbox_ratio();
+        let rads = conversion::encoder_to_rads(encoder, self.foc.ppr.unwrap())
+            * self.foc.brushless_motor_config.gearbox_ratio();
         Ok([rads])
     }
     /// Get the current velocity of the motors (in radians per second)
     fn get_current_velocity(&mut self) -> Result<[f32; 1], IOError> {
-        let vel=self.
-	    foc.
-	    tmc4671_get_actual_velocity()
-	    .map_err(IOError::SpiError)?;
-	Ok([vel as f32]) //Should be rpm
-
+        let vel = self
+            .foc
+            .tmc4671_get_actual_velocity()
+            .map_err(IOError::SpiError)?;
+        Ok([vel as f32]) //Should be rpm
     }
     /// Get the current torque of the motors (in Nm)
     fn get_current_torque(&mut self) -> Result<[f32; 1], IOError> {
-	let torque=self.
-	    foc.
-	    tmc4671_get_torque_actual()
-	    .map_err(IOError::SpiError)?;
-	Ok([torque as f32]) //TODO is there a conversion to do?
-
+        let torque = self
+            .foc
+            .tmc4671_get_torque_actual()
+            .map_err(IOError::SpiError)?;
+        Ok([torque as f32]) //TODO is there a conversion to do?
     }
 
     /// Get the current target position of the motors (in radians)
     fn get_target_position(&mut self) -> Result<[f32; 1], IOError> {
-        let pos=self.
-	    foc.
-	    tmc4671_get_target_position()
-	    .map_err(IOError::SpiError)?;
-	Ok([conversion::encoder_to_rads(pos, self.foc.ppr.unwrap())*self.foc.brushless_motor_config.gearbox_ratio()])
-	// Ok([0.0])
-
+        let pos = self
+            .foc
+            .tmc4671_get_target_position()
+            .map_err(IOError::SpiError)?;
+        Ok([conversion::encoder_to_rads(pos, self.foc.ppr.unwrap())
+            * self.foc.brushless_motor_config.gearbox_ratio()])
+        // Ok([0.0])
     }
     /// Set the current target position of the motors output (in radians)
     fn set_target_position(&mut self, position: [f32; 1]) -> Result<(), IOError> {
         self.foc
             .tmc4671_set_target_position(conversion::rads_to_encoder(
                 position[0],
-                self.foc.ppr.unwrap()/self.foc.brushless_motor_config.gearbox_ratio(),
+                self.foc.ppr.unwrap() / self.foc.brushless_motor_config.gearbox_ratio(),
             ))
             .map(|_| ())
             .map_err(IOError::SpiError)
@@ -382,108 +397,98 @@ where
     /// Set the current target position of the motors (in radians)
     fn set_velocity_feedforward(&mut self, velocity: [f32; 1]) -> Result<(), IOError> {
         self.foc
-            .tmc4671_set_velocity_offset(velocity[0] as i32 )
+            .tmc4671_set_velocity_offset(velocity[0] as i32)
             .map(|_| ())
             .map_err(IOError::SpiError)
     }
     // get velocity feedforward
     fn get_velocity_feedforward(&mut self) -> Result<[f32; 1], IOError> {
-        let vel=self.
-        foc.
-        tmc4671_get_velocity_offset()
-        .map_err(IOError::SpiError)?;
+        let vel = self
+            .foc
+            .tmc4671_get_velocity_offset()
+            .map_err(IOError::SpiError)?;
         Ok([vel as f32]) //TODO convert to rad/s
     }
 
-
-
     fn get_target_velocity(&mut self) -> Result<[f32; 1], IOError> {
-        let vel=self.
-	    foc.
-	    tmc4671_get_target_velocity()
-	    .map_err(IOError::SpiError)?;
-	Ok([vel as f32]) //TODO convert to rad/s
-
-
+        let vel = self
+            .foc
+            .tmc4671_get_target_velocity()
+            .map_err(IOError::SpiError)?;
+        Ok([vel as f32]) //TODO convert to rad/s
     }
 
     fn set_target_velocity(&mut self, velocity: [f32; 1]) -> Result<(), IOError> {
         self.foc
-            .tmc4671_set_target_velocity(
-                velocity[0] as i32) // TODO convert to rpm
+            .tmc4671_set_target_velocity(velocity[0] as i32) // TODO convert to rpm
             .map(|_| ())
             .map_err(IOError::SpiError)
     }
 
-
     fn get_target_torque(&mut self) -> Result<[f32; 1], IOError> {
-        let pos=self.
-	    foc.
-	    tmc4671_get_target_torque()
-	    .map_err(IOError::SpiError)?;
-	Ok([pos as f32])
-
-
+        let pos = self
+            .foc
+            .tmc4671_get_target_torque()
+            .map_err(IOError::SpiError)?;
+        Ok([pos as f32])
     }
 
     fn set_target_torque(&mut self, torque: [f32; 1]) -> Result<(), IOError> {
         self.foc
-            .tmc4671_set_target_torque(
-                torque[0] as i32)// TODO convert to mA
+            .tmc4671_set_target_torque(torque[0] as i32) // TODO convert to mA
             .map(|_| ())
             .map_err(IOError::SpiError)
     }
 
-
-
     /// Get the uq_ud limit of the motors
     fn get_uq_ud_limit(&mut self) -> Result<[i16; 1], IOError> {
-	//TODO Conversion. Is it in rpm?
-        let limit=self.foc.tmc4671_get_uq_ud_limit()
+        //TODO Conversion. Is it in rpm?
+        let limit = self
+            .foc
+            .tmc4671_get_uq_ud_limit()
             .map_err(IOError::SpiError)?;
-	Ok([limit as i16])
-
+        Ok([limit as i16])
     }
     /// Set the uq_ud limit of the motors
     fn set_uq_ud_limit(&mut self, limit: [i16; 1]) -> Result<(), IOError> {
-	self.foc.tmc4671_set_uq_ud_limit(limit[0] as i16)
-			.map(|_| ())
-			.map_err(IOError::SpiError)
-
+        self.foc
+            .tmc4671_set_uq_ud_limit(limit[0] as i16)
+            .map(|_| ())
+            .map_err(IOError::SpiError)
     }
-
 
     /// Get the torque_flux limit of the motors
     fn get_torque_flux_limit(&mut self) -> Result<[u16; 1], IOError> {
-	//TODO Conversion. Is it in rpm?
-        let limit=self.foc.tmc4671_get_torque_flux_limit()
+        //TODO Conversion. Is it in rpm?
+        let limit = self
+            .foc
+            .tmc4671_get_torque_flux_limit()
             .map_err(IOError::SpiError)?;
-	Ok([limit as u16])
-
+        Ok([limit as u16])
     }
     /// Set the torque_flux limit of the motors
     fn set_torque_flux_limit(&mut self, limit: [u16; 1]) -> Result<(), IOError> {
-	self.foc.tmc4671_set_torque_flux_limit(limit[0] as u16)
-			.map(|_| ())
-			.map_err(IOError::SpiError)
-
+        self.foc
+            .tmc4671_set_torque_flux_limit(limit[0] as u16)
+            .map(|_| ())
+            .map_err(IOError::SpiError)
     }
-
 
     /// Get the velocity limit of the motors (in radians per second)
     fn get_velocity_limit(&mut self) -> Result<[u32; 1], IOError> {
-	//TODO Conversion. Is it in rpm?
-        let limit=self.foc.tmc4671_get_velocity_limit()
+        //TODO Conversion. Is it in rpm?
+        let limit = self
+            .foc
+            .tmc4671_get_velocity_limit()
             .map_err(IOError::SpiError)?;
-	Ok([limit as u32])
-
+        Ok([limit as u32])
     }
     /// Set the velocity limit of the motors (in radians per second)
     fn set_velocity_limit(&mut self, limit: [u32; 1]) -> Result<(), IOError> {
-	self.foc.tmc4671_set_velocity_limit(limit[0] as u32)
-			.map(|_| ())
-			.map_err(IOError::SpiError)
-
+        self.foc
+            .tmc4671_set_velocity_limit(limit[0] as u32)
+            .map(|_| ())
+            .map_err(IOError::SpiError)
     }
 
     // /// Get the torque limit of the motors (in Nm)
@@ -508,207 +513,225 @@ where
     //     Ok(())
     // }
 
-
-
     /// Get the current flux PID gains of the motors
     fn get_flux_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
-	let rawpid=self.foc.tmc4671_get_pid_flux();
-	match rawpid{
-	    Ok(pid) => Ok([Pid {
-		p: ((pid>>16) & 0x7fff) as i16,
-		i: (pid & 0x7fff) as i16,
-	    }]),
-	    Err(e) => Err(IOError::SpiError(e)),
-	}
-
+        let rawpid = self.foc.tmc4671_get_pid_flux();
+        match rawpid {
+            Ok(pid) => Ok([Pid {
+                p: ((pid >> 16) & 0x7fff) as i16,
+                i: (pid & 0x7fff) as i16,
+            }]),
+            Err(e) => Err(IOError::SpiError(e)),
+        }
     }
     /// Set the current flux PID gains of the motors
     fn set_flux_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
-	let _pid=pid[0].i as u32 | ((pid[0].p as u32)<<16);
-	self.foc.tmc4671_set_pid_flux(_pid)
-	    .map(|_| ())
-	    .map_err(IOError::SpiError)
-
+        let _pid = pid[0].i as u32 | ((pid[0].p as u32) << 16);
+        self.foc
+            .tmc4671_set_pid_flux(_pid)
+            .map(|_| ())
+            .map_err(IOError::SpiError)
     }
-
-
 
     /// Get the current torque PID gains of the motors
     fn get_torque_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
-	let rawpid=self.foc.tmc4671_get_pid_torque();
-	match rawpid{
-	    Ok(pid) => Ok([Pid {
-		p: ((pid>>16) & 0x7fff) as i16,
-		i: (pid & 0x7fff) as i16,
-	    }]),
-	    Err(e) => Err(IOError::SpiError(e)),
-	}
-
+        let rawpid = self.foc.tmc4671_get_pid_torque();
+        match rawpid {
+            Ok(pid) => Ok([Pid {
+                p: ((pid >> 16) & 0x7fff) as i16,
+                i: (pid & 0x7fff) as i16,
+            }]),
+            Err(e) => Err(IOError::SpiError(e)),
+        }
     }
     /// Set the current torque PID gains of the motors
     fn set_torque_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
-	let _pid=pid[0].i as u32 | ((pid[0].p as u32)<<16);
-	self.foc.tmc4671_set_pid_torque(_pid)
-	    .map(|_| ())
-	    .map_err(IOError::SpiError)
-
+        let _pid = pid[0].i as u32 | ((pid[0].p as u32) << 16);
+        self.foc
+            .tmc4671_set_pid_torque(_pid)
+            .map(|_| ())
+            .map_err(IOError::SpiError)
     }
-
 
     /// Get the current velocity PID gains of the motors
     fn get_velocity_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
-	let rawpid=self.foc.tmc4671_get_pid_velocity();
-	match rawpid{
-	    Ok(pid) => Ok([Pid {
-		p: ((pid>>16) & 0x7fff) as i16,
-		i: (pid & 0x7fff) as i16,
-	    }]),
-	    Err(e) => Err(IOError::SpiError(e)),
-	}
-
+        let rawpid = self.foc.tmc4671_get_pid_velocity();
+        match rawpid {
+            Ok(pid) => Ok([Pid {
+                p: ((pid >> 16) & 0x7fff) as i16,
+                i: (pid & 0x7fff) as i16,
+            }]),
+            Err(e) => Err(IOError::SpiError(e)),
+        }
     }
     /// Set the current velocity PID gains of the motors
     fn set_velocity_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
-	let _pid=pid[0].i as u32 | ((pid[0].p as u32)<<16);
-	self.foc.tmc4671_set_pid_velocity(_pid)
-	    .map(|_| ())
-	    .map_err(IOError::SpiError)
-
+        let _pid = pid[0].i as u32 | ((pid[0].p as u32) << 16);
+        self.foc
+            .tmc4671_set_pid_velocity(_pid)
+            .map(|_| ())
+            .map_err(IOError::SpiError)
     }
-
 
     /// Get the current position PID gains of the motors
     fn get_position_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
-	let rawpid=self.foc.tmc4671_get_pid_position();
-	match rawpid{
-	    Ok(pid) => Ok([Pid {
-		p: ((pid>>16) & 0x7fff) as i16,
-		i: (pid & 0x7fff) as i16,
-	    }]),
-	    Err(e) => Err(IOError::SpiError(e)),
-	}
-
+        let rawpid = self.foc.tmc4671_get_pid_position();
+        match rawpid {
+            Ok(pid) => Ok([Pid {
+                p: ((pid >> 16) & 0x7fff) as i16,
+                i: (pid & 0x7fff) as i16,
+            }]),
+            Err(e) => Err(IOError::SpiError(e)),
+        }
     }
     /// Set the current position PID gains of the motors
     fn set_position_pid_gains(&mut self, pid: [Pid; 1]) -> Result<(), IOError> {
-	let _pid=pid[0].i as u32 | ((pid[0].p as u32)<<16);
-	self.foc.tmc4671_set_pid_position(_pid)
-	    .map(|_| ())
-	    .map_err(IOError::SpiError)
-
+        let _pid = pid[0].i as u32 | ((pid[0].p as u32) << 16);
+        self.foc
+            .tmc4671_set_pid_position(_pid)
+            .map(|_| ())
+            .map_err(IOError::SpiError)
     }
 
-    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<[u8;1], IOError> //TODO
+    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<[u8; 1], IOError> //TODO
     {
-	// - read initial Hall state
-	// - Slowly move the motor (velocity mode?)
-	// - Loop while Hall state is the same
-	// - Returns the index of the Hall that changed
-	// - setup the motor back
+        // - read initial Hall state
+        // - Slowly move the motor (velocity mode?)
+        // - Loop while Hall state is the same
+        // - Returns the index of the Hall that changed
+        // - setup the motor back
 
-	self.set_torque([true])?;
-	let d=donut_sensor.read().unwrap_or_else(|e| {
-	    error!("FIND INDEX error: {:?}",e);
-	    0
-	});
+        self.set_torque([true])?;
+        let d = donut_sensor.read().unwrap_or_else(|e| {
+            error!("FIND INDEX error: {:?}", e);
+            0
+        });
 
+        let compute_idx = |d: u16| {
+            let mut allindices: [u8; 3] = [0xff; 3]; //Assuming there is only 3 active sensors?
+            let mut tmpidx = 0;
+            let mut i: usize = 0;
+            let mut didx = d.clone();
+            while tmpidx < 16 {
+                let idx = didx.trailing_ones();
+                if idx == 0 && tmpidx > 0 {
+                    break;
+                }
 
+                if idx < 16 && idx + tmpidx < 16 {
+                    allindices[i] = (idx + tmpidx) as u8;
+                }
+                tmpidx += idx + 1;
+                didx >>= (idx + 1);
+                i += 1;
+                if i == 3 {
+                    return allindices; //FIXME: what if there are more? It should not...
+                }
+            }
+            allindices
+        };
 
+        // //DEBUG
+        // let starting_pos = self.foc.tmc4671_get_actual_position().unwrap_or_else(|e| {
+        //     error!("GET POS error: {:?}", e);
+        //     0
+        // });
+        // let starting_rads = conversion::encoder_to_rads(starting_pos, self.foc.ppr.unwrap())
+        //     * self.foc.brushless_motor_config.gearbox_ratio()
+        //     * self.foc.brushless_motor_config.axis_ratio();
+        // debug!(
+        //     "DEBUG Find index init, start pos: {:?} {:?}",
+        //     starting_pos,
+        //     starting_rads.to_degrees()
+        // );
+        // ////
 
-	let compute_idx=|d: u16|
-	{
-	    let mut allindices:[u8;3]=[0xff;3]; //Assuming there is only 3 active sensors?
-	    let mut tmpidx=0;
-	    let mut i:usize=0;
-	    let mut didx=d.clone();
-	    while tmpidx<16{
-		let idx=didx.trailing_ones();
-		if idx==0
-		{
-		    break;
-		}
-		tmpidx+=idx;
-		if idx<16{
-		    allindices[i]=idx as u8;
-		}
-		didx>>=(idx+1);
-		i+=1;
-	    }
-	    allindices
-	};
+        // - Move the motor anticlockwise for about 12° (while the other motors are Off in case they are touching)
+        // - Record the Hall state
+        // - Move the motor clockwise until the Hall state changes
+        self.set_target_velocity([-6000.0])?;
+        self.set_control_mode(MotionMode::Velocity)?;
+        block_for(Duration::from_millis(500)); //It should move the arm roughly 12°
 
+        let pos = self.foc.tmc4671_get_actual_position().unwrap_or_else(|e| {
+            error!("GET POS error: {:?}", e);
+            0
+        });
+        let rads = conversion::encoder_to_rads(pos, self.foc.ppr.unwrap())
+            * self.foc.brushless_motor_config.gearbox_ratio()
+            * self.foc.brushless_motor_config.axis_ratio();
+        let start_indices = compute_idx(d);
+        debug!(
+            "Start indices: {:?} ({:#018b}) start pos: {:?}",
+            start_indices,
+            d,
+            rads.to_degrees()
+        );
 
-	self.set_target_velocity([5500.0])?;
-	self.set_control_mode(MotionMode::Velocity)?;
-	block_for(Duration::from_millis(500)); //It should move the arm roughly 11°
-	//debug
-	let pos=self.foc.tmc4671_get_actual_position().unwrap_or_else(|e| {
-	    error!("GET POS error: {:?}",e);
-	    0
-	});
-	let rads = conversion::encoder_to_rads(pos, self.foc.ppr.unwrap())*self.foc.brushless_motor_config.gearbox_ratio();//*self.foc.brushless_motor_config.axis_ratio();
-	let start_indices=compute_idx(d);
-	debug!("Start indices: {:?} start pos: {:?}",start_indices, rads.to_degrees());
+        self.set_target_velocity([6000.0])?;
+        // self.set_control_mode(MotionMode::Velocity)?;
+        let t0 = Instant::now();
+        let mut dd = donut_sensor.read().unwrap_or_else(|e| {
+            error!("FIND INDEX error: {:?}", e);
+            0
+        });
+        while dd == d && t0.elapsed().as_millis() < 500 {
+            //We move back until we see a change in the Hall state
 
+            // debug!("FIND INDEX: {:#x} {:#x} {:?}",d,dd,self.kind);
+            dd = donut_sensor.read().unwrap_or_else(|e| {
+                error!("FIND INDEX error: {:?}", e);
+                0
+            });
+        }
+        //to return roughly to the initial position
+        if t0.elapsed().as_millis() < 500 {
+            block_for(Duration::from_millis(500 - t0.elapsed().as_millis()));
+        }
 
+        //debug to find the total motion
+        let pos = self.foc.tmc4671_get_actual_position().unwrap_or_else(|e| {
+            error!("GET POS error: {:?}", e);
+            0
+        });
+        let rads2 = conversion::encoder_to_rads(pos, self.foc.ppr.unwrap())
+            * self.foc.brushless_motor_config.gearbox_ratio()
+            * self.foc.brushless_motor_config.axis_ratio();
 
-	self.set_target_velocity([-5500.0])?;
-	// self.set_control_mode(MotionMode::Velocity)?;
-	let t0=Instant::now();
-	let mut dd=donut_sensor.read().unwrap_or_else(|e| {
-	    error!("FIND INDEX error: {:?}",e);
-	    0
-	});
-	while dd==d && t0.elapsed().as_millis()<500
-	{ //We move back until we see a change in the Hall state
+        // self.set_target_velocity([0.0])?;
+        // self.set_target_velocity([-5000.0])?;
+        // block_for(Duration::from_millis(500));
+        let _ = self.foc.tmc4671_set_actual_position(0);
+        let _ = self.foc.tmc4671_set_target_position(0);
+        self.set_control_mode(MotionMode::Position)?;
+        self.set_torque([false])?;
 
-	    // debug!("FIND INDEX: {:#x} {:#x} {:?}",d,dd,self.kind);
-	    dd=donut_sensor.read().unwrap_or_else(|e| {
-		error!("FIND INDEX error: {:?}",e);
-		0
-	    });
-	}
+        let end_indices = compute_idx(dd);
+        debug!(
+            "end indices: {:?} ({:#018b}) end pos: {:?}",
+            end_indices,
+            dd,
+            rads2.to_degrees()
+        );
+        debug!("MOVED: {:?}", (rads2 - rads).to_degrees());
+        //If we end up in a dead zone (255), starting from a detected sensor
+        for index in start_indices.iter() {
+            if !end_indices.contains(index) && *index != 255 {
+                debug!("Moved index: {:?}", *index);
+                return Ok([*index]);
+            }
+        }
 
-	//debug
-	let pos=self.foc.tmc4671_get_actual_position().unwrap_or_else(|e| {
-	    error!("GET POS error: {:?}",e);
-	    0
-	});
-	let rads2 = conversion::encoder_to_rads(pos, self.foc.ppr.unwrap())*self.foc.brushless_motor_config.gearbox_ratio();//*self.foc.brushless_motor_config.axis_ratio();
+        //If we end up in a detected zone starting from either a detected sensor or a dead zone (255)
+        for index in end_indices.iter() {
+            if !start_indices.contains(index) && *index != 255 {
+                debug!("Moved index: {:?}", *index);
+                return Ok([*index]);
+            }
+        }
 
-
-
-
-	// self.set_target_velocity([0.0])?;
-	// self.set_target_velocity([-5000.0])?;
-	// block_for(Duration::from_millis(500));
-	let _=self.foc.tmc4671_set_actual_position(0);
-	let _=self.foc.tmc4671_set_target_position(0);
-	self.set_control_mode(MotionMode::Position)?;
-	self.set_torque([false])?;
-
-	let end_indices=compute_idx(dd);
-	debug!("end indices: {:?} end pos: {:?}",end_indices, rads2.to_degrees());
-	error!("MOVED: {:?}",(rads2-rads).to_degrees());
-	for index in end_indices.iter()
-	{
-	    if !start_indices.contains(index)
-	    {
-
-		return Ok([*index]);
-	    }
-	}
-
-
-
-	Ok([255])
+        Ok([255])
     }
-
-
-
-
-
-
 }
 
 pub enum VentouseKind<'d> {
@@ -759,9 +782,6 @@ impl<'d> VentouseKind<'d> {
     // 			_ => None,
     // 		}
     // 	}
-
-
-
 }
 
 impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
@@ -782,26 +802,24 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
 
-
     /// Get control mode
     fn get_control_mode(&mut self) -> super::Result<[MotionMode; 1]> {
-		match self {
-			VentouseKind::A(va) => va.get_control_mode(),
-			VentouseKind::B(vb) => vb.get_control_mode(),
-			VentouseKind::C(vc) => vc.get_control_mode(),
-		}
-	}
+        match self {
+            VentouseKind::A(va) => va.get_control_mode(),
+            VentouseKind::B(vb) => vb.get_control_mode(),
+            VentouseKind::C(vc) => vc.get_control_mode(),
+        }
+    }
 
     ///set control mode
 
     fn set_control_mode(&mut self, mode: MotionMode) -> super::Result<()> {
-		match self {
-			VentouseKind::A(va) => va.set_control_mode(mode),
-			VentouseKind::B(vb) => vb.set_control_mode(mode),
-			VentouseKind::C(vc) => vc.set_control_mode(mode),
-		}
-	}
-
+        match self {
+            VentouseKind::A(va) => va.set_control_mode(mode),
+            VentouseKind::B(vb) => vb.set_control_mode(mode),
+            VentouseKind::C(vc) => vc.set_control_mode(mode),
+        }
+    }
 
     /// Get the current position of the motors (in radians)
     fn get_current_position(&mut self) -> Result<[f32; 1], IOError> {
@@ -811,7 +829,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
             VentouseKind::C(vc) => vc.get_current_position(),
         }
     }
-    fn set_current_position(&mut self, pos:[f32;1]) -> Result<(), IOError> {
+    fn set_current_position(&mut self, pos: [f32; 1]) -> Result<(), IOError> {
         match self {
             VentouseKind::A(va) => va.set_current_position(pos),
             VentouseKind::B(vb) => vb.set_current_position(pos),
@@ -869,10 +887,6 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
 
-
-
-
-
     fn get_target_velocity(&mut self) -> Result<[f32; 1], IOError> {
         match self {
             VentouseKind::A(va) => va.get_target_velocity(),
@@ -889,9 +903,6 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
 
-
-
-
     fn get_target_torque(&mut self) -> Result<[f32; 1], IOError> {
         match self {
             VentouseKind::A(va) => va.get_target_torque(),
@@ -907,8 +918,6 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
             VentouseKind::C(vc) => vc.set_target_torque(torque),
         }
     }
-
-
 
     /// Get the velocity limit of the motors (in radians per second)
     fn get_velocity_limit(&mut self) -> Result<[u32; 1], IOError> {
@@ -961,7 +970,6 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
 
-
     // /// Get the current PID gains of the motors
     // fn get_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
     //     match self {
@@ -978,8 +986,6 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     //         VentouseKind::C(vc) => vc.set_pid_gains(pid),
     //     }
     // }
-
-
 
     /// Get the current flux PID gains of the motors
     fn get_flux_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
@@ -998,7 +1004,6 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
 
-
     /// Get the current torque PID gains of the motors
     fn get_torque_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
         match self {
@@ -1016,7 +1021,6 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
 
-
     /// Get the current velocity PID gains of the motors
     fn get_velocity_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
         match self {
@@ -1033,7 +1037,6 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
             VentouseKind::C(vc) => vc.set_velocity_pid_gains(pid),
         }
     }
-
 
     /// Get the current position PID gains of the motors
     fn get_position_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
@@ -1069,19 +1072,14 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     // 			_ => None,
     // 		}
     // }
-    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<[u8;1], IOError> //TODO
-	{
-	    match self {
-		VentouseKind::A(va) => va.find_index(donut_sensor),
-		VentouseKind::B(vb) => vb.find_index(donut_sensor),
-		VentouseKind::C(vc) => vc.find_index(donut_sensor),
-	    }
-	}
-
-
-
-
-
+    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<[u8; 1], IOError> //TODO
+    {
+        match self {
+            VentouseKind::A(va) => va.find_index(donut_sensor),
+            VentouseKind::B(vb) => vb.find_index(donut_sensor),
+            VentouseKind::C(vc) => vc.find_index(donut_sensor),
+        }
+    }
 }
 
 mod conversion {
