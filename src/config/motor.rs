@@ -1,3 +1,7 @@
+#![no_std]
+#![no_main]
+
+
 pub struct BrushlessMotor {
     // 0x00030004: 3-phase brushless motor, 4 pole pairs - register MOTOR_TYPE_N_POLE_PAIRS
     motor_type_n_pole_pairs: u32,
@@ -164,6 +168,139 @@ impl BrushlessMotor {
     // from mechanical angle after the gearbox and axis to electrical angle
     pub fn axis_to_elec(&self, angle: f32) -> f32 {
         self.gearbox_to_elec(angle) / self.axis_ratio
+    }
+
+}
+
+
+#[cfg(test)]
+use {defmt_rtt as _, panic_probe as _};
+#[cfg(test)]
+use embassy_stm32::{bind_interrupts};
+
+// defmt-test 0.3.0 has the limitation that this `#[tests]` attribute can only be used
+// once within a crate. the module can be in any file but there can only be at most
+// one `#[tests]` module in this library crate
+#[cfg(test)]
+#[defmt_test::tests]
+mod unit_tests {
+    use defmt::assert;
+
+    use super::*;
+
+    // check if the motor type and pole pairs are set correctly
+    #[test]
+    fn motor_type_n_pole_pairs() {
+        let m = BrushlessMotor{
+            motor_type_n_pole_pairs: 0x4,
+            pid_flux_p_flux_i: 0x0,
+            pid_torque_p_torque_i: 0x0,
+            pid_velocity_p_velocity_i: 0x0,
+            pid_position_p_position_i: 0x0,
+            abn_decoder_ppr: 0x0,
+            gearbox_ratio: 0.0,
+            axis_ratio: 0.0,
+        };
+        assert_eq!(m.pole_pairs(), 4.0);
+    }
+
+
+    // check if electrical to mechanical angle conversion is correct
+    #[test]
+    fn elec_to_mech_shaft() {
+        let m = BrushlessMotor{
+            motor_type_n_pole_pairs: 0x4,
+            pid_flux_p_flux_i: 0x0,
+            pid_torque_p_torque_i: 0x0,
+            pid_velocity_p_velocity_i: 0x0,
+            pid_position_p_position_i: 0x0,
+            abn_decoder_ppr: 0x0,
+            gearbox_ratio: 0.0,
+            axis_ratio: 0.0,
+        };
+        assert_eq!(m.elec_to_shaft(8.0), 2.0);
+    }
+
+    
+    // check if electrical to mechanical angle at the axis
+    #[test]
+    fn elec_to_mech_gearbox() {
+        let m = BrushlessMotor{
+            motor_type_n_pole_pairs: 0x8,
+            pid_flux_p_flux_i: 0x0,
+            pid_torque_p_torque_i: 0x0,
+            pid_velocity_p_velocity_i: 0x0,
+            pid_position_p_position_i: 0x0,
+            abn_decoder_ppr: 0x0,
+            gearbox_ratio: 0.1,
+            axis_ratio: 0.1,
+        };
+        assert_eq!(m.elec_to_gearbox(8.0), 0.1);
+    }
+
+
+    // check if electrical to mechanical angle at the axis
+    #[test]
+    fn elec_to_mech_axis() {
+        let m = BrushlessMotor{
+            motor_type_n_pole_pairs: 0x8,
+            pid_flux_p_flux_i: 0x0,
+            pid_torque_p_torque_i: 0x0,
+            pid_velocity_p_velocity_i: 0x0,
+            pid_position_p_position_i: 0x0,
+            abn_decoder_ppr: 0x0,
+            gearbox_ratio: 0.5,
+            axis_ratio: 0.5,
+        };
+        assert_eq!(m.elec_to_axis(8.0), 0.25);
+    }
+
+    // check if mechanical to electrical angle conversion is correct
+    #[test]
+    fn mech_to_elec_shaft() {
+        let m = BrushlessMotor{
+            motor_type_n_pole_pairs: 0x8,
+            pid_flux_p_flux_i: 0x0,
+            pid_torque_p_torque_i: 0x0,
+            pid_velocity_p_velocity_i: 0x0,
+            pid_position_p_position_i: 0x0,
+            abn_decoder_ppr: 0x0,
+            gearbox_ratio: 0.5,
+            axis_ratio: 0.5,
+        };
+        assert_eq!(m.shaft_to_elec(8.0), 64.0);
+    }
+
+    // check if mechanical to electrical angle at the gearbox is correct
+    #[test]
+    fn mech_to_elec_gearbox() {
+        let m = BrushlessMotor{
+            motor_type_n_pole_pairs: 0x8,
+            pid_flux_p_flux_i: 0x0,
+            pid_torque_p_torque_i: 0x0,
+            pid_velocity_p_velocity_i: 0x0,
+            pid_position_p_position_i: 0x0,
+            abn_decoder_ppr: 0x0,
+            gearbox_ratio: 0.5,
+            axis_ratio: 0.5,
+        };
+        assert_eq!(m.gearbox_to_elec(8.0), 128.0);
+    }
+
+    // check if mechanical to electrical angle at the axis is correct
+    #[test]
+    fn mech_to_elec_axis() {
+        let m = BrushlessMotor{
+            motor_type_n_pole_pairs: 0x8,
+            pid_flux_p_flux_i: 0x0,
+            pid_torque_p_torque_i: 0x0,
+            pid_velocity_p_velocity_i: 0x0,
+            pid_position_p_position_i: 0x0,
+            abn_decoder_ppr: 0x0,
+            gearbox_ratio: 0.5,
+            axis_ratio: 0.5,
+        };
+        assert_eq!(m.axis_to_elec(8.0), 256.0);
     }
 
 }

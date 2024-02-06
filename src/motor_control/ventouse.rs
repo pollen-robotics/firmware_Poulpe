@@ -1105,7 +1105,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
 
 }
 
-mod conversion {
+pub mod conversion {
     // functions to convert encoder values to radians and vice versa
     pub fn encoder_to_rad(enc: i32, ppr: f32) -> f32 {
         enc as f32 / ppr  * 6.28318530718 // 2*pi = 6.28
@@ -1122,3 +1122,4 @@ mod conversion {
     }
 
 }
+

@@ -1,3 +1,6 @@
+#![no_std]
+#![no_main]
+
 pub struct CurrentSensing {
     
     // current sensing parameters
@@ -67,4 +70,53 @@ impl CurrentSensing {
     pub fn mAmps_tp_adc(&self, amps: f32, adc_resolution:f32) -> f32{
         amps / 1000.0 * (self.amp_gain*self.resistance_shunt) / (self.amp_voltage / adc_resolution) // shunt*gain -> amps to volts, adc_res/amp_volt -> volts to adc counts 
     }
+}
+
+
+
+
+#[cfg(test)]
+use {defmt_rtt as _, panic_probe as _};
+#[cfg(test)]
+use embassy_stm32::{bind_interrupts};
+
+// defmt-test 0.3.0 has the limitation that this `#[tests]` attribute can only be used
+// once within a crate. the module can be in any file but there can only be at most
+// one `#[tests]` module in this library crate
+#[cfg(test)]
+#[defmt_test::tests]
+mod unit_tests {
+    use defmt::assert;
+
+    use super::*;
+    
+    // test the conversion from raw adc counts to milliamps
+    #[test]
+    fn test_adc_to_mAmps() {
+        let current_sense = CurrentSensing { resistance_shunt: 1.0, amp_gain: 1.0, amp_voltage: 5.0, adc_i0_scale_offset: 0, adc_i1_scale_offset: 0 };
+        let adc_raw = 100.0;
+        let adc_resolution = 200.0;
+        let result = current_sense.adc_to_mAmps(adc_raw, adc_resolution);
+        assert_eq!(result, 2500.0);
+    }
+
+    // test the conversion from milliamps to raw adc counts
+    #[test]
+    fn test_mAmps_tp_adc() {
+        let current_sense = CurrentSensing { resistance_shunt: 1.0, amp_gain: 1.0, amp_voltage: 5.0, adc_i0_scale_offset: 0, adc_i1_scale_offset: 0 };
+        let amps = 2500.0;
+        let adc_resolution = 200.0;
+        let result = current_sense.mAmps_tp_adc(amps, adc_resolution);
+        assert_eq!(result, 100.0);
+    }
+
+    // test the offset setting
+    #[test]
+    fn test_set_adc_offsets() {
+        let mut current_sense = CurrentSensing { resistance_shunt: 1.0, amp_gain: 1.0, amp_voltage: 5.0, adc_i0_scale_offset: 0, adc_i1_scale_offset: 0 };
+        current_sense.set_adc_offsets(100, 200);
+        assert_eq!(current_sense.adc_i0_scale_offset, 0x01000000 | 100);
+        assert_eq!(current_sense.adc_i1_scale_offset, 0x01000000 | 200);
+    }
+
 }

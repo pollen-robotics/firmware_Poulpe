@@ -6,12 +6,14 @@ license = "MIT OR Apache-2.0"
 
 [features]
 #motor specifig config
-default = ["orbita2d", "ec45", "velocity_feedforward", "cmd_filter", "axis_output"] # "gearbox_output" ]
+default = ["orbita3d", "ecx22", "velocity_feedforward", "cmd_filter", "axis_output"] # "gearbox_output" ]
+# default = ["orbita2d", "ec45", "velocity_feedforward", "cmd_filter", "axis_output"] # "gearbox_output" ]
 # default = ["orbita2d", "ec60", "velocity_feedforward","cmd_filter", "axis_output"] #"gearbox_output" ]
 # default = ["orbita3d", "cmd_filter"]
 # default = ["orbita3d"]
 orbita2d = []
 orbita3d = []
+ecx22 = []
 ec60 = []
 ec45=[]
 # use command filter to reduce the jerk of the motor
@@ -58,7 +60,7 @@ axis_output = []  # control the motor angle after the gearbox and axis reduction
 
 
 #Pollen fork...
-embassy-stm32 = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x","unstable-pac", "unstable-traits"] }
+embassy-stm32 = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["nightly", "defmt", "stm32h742vg", "rt", "time-driver-any", "exti", "memory-x","unstable-pac", "unstable-traits"] }
 embassy-sync = { version = "0.4.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["defmt"] }
 embassy-executor = { version = "0.3.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["nightly", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers"] }
 
@@ -94,6 +96,8 @@ embedded-hal-1 = { package = "embedded-hal", version = "=1.0.0-rc.1" }
 embedded-hal-async = { version = "=1.0.0-rc.1" }
 embedded-nal-async = { version = "=0.5.0" }
 
+
+# stm32h7xx-hal = { version = "0.15.0", features = ["rt", "stm32h742"] }
 
 
 
@@ -137,8 +141,9 @@ codegen-units = 1
 debug = 2
 debug-assertions = false # <-
 incremental = false
+lto = 'fat'
 opt-level = 3 # <-
-overflow-checks = true # <-
+overflow-checks = false # <-
 
 # cargo build/run --release
 [profile.release]
@@ -161,7 +166,28 @@ opt-level = 3 # <-
 overflow-checks = false # <-
 
 
-
 [[bin]]
 name = "firmware_poulpe" # src/main.rs
 test = false
+
+# added library 
+[lib]
+name = "firmware_poulpe" # src/lib.rs
+test = false
+
+
+
+## need to add this for any test file added of for any file that has tests in it
+[[test]]
+name = "motor"
+harness = false
+path = "src/config/motor.rs"
+
+[[test]]
+name = "current"
+harness = false
+path = "src/config/current_sense.rs"
+
+[[test]]
+name = "test_conversions"
+harness = false

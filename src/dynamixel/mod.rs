@@ -1,4 +1,6 @@
-mod conversion;
+
+
+pub mod conversion;
 
 mod packet;
 pub use packet::{InstructionPacketKind, StatusPacket};
@@ -10,3 +12,5 @@ pub mod task;
 
 mod usart_io;
 pub use usart_io::DynamixelUsartIO;
+
+
