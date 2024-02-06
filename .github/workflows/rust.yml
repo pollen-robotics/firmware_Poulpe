@@ -15,6 +15,6 @@ jobs:
     - name: Build Orbirta3D
       run: cargo build --verbose --features ecx22 --features orbita3d
     - name: Build Orbita2D
-      run: cargo build --verbose --features ecx45 --features orbita2d
+      run: cargo build --verbose --features ec45 --features orbita2d
     # - name: Run tests
     #   run: cargo test --verbose
