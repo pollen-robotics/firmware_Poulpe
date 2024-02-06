@@ -12,7 +12,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build --verbose
+    - name: Build Orbirta3D
+      run: cargo build --verbose --features ecx22 --features orbita3d
+    - name: Build Orbita2D
+      run: cargo build --verbose --features ecx45 --features orbita2d
     # - name: Run tests
     #   run: cargo test --verbose
