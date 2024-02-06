@@ -74,7 +74,9 @@ pub async fn control_loop(config: ActuatorConfig) {
             foc_spi,
             config.a.foc_enable,
             config::BrushlessMotor::ecx22(),
+            config::CurrentSensing::wailer_B2()
 	);
+
     #[cfg(feature = "orbita3d")]
 	let driver_spi = SpiDeviceWithConfig::new(
             &spi_bus,
