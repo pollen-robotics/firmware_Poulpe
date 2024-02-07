@@ -102,6 +102,18 @@ where
 
 	}
 
+    match self.calibrate_adc_offsets().await
+	{
+	    Ok(_) => info!("[Ventouse{:?}] ADC offset calibration done", self.kind),
+	    Err(e) => {
+		ret_err=true;
+		error!("[Ventouse{:?}] ADC offset calibration failed: {:?}  => check SPI and power connection", self.kind,e);
+		err=IOError::SpiError(e);
+
+	    }
+
+	}
+
         match self.align_motor().await
 	{
 	    Ok(_) => info!("[Ventouse{:?}] align done",self.kind),
@@ -130,6 +142,34 @@ where
 	}
         Ok(())
     }
+
+
+    pub async fn calibrate_adc_offsets(&mut self) -> Result<(), embassy_stm32::spi::Error> {
+   
+        // stop the motor
+        // disable potential motion/torque control
+        self.foc.tmc4671_set_mode(MotionMode::Stopped)?;
+
+        // read the adc raw values for finding the current offset (1000 times)
+        let mut adc_offset: [u32; 2] = [0; 2];
+        for _ in 0..1000 {
+            self.foc.tmc4671_get_adc_raw().map(|adc| {
+                adc_offset[0] += adc.0 as u32;
+                adc_offset[1] += adc.1 as u32;
+            })?;
+        }
+        // divide by 1000 to get the average
+        adc_offset[0] /= 1000;
+        adc_offset[1] /= 1000;
+
+        // set the new offset values
+        self.foc.current_sensing_config.set_adc_offsets(adc_offset[0], adc_offset[1]);
+        self.foc.tmc4671_checked_write(Tmc4671Registers::ADC_I0_SCALE_OFFSET as u8, self.foc.current_sensing_config.adc_i0_scale_offset())?;
+        self.foc.tmc4671_checked_write(Tmc4671Registers::ADC_I1_SCALE_OFFSET as u8, self.foc.current_sensing_config.adc_i1_scale_offset())?;
+        
+        Ok(())
+    }
+
 
     pub async fn align_motor(&mut self) -> Result<(), embassy_stm32::spi::Error> {
         // /!\ Please note that the TMC6200 must be in Single-line mode (aka 6-PMW)
