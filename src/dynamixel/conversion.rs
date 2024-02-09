@@ -1,4 +1,11 @@
+#![no_main]
+#![no_std]
+#![feature(generic_const_exprs)]
+
+#[cfg(not(test))]
 use crate::motor_control::Pid;
+#[cfg(test)]
+use firmware_poulpe::motor_control::Pid;
 
 pub fn bytes_to_bool<const N: usize>(data: &[u8]) -> [bool; N] {
     assert!(data.len() == N);
@@ -128,5 +135,59 @@ pub fn bytes_to_pid<const N:usize>(data: &[u8]) -> [Pid;N] {
         result[i] = pid;
     }
     result
+
+}
+
+
+// defmt-test 0.3.0 has the limitation that this `#[tests]` attribute can only be used
+// once within a crate. the module can be in any file but there can only be at most
+// one `#[tests]` module in this library crate
+#[cfg(test)]
+#[defmt_test::tests]
+mod unit_tests {
+    use defmt::{assert, debug};
+
+    use super::*;
+
+    // test conversion from bytes to bool
+    #[test]
+    fn test_bytes_to_bool() {
+        let data = [0, 1, 0, 1, 0, 1, 0, 1];
+        let result = bytes_to_bool::<8>(&data);
+        assert!(result == [false, true, false, true, false, true, false, true]);
+    }
+
+    // test conversion from bool to bytes
+    #[test]
+    fn test_bool_to_bytes() {
+        let data = [false, true, false, true, false, true, false, true];
+        let result = bool_to_bytes::<8>(data);
+        assert!(result == [0, 1, 0, 1, 0, 1, 0, 1]);
+    }
+
+    // test conversion from float to bytes
+    #[test]
+    fn test_float_to_bytes() {
+        let data = [0.5, 0.7];
+        let result = float_to_bytes::<2>(data);
+        assert!(data == bytes_to_float::<2>(&result));
+    }
+
+    // test conversion from u32 to bytes
+    #[test]
+    fn test_u32_to_bytes() {
+        let data = [100, 589];
+        let result = u32_to_bytes::<2>(data);
+        assert!(data == bytes_to_u32::<2>(&result));
+    }
+    
+    // test conversion from pid to bytes
+    #[test]
+    fn test_pid_to_bytes() {
+        let pid = Pid{p: 100, i: 200};
+        let result = pid_to_bytes::<1>([pid]);
+        let pid2 = bytes_to_pid::<1>(&result)[0];
+        assert!(pid.p == pid2.p && pid.i == pid2.i );
+    }
 
 }

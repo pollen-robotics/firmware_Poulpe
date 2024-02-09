@@ -2,11 +2,10 @@
 #![no_std]
 
 
-use firmware_poulpe::dynamixel::conversion::{bytes_to_bool, bool_to_bytes, bytes_to_float, float_to_bytes, u32_to_bytes, bytes_to_u32, bytes_to_pid, pid_to_bytes};
-use firmware_poulpe::motor_control;
 use {defmt_rtt as _, panic_probe as _};
 use embassy_stm32::{bind_interrupts};
 
+use firmware_poulpe::motor_control;
 use firmware_poulpe::motor_control::ventouse::conversion;
 
 
@@ -27,47 +26,6 @@ mod unit_tests {
     use defmt::{assert, debug};
 
     use super::*;
-
-    // test conversion from bytes to bool
-    #[test]
-    fn test_bytes_to_bool() {
-        let data = [0, 1, 0, 1, 0, 1, 0, 1];
-        let result = bytes_to_bool::<8>(&data);
-        assert!(result == [false, true, false, true, false, true, false, true]);
-    }
-
-    // test conversion from bool to bytes
-    #[test]
-    fn test_bool_to_bytes() {
-        let data = [false, true, false, true, false, true, false, true];
-        let result = bool_to_bytes::<8>(data);
-        assert!(result == [0, 1, 0, 1, 0, 1, 0, 1]);
-    }
-
-    // test conversion from float to bytes
-    #[test]
-    fn test_float_to_bytes() {
-        let data = [0.5, 0.7];
-        let result = float_to_bytes::<2>(data);
-        assert!(data == bytes_to_float::<2>(&result));
-    }
-
-    // test conversion from u32 to bytes
-    #[test]
-    fn test_u32_to_bytes() {
-        let data = [100, 589];
-        let result = u32_to_bytes::<2>(data);
-        assert!(data == bytes_to_u32::<2>(&result));
-    }
-    
-    // test conversion from pid to bytes
-    #[test]
-    fn test_pid_to_bytes() {
-        let pid = motor_control::Pid{p: 100, i: 200};
-        let result = pid_to_bytes::<1>([pid]);
-        let pid2 = bytes_to_pid::<1>(&result)[0];
-        assert!(pid.p == pid2.p && pid.i == pid2.i );
-    }
 
     // test conversion from rads to encoder values
     #[test]

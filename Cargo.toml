@@ -173,8 +173,6 @@ test = false
 name = "firmware_poulpe" # src/lib.rs
 test = false
 
-
-
 ## need to add this for any test file added of for any file that has tests in it
 [[test]]
 name = "motor"
@@ -185,6 +183,11 @@ path = "src/config/motor.rs"
 name = "current"
 harness = false
 path = "src/config/current_sense.rs"
+
+[[test]]
+name = "conversions"
+harness = false
+path = "src/dynamixel/conversion.rs"
 
 [[test]]
 name = "test_conversions"
