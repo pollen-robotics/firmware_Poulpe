@@ -386,6 +386,9 @@ pub async fn control_loop(config: ActuatorConfig) {
     //Find index for Orbita3D motors
     #[cfg(feature = "orbita3d")]
     {
+        //FIXME:
+        // - Maybe torque off is not so good, moving motor can induce motion in the torque off motor...
+
         actuator.set_torque([false, false, false]).unwrap();
         // #[cfg(feature = "orbita3d")]
         let indices = actuator.find_index(&mut donut_hall).unwrap_or_else(|e| {
@@ -413,11 +416,18 @@ pub async fn control_loop(config: ActuatorConfig) {
         actuator.set_torque([false, false, false]).unwrap();
         // #[cfg(feature = "orbita3d")]
         let init_sensors = actuator.get_axis_sensors().unwrap();
+        debug!("init axis sensors: {:?}", init_sensors);
+
         // #[cfg(feature = "orbita3d")]
         let res = actuator.set_current_position(init_sensors);
         // #[cfg(feature = "orbita3d")]
         match res {
-            Ok(_) => {}
+            Ok(_) => {
+                SHARED_MEMORY
+                    .lock()
+                    .await
+                    .set_current_position(init_sensors);
+            }
             Err(e) => {
                 init_error = true;
                 error!("Error setting current position: {:?}", e);
@@ -427,13 +437,41 @@ pub async fn control_loop(config: ActuatorConfig) {
         let res = actuator.set_target_position(init_sensors);
         // #[cfg(feature = "orbita3d")]
         match res {
-            Ok(_) => {}
+            Ok(_) => {
+                SHARED_MEMORY.lock().await.set_target_position(init_sensors);
+            }
             Err(e) => {
                 init_error = true;
                 error!("Error setting target position: {:?}", e);
             }
         }
     }
+
+    let curpos = actuator.get_current_position().unwrap();
+    let tarpos = actuator.get_target_position().unwrap();
+
+    debug!(
+        "Current position: {:?} target position: {:?}",
+        curpos, tarpos
+    );
+    ////////// DEBUG
+
+    // actuator.set_torque([true, true, true]).unwrap();
+    // let axis = actuator.get_axis_sensors().unwrap();
+    // let pos = actuator.get_current_position().unwrap();
+    // let mut goal = pos.clone();
+    // goal[0] += 1.0;
+    // goal[1] += 1.0;
+    // goal[2] += 1.0;
+    // actuator.set_target_position(goal).unwrap();
+    // Timer::after(Duration::from_millis(1000)).await;
+    // let axis2 = actuator.get_axis_sensors().unwrap();
+    // let pos2 = actuator.get_current_position().unwrap();
+    // info!(
+    //     "DEBUG: pos {:?}, axis: {:?} goal: {:?} pos2: {:?} axis2: {:?}",
+    //     pos, axis, goal, pos2, axis2,
+    // );
+    //////////////
 
     info!("init done");
     // Init SharedMemory with real values before actually running the control loop
@@ -488,6 +526,49 @@ pub async fn control_loop(config: ActuatorConfig) {
         // let t0=Instant::now();
         // warn!("ELAPSED -1 {:?}",t0.elapsed().as_micros());
         //TODO match and set error led for every call
+
+        /////DEBUG HALL
+        // let compute_idx = |d: u16| {
+        //     let mut allindices: [u8; 3] = [0xff; 3]; //Assuming there is only 3 active sensors?
+        //     let mut tmpidx = 0;
+        //     let mut i: usize = 0;
+        //     let mut didx = d.clone();
+        //     while tmpidx < 16 {
+        //         let idx = didx.trailing_ones();
+        //         if idx == 0 && tmpidx > 0 {
+        //             break;
+        //         }
+
+        //         if idx < 16 && idx + tmpidx < 16 {
+        //             allindices[i] = (idx + tmpidx) as u8;
+        //         }
+        //         tmpidx += idx + 1;
+        //         didx >>= (idx + 1);
+        //         i += 1;
+        //         if i == 3 {
+        //             return allindices; //FIXME: what if there are more? It should not...
+        //         }
+        //     }
+        //     allindices
+        // };
+
+        // let index = donut_hall.get_index().unwrap();
+        // let d = compute_idx(index[0]);
+
+        // // debug!("index: {:#018b} {:x} {:?}", index, index, d);
+
+        // let ax = actuator.get_axis_sensors().unwrap();
+        // debug!("axis sensors: {:?}", ax);
+
+        // ////////
+
+        // // For testing idx sensor
+        // actuator.set_index_sensor(d);
+        // {
+        //     SHARED_MEMORY.lock().await.set_index_sensor(d);
+        // }
+
+        //////////////
 
         let pos = actuator.get_current_position().unwrap_or_else(|e| {
             error!("Error reading position: {:?}", e);

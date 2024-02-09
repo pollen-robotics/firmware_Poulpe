@@ -11,7 +11,7 @@ use embassy_stm32::gpio::{Input, Level, Output, Pin, Pull, Speed};
 use embassy_stm32::i2c::{Error, I2c, Instance as I2cInstance};
 use embassy_stm32::peripherals::SPI4;
 use embassy_stm32::spi::{Config, Instance, MisoPin, MosiPin, SckPin, Spi};
-use embassy_stm32::{i2c, spi, Peripheral};
+use embassy_stm32::{i2c, spi};
 use embassy_time::*;
 // use embassy_embedded_hal::shared_bus::blocking::spi::SpiDevice;
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
@@ -423,7 +423,7 @@ where
         let mut combined_value: u16 = ((data_read[0] as u16) << 8) | (data_read[1] as u16);
         // check if data has good parity
         if (combined_value.count_ones() % 2) != 0 {
-            error!("Parity error reading Center sensor");
+            // error!("Parity error reading Center sensor");
             return Err(IOError::InvalidData);
         }
         combined_value &= 0x3FFF;

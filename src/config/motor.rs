@@ -16,7 +16,6 @@ pub struct BrushlessMotor {
     axis_ratio: f32,
 }
 
-
 impl BrushlessMotor {
     #[allow(dead_code)]
     pub fn ecx22() -> Self {
@@ -33,9 +32,8 @@ impl BrushlessMotor {
             pid_position_p_position_i: 0x02000000,
 
             // gearing ratios
-            gearbox_ratio: 1.0/35.0,
-            axis_ratio: 12.0/64.0,
-
+            gearbox_ratio: 1.0 / 35.0,
+            axis_ratio: 12.0 / 64.0,
         }
     }
     #[allow(dead_code)]
@@ -53,8 +51,8 @@ impl BrushlessMotor {
             pid_position_p_position_i: 0x00500000,
 
             // gearing ratios
-            gearbox_ratio: 1.0/25.01,
-            axis_ratio: 28.0/52.0,
+            gearbox_ratio: 1.0 / 25.01,
+            axis_ratio: 28.0 / 52.0,
         }
     }
     #[allow(dead_code)]
@@ -74,15 +72,15 @@ impl BrushlessMotor {
             pid_position_p_position_i: 0x01000000,
 
             // gearing ratios
-            gearbox_ratio: 1.0,
-            axis_ratio: 20.0/38.0,
+            gearbox_ratio: 1.0, //FIXME
+            axis_ratio: 20.0 / 38.0,
         }
     }
 }
 
 impl BrushlessMotor {
     pub fn motor_type_n_pole_pairs(&self) -> u32 {
-	self.motor_type_n_pole_pairs
+        self.motor_type_n_pole_pairs
     }
     pub fn pid_flux_p_flux_i(&self) -> u32 {
         self.pid_flux_p_flux_i
@@ -98,21 +96,21 @@ impl BrushlessMotor {
     }
 
     pub fn gearbox_ratio(&self) -> f32 {
-	self.gearbox_ratio
+        self.gearbox_ratio
     }
     pub fn axis_ratio(&self) -> f32 {
-	self.axis_ratio
+        self.axis_ratio
     }
     pub fn pole_pairs(&self) -> f32 {
-	(self.motor_type_n_pole_pairs & 0x0000FFFF) as f32
+        (self.motor_type_n_pole_pairs & 0x0000FFFF) as f32
     }
-    
+
     pub fn abn_decoder_ppr(&self) -> u32 {
-	self.abn_decoder_ppr
+        self.abn_decoder_ppr
     }
 
     // conversion from electrical to mechanical angle
-    // depending on the features enabled, 
+    // depending on the features enabled,
     // feature "gearbox_output" returns the angle after the gearbox
     // feature "axis_output" returns the angle after the gearbox and axis
     // if neither of the above features are enabled, the motor angle is returned
@@ -131,7 +129,6 @@ impl BrushlessMotor {
     // feature "axis_output" considers the angle after the gearbox and axis
     // if neither of the above features are enabled, the motor angle is returned
     pub fn angle_mech_to_elec(&self, angle: f32) -> f32 {
-
         #[cfg(feature = "gearbox_output")]
         return self.gearbox_to_elec(angle);
         #[cfg(feature = "axis_output")]
@@ -144,6 +141,7 @@ impl BrushlessMotor {
     // conversion from electrical to mechanical angle
     pub fn elec_to_shaft(&self, angle: f32) -> f32 {
         angle / self.pole_pairs()
+        // angle
     }
     // from electrical angle to the angle of the motor after the gearbox
     pub fn elec_to_gearbox(&self, angle: f32) -> f32 {
@@ -155,7 +153,8 @@ impl BrushlessMotor {
     }
     // conversion from mechanical to electrical angle
     pub fn shaft_to_elec(&self, angle: f32) -> f32 {
-        angle * self.pole_pairs() 
+        angle * self.pole_pairs()
+        // angle
     }
     // from mechanical angle after the gearbox to electrical angle
     pub fn gearbox_to_elec(&self, angle: f32) -> f32 {
@@ -165,5 +164,4 @@ impl BrushlessMotor {
     pub fn axis_to_elec(&self, angle: f32) -> f32 {
         self.gearbox_to_elec(angle) / self.axis_ratio
     }
-
 }

@@ -644,17 +644,16 @@ where
 
     fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<[u8; 1], IOError> //TODO
     {
-        // - read initial Hall state
-        // - Slowly move the motor (velocity mode?)
-        // - Loop while Hall state is the same
-        // - Returns the index of the Hall that changed
+        // - Move the motor anticlockwise for about 11.25° (22.5/2) (while the other motors are Off in case they are touching)
+        // - Record the Hall state d0
+        // - Move the motor clockwise until the Hall state changes d1
+        // - If the change is a 255 (dead zone) then the closest (in the CCW direction) is the starting index
+        // - If the change is another index (from a dead zone) then the closest (in the CCW direction) is the detected index
         // - setup the motor back
+        // - Returns the index of the Hall that changed
+        block_for(Duration::from_millis(50));
 
         self.set_torque([true])?;
-        let d = donut_sensor.read().unwrap_or_else(|e| {
-            error!("FIND INDEX error: {:?}", e);
-            0
-        });
 
         let compute_idx = |d: u16| {
             let mut allindices: [u8; 3] = [0xff; 3]; //Assuming there is only 3 active sensors?
@@ -695,12 +694,41 @@ where
         // );
         // ////
 
-        // - Move the motor anticlockwise for about 12° (while the other motors are Off in case they are touching)
-        // - Record the Hall state
-        // - Move the motor clockwise until the Hall state changes
-        self.set_target_velocity([-0.43 / self.foc.brushless_motor_config.axis_ratio()])?;
-        self.set_control_mode(MotionMode::Velocity)?;
-        block_for(Duration::from_millis(500)); //It should move the arm roughly 12°
+        // let starting_pos = self.foc.tmc4671_get_actual_position().unwrap_or_else(|e| {
+        //     error!("GET POS error: {:?}", e);
+        //     0
+        // });
+
+        let starting_pos = self.get_current_position().unwrap_or_else(|e| {
+            error!("GET POS error: {:?}", e);
+            [0.0]
+        });
+
+        //We move CCW of about 12° (should be sufficient). The next motor [top, mid, bot] should be torque off in case they are touching
+        self.set_target_position([
+            starting_pos[0] - 12.0_f32.to_radians() / self.foc.brushless_motor_config.axis_ratio()
+        ])?;
+        self.set_control_mode(MotionMode::Position)?;
+        block_for(Duration::from_millis(250));
+        //Then here, ideally all the motors should be torque on, in order to avoid cross motion (one motor making another one move), but I have to rewrite all this differently... (no access to the other motors here)
+
+        let starting_pos2 = self.get_current_position().unwrap_or_else(|e| {
+            error!("GET POS error: {:?}", e);
+            [0.0]
+        });
+
+        debug!(
+            "starting search moved: {:?}",
+            (starting_pos2[0] - starting_pos[0]).to_degrees()
+        );
+        // self.set_target_velocity([-0.5 / self.foc.brushless_motor_config.axis_ratio()])?;
+        // self.set_control_mode(MotionMode::Velocity)?;
+        // block_for(Duration::from_millis(500)); //It should move the arm roughly 12°
+
+        let d = donut_sensor.read().unwrap_or_else(|e| {
+            error!("FIND INDEX error: {:?}", e);
+            0
+        });
 
         let pos = self.foc.tmc4671_get_actual_position().unwrap_or_else(|e| {
             error!("GET POS error: {:?}", e);
@@ -719,25 +747,46 @@ where
             rads.to_degrees()
         );
 
-        self.set_target_velocity([0.43 / self.foc.brushless_motor_config.axis_ratio()])?;
+        self.set_target_velocity([0.0])?;
+        self.set_control_mode(MotionMode::Velocity)?;
+        self.set_target_velocity([0.4 / self.foc.brushless_motor_config.axis_ratio()])?;
         // self.set_control_mode(MotionMode::Velocity)?;
         let t0 = Instant::now();
         let mut dd = donut_sensor.read().unwrap_or_else(|e| {
             error!("FIND INDEX error: {:?}", e);
             0
         });
-        while dd == d && t0.elapsed().as_millis() < 500 {
-            //We move back until we see a change in the Hall state
 
+        // let mut detected = false;
+        // while !detected && t0.elapsed().as_millis() < 500 {
+        //     //We move back until we see a change in the Hall state
+
+        //     if dd != d && dd.count_ones() <= d.count_ones() {
+        //         detected = true;
+        //     }
+        //     // debug!("READ INDEX: {:#018b} {:#018b} {:?}", d, dd, self.kind);
+        //     else {
+        //         dd = donut_sensor.read().unwrap_or_else(|e| {
+        //             error!("FIND INDEX error: {:?}", e);
+        //             0
+        //         });
+        //     }
+        // }
+
+        while t0.elapsed().as_millis() < 1000 {
+            //We move back until we see a change in the Hall state
             debug!("READ INDEX: {:#018b} {:#018b} {:?}", d, dd, self.kind);
-            dd = donut_sensor.read().unwrap_or_else(|e| {
-                error!("FIND INDEX error: {:?}", e);
-                0
-            });
-        }
-        //to return roughly to the initial position
-        if t0.elapsed().as_millis() < 500 {
-            block_for(Duration::from_millis(500 - t0.elapsed().as_millis()));
+            if dd != d {
+                debug!("FOUND!");
+                self.set_target_velocity([0.0])?;
+                break;
+            } else {
+                dd = donut_sensor.read().unwrap_or_else(|e| {
+                    error!("FIND INDEX error: {:?}", e);
+                    0
+                });
+                // block_for(Duration::from_millis(5));
+            }
         }
 
         //debug to find the total motion
@@ -751,13 +800,24 @@ where
             .brushless_motor_config
             .angle_elec_to_mech(conversion::encoder_to_rad(pos, self.foc.ppr));
 
+        // //to return roughly to the initial position
+        // if t0.elapsed().as_millis() < 500 {
+        //     block_for(Duration::from_millis(500 - t0.elapsed().as_millis()));
+        // }
+
         // self.set_target_velocity([0.0])?;
         // self.set_target_velocity([-5000.0])?;
         // block_for(Duration::from_millis(500));
+
+        //Go back to the starting point
+        // self.set_target_position([starting_pos[0]])?;
+        self.set_control_mode(MotionMode::Position)?;
+        // block_for(Duration::from_millis(250));
+        //FIXME: il vaut mieux pas s'arrêter dans une zone morte
         let _ = self.foc.tmc4671_set_actual_position(0);
         let _ = self.foc.tmc4671_set_target_position(0);
-        self.set_control_mode(MotionMode::Position)?;
-        self.set_torque([false])?;
+
+        // self.set_torque([false])?; //keep the motor torque on while the next one moves, to avoid cross motion and false Hall detection. Yes it can happen...
 
         let end_indices = compute_idx(dd);
         debug!(
@@ -770,18 +830,26 @@ where
             "MOVED: {:?}",
             (rads2 - rads).to_degrees() * self.foc.brushless_motor_config.axis_ratio()
         );
-        //If we end up in a dead zone (255), starting from a detected sensor
-        for index in start_indices.iter() {
-            if !end_indices.contains(index) && *index != 255 {
-                debug!("Moved index: {:?}", *index);
-                return Ok([*index]);
-            }
-        }
 
         //If we end up in a detected zone starting from either a detected sensor or a dead zone (255)
         for index in end_indices.iter() {
             if !start_indices.contains(index) && *index != 255 {
-                debug!("Moved index: {:?}", *index);
+                debug!("Moved index: {:?} => found a new idx (idx=new idx)", *index);
+                return Ok([*index]);
+            }
+        }
+        //If we end up in a dead zone (255), starting from a detected sensor
+        for index in start_indices.iter() {
+            if !end_indices.contains(index) && *index != 255 {
+                debug!(
+                    "Moved index: {:?} => found a dead zone (idx=starting idx)",
+                    *index
+                );
+                //Is it better to backup to a non dead zone?
+                self.set_target_position([
+                    -5.0_f32.to_radians() / self.foc.brushless_motor_config.axis_ratio()
+                ])?;
+                block_for(Duration::from_millis(200));
                 return Ok([*index]);
             }
         }
