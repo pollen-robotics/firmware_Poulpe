@@ -389,7 +389,7 @@ pub async fn control_loop(config: ActuatorConfig) {
         //FIXME:
         // - Maybe torque off is not so good, moving motor can induce motion in the torque off motor...
 
-        actuator.set_torque([false, false, false]).unwrap();
+        // actuator.set_torque([false, false, false]).unwrap();
         // #[cfg(feature = "orbita3d")]
         let indices = actuator.find_index(&mut donut_hall).unwrap_or_else(|e| {
             error!("Error finding index: {:?}", e);
