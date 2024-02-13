@@ -58,6 +58,7 @@ pub const UQ_UD_EXT: u32 = 0x000001000; // Openloop "torque_target" 2000
 pub enum Tmc4671Registers {
     CHIPINFO_DATA = 0x00,
     CHIPINFO_ADDR = 0x01,
+    ADC_RAW_DATA = 0x02,
     ADC_RAW_ADDR = 0x03,
     dsADC_MCFG_B_MCFG_A = 0x04,
     dsADC_MCLK_A = 0x05,
@@ -267,6 +268,13 @@ where
         data &= 0x7FFFFFFFu32;
         data |= pidtype as u32;
         self.tmc4671_write_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data)
+    }
+
+    pub fn tmc4671_get_adc_raw(&mut self) -> Result<(u16, u16), embassy_stm32::spi::Error> {
+        match self.tmc4671_get_u32(Tmc4671Registers::ADC_RAW_DATA as u8) {
+            Ok(raw) => Ok(((raw & 0xFFFF) as u16, (raw >> 16) as u16)),
+            Err(e) => Err(e),
+        }
     }
 
     pub fn tmc4671_get_pid_flux(&mut self) -> Result<u32, embassy_stm32::spi::Error> {
