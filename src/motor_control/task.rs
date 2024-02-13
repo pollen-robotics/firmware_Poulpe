@@ -1,36 +1,38 @@
 use core::cell::RefCell;
 
-use defmt::{info, error, debug, warn};
-use embassy_embedded_hal::shared_bus::blocking::{spi::SpiDeviceWithConfig, i2c::I2cDevice};
+use defmt::{debug, error, info, warn};
+use embassy_embedded_hal::shared_bus::blocking::{i2c::I2cDevice, spi::SpiDeviceWithConfig};
+use embassy_stm32::i2c::{Error, I2c};
+use embassy_stm32::time::Hertz;
 use embassy_stm32::{
     dma::NoDma,
     gpio::{Level, Output, Speed},
-    spi
+    spi,
 };
-use embassy_stm32::i2c::{Error, I2c};
-use embassy_stm32::time::Hertz;
 
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex};
-use embassy_time::{Duration, Timer, block_for, Instant, Ticker};
-
+use embassy_time::{block_for, Duration, Instant, Ticker, Timer};
 
 const SPI_FREQ: u32 = 2_000_000;
 
-
 use crate::{
     config::{self, ActuatorConfig, DonutHall},
-    SHARED_MEMORY, motor_control::{sensors::{AD5047Sensor, SensorKind, I2cHallSensor}, RawSensorsIO}, IrqsI2c,
+    motor_control::{
+        sensors::{AD5047Sensor, I2cHallSensor, SensorKind},
+        RawSensorsIO,
+    },
+    IrqsI2c, SHARED_MEMORY,
 };
 
 use super::{
+    sensors::AksimSensor,
     ventouse::{Ventouse, VentouseKind},
-    Actuator, Driver, Foc, RawMotorsIO, sensors::AksimSensor,
+    Actuator, Driver, Foc, RawMotorsIO,
 };
 
 pub async fn set_error_led() {
     SHARED_MEMORY.lock().await.set_error_led(true);
 }
-
 
 #[embassy_executor::task]
 pub async fn control_loop(config: ActuatorConfig) {
@@ -49,45 +51,45 @@ pub async fn control_loop(config: ActuatorConfig) {
     driver_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
     driver_spi_config.bit_order = spi::BitOrder::MsbFirst;
 
-
     // Ventouse A
     #[cfg(feature = "orbita3d")]
     let spi = spi::Spi::new(
-            config.a.peri,
-            config.a.sck,
-            config.a.mosi,
-            config.a.miso,
-            NoDma,
-            NoDma,
-            spi_config,
-	);
+        config.a.peri,
+        config.a.sck,
+        config.a.mosi,
+        config.a.miso,
+        NoDma,
+        NoDma,
+        spi_config,
+    );
     #[cfg(feature = "orbita3d")]
-	let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi));
+    let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi));
     #[cfg(feature = "orbita3d")]
-	let foc_spi = SpiDeviceWithConfig::new(
-            &spi_bus,
-            Output::new(config.a.foc_cs, Level::High, Speed::Medium),
-            foc_spi_config,
-	);
+    let foc_spi = SpiDeviceWithConfig::new(
+        &spi_bus,
+        Output::new(config.a.foc_cs, Level::High, Speed::Medium),
+        foc_spi_config,
+    );
     #[cfg(feature = "orbita3d")]
-	let foc = Foc::new(
-            foc_spi,
-            config.a.foc_enable,
-            config::BrushlessMotor::ecx22(),
-	);
+    let foc = Foc::new(
+        foc_spi,
+        config.a.foc_enable,
+        config::BrushlessMotor::ecx22(),
+        // current sense for wailer B2 board
+        config::CurrentSensing::wailer_B2(),
+    );
     #[cfg(feature = "orbita3d")]
-	let driver_spi = SpiDeviceWithConfig::new(
-            &spi_bus,
-            Output::new(config.a.driver_cs, Level::High, Speed::Medium),
-            driver_spi_config,
-	);
+    let driver_spi = SpiDeviceWithConfig::new(
+        &spi_bus,
+        Output::new(config.a.driver_cs, Level::High, Speed::Medium),
+        driver_spi_config,
+    );
     #[cfg(feature = "orbita3d")]
-	let driver = Driver::new(driver_spi);
+    let driver = Driver::new(driver_spi);
     #[cfg(feature = "orbita3d")]
-	let ventouse_a = Ventouse::new(foc, driver);
+    let ventouse_a = Ventouse::new(foc, driver);
     #[cfg(feature = "orbita3d")]
-	let ventouse_a = VentouseKind::A(ventouse_a);
-
+    let ventouse_a = VentouseKind::A(ventouse_a);
 
     // Ventouse B
     let spi = spi::Spi::new(
@@ -98,11 +100,9 @@ pub async fn control_loop(config: ActuatorConfig) {
         NoDma,
         NoDma,
         spi::Config::default(),
-	// spi_config,
+        // spi_config,
     );
     let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi));
-
-
 
     //AD5047 center sensor BUS B
     /////////////
@@ -118,76 +118,68 @@ pub async fn control_loop(config: ActuatorConfig) {
         ad5047_spi_config,
     );
     #[cfg(feature = "orbita2d")]
-    let ad5047=AD5047Sensor::new(ad5047_spi);
+    let ad5047 = AD5047Sensor::new(ad5047_spi);
     #[cfg(feature = "orbita2d")]
-    let ad5047=SensorKind::Center(ad5047);
+    let ad5047 = SensorKind::Center(ad5047);
 
     //////////
 
-
     //Donut sensor BUS B
 
+    let mut ad5047top_spi_config = spi::Config::default();
 
-	let mut ad5047top_spi_config = spi::Config::default();
+    ad5047top_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
 
-	ad5047top_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
+    ad5047top_spi_config.mode = spi::MODE_1;
 
-	ad5047top_spi_config.mode = spi::MODE_1;
-
-	ad5047top_spi_config.bit_order = spi::BitOrder::MsbFirst;
+    ad5047top_spi_config.bit_order = spi::BitOrder::MsbFirst;
     #[cfg(feature = "orbita3d")]
-	let ad5047top_spi = SpiDeviceWithConfig::new(
-            &spi_bus,
-            Output::new(config.ad5047top.cs, Level::High, Speed::Medium),
-            ad5047top_spi_config,
-	);
+    let ad5047top_spi = SpiDeviceWithConfig::new(
+        &spi_bus,
+        Output::new(config.ad5047top.cs, Level::High, Speed::Medium),
+        ad5047top_spi_config,
+    );
     #[cfg(feature = "orbita3d")]
-	let ad5047top=AD5047Sensor::new(ad5047top_spi);
+    let ad5047top = AD5047Sensor::new(ad5047top_spi);
     #[cfg(feature = "orbita3d")]
-	let ad5047top=SensorKind::DonutTop(ad5047top);
+    let ad5047top = SensorKind::DonutTop(ad5047top);
 
+    let mut ad5047mid_spi_config = spi::Config::default();
 
-	let mut ad5047mid_spi_config = spi::Config::default();
+    ad5047mid_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
 
-	ad5047mid_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
+    ad5047mid_spi_config.mode = spi::MODE_1;
 
-	ad5047mid_spi_config.mode = spi::MODE_1;
-
-	ad5047mid_spi_config.bit_order = spi::BitOrder::MsbFirst;
+    ad5047mid_spi_config.bit_order = spi::BitOrder::MsbFirst;
     #[cfg(feature = "orbita3d")]
-	let ad5047mid_spi = SpiDeviceWithConfig::new(
-            &spi_bus,
-            Output::new(config.ad5047mid.cs, Level::High, Speed::Medium),
-            ad5047mid_spi_config,
-	);
+    let ad5047mid_spi = SpiDeviceWithConfig::new(
+        &spi_bus,
+        Output::new(config.ad5047mid.cs, Level::High, Speed::Medium),
+        ad5047mid_spi_config,
+    );
     #[cfg(feature = "orbita3d")]
-	let ad5047mid=AD5047Sensor::new(ad5047mid_spi);
+    let ad5047mid = AD5047Sensor::new(ad5047mid_spi);
     #[cfg(feature = "orbita3d")]
-	let ad5047mid=SensorKind::DonutMid(ad5047mid);
+    let ad5047mid = SensorKind::DonutMid(ad5047mid);
 
-	let mut ad5047bot_spi_config = spi::Config::default();
+    let mut ad5047bot_spi_config = spi::Config::default();
 
-	ad5047bot_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
+    ad5047bot_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
 
-	ad5047bot_spi_config.mode = spi::MODE_1;
+    ad5047bot_spi_config.mode = spi::MODE_1;
 
-	ad5047bot_spi_config.bit_order = spi::BitOrder::MsbFirst;
+    ad5047bot_spi_config.bit_order = spi::BitOrder::MsbFirst;
     #[cfg(feature = "orbita3d")]
-	let ad5047bot_spi = SpiDeviceWithConfig::new(
-            &spi_bus,
-            Output::new(config.ad5047bot.cs, Level::High, Speed::Medium),
-            ad5047bot_spi_config,
-	);
+    let ad5047bot_spi = SpiDeviceWithConfig::new(
+        &spi_bus,
+        Output::new(config.ad5047bot.cs, Level::High, Speed::Medium),
+        ad5047bot_spi_config,
+    );
     #[cfg(feature = "orbita3d")]
-	let ad5047bot=AD5047Sensor::new(ad5047bot_spi);
+    let ad5047bot = AD5047Sensor::new(ad5047bot_spi);
     #[cfg(feature = "orbita3d")]
-	let ad5047bot=SensorKind::DonutBot(ad5047bot);
-///////////////
-
-
-
-
-
+    let ad5047bot = SensorKind::DonutBot(ad5047bot);
+    ///////////////
 
     let foc_spi = SpiDeviceWithConfig::new(
         &spi_bus,
@@ -197,14 +189,14 @@ pub async fn control_loop(config: ActuatorConfig) {
     let foc = Foc::new(
         foc_spi,
         config.b.foc_enable,
-	#[cfg(all(feature = "orbita2d", feature = "ec45"))]
+        #[cfg(all(feature = "orbita2d", feature = "ec45"))]
         config::BrushlessMotor::ec45(),
         #[cfg(all(feature = "orbita2d", feature = "ec60"))]
         config::BrushlessMotor::ec60(),
-	#[cfg(feature = "orbita3d")]
+        #[cfg(feature = "orbita3d")]
         config::BrushlessMotor::ecx22(),
         // current sense for wailer B2 board
-        config::CurrentSensing::wailer_B2()
+        config::CurrentSensing::wailer_B2(),
     );
 
     let driver_spi = SpiDeviceWithConfig::new(
@@ -226,7 +218,7 @@ pub async fn control_loop(config: ActuatorConfig) {
         NoDma,
         NoDma,
         // spi::Config::default(),
-	spi_config,
+        spi_config,
     );
     let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi));
 
@@ -238,14 +230,14 @@ pub async fn control_loop(config: ActuatorConfig) {
     let foc = Foc::new(
         foc_spi,
         config.c.foc_enable,
-	#[cfg(all(feature = "orbita2d", feature = "ec45"))]
+        #[cfg(all(feature = "orbita2d", feature = "ec45"))]
         config::BrushlessMotor::ec45(),
-	#[cfg(all(feature = "orbita2d", feature = "ec60"))]
+        #[cfg(all(feature = "orbita2d", feature = "ec60"))]
         config::BrushlessMotor::ec60(),
-	#[cfg(feature = "orbita3d")]
+        #[cfg(feature = "orbita3d")]
         config::BrushlessMotor::ecx22(),
         // current sense for wailer B2 board
-        config::CurrentSensing::wailer_B2()
+        config::CurrentSensing::wailer_B2(),
     );
 
     let driver_spi = SpiDeviceWithConfig::new(
@@ -258,10 +250,8 @@ pub async fn control_loop(config: ActuatorConfig) {
     let ventouse_c = Ventouse::new(foc, driver);
     let ventouse_c = VentouseKind::C(ventouse_c);
 
-
-
     //Aksim sensor BUS C
- let mut aksim_spi_config = spi::Config::default();
+    let mut aksim_spi_config = spi::Config::default();
 
     aksim_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
 
@@ -269,20 +259,17 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     aksim_spi_config.bit_order = spi::BitOrder::MsbFirst;
 
-
     #[cfg(feature = "orbita2d")]
-	let aksim_spi = SpiDeviceWithConfig::new(
-            &spi_bus,
-            Output::new(config.aksim.cs, Level::High, Speed::Medium),
-            aksim_spi_config,
-	);
+    let aksim_spi = SpiDeviceWithConfig::new(
+        &spi_bus,
+        Output::new(config.aksim.cs, Level::High, Speed::Medium),
+        aksim_spi_config,
+    );
     #[cfg(feature = "orbita2d")]
-	let aksim=AksimSensor::new(aksim_spi);
+    let aksim = AksimSensor::new(aksim_spi);
     #[cfg(feature = "orbita2d")]
-	let aksim=SensorKind::Ring(aksim);
+    let aksim = SensorKind::Ring(aksim);
     ////
-
-
 
     //Donut I2C Hall sensors
     #[cfg(feature = "orbita3d")]
@@ -290,17 +277,16 @@ pub async fn control_loop(config: ActuatorConfig) {
         config.donut_hall.peri,
         config.donut_hall.scl,
         config.donut_hall.sda,
-	IrqsI2c,
+        IrqsI2c,
         NoDma,
         NoDma,
-	Hertz(100_000),
+        Hertz(100_000),
         Default::default(),
     );
 
     #[cfg(feature = "orbita3d")]
-    let mut donut_hall=DonutHall::new(i2c);
+    let mut donut_hall = DonutHall::new(i2c);
     // let mut donut_hall=SensorKind::DonutHall(donut_hall);
-
 
     // let val=donut_hall.read();
     // match val {
@@ -315,55 +301,48 @@ pub async fn control_loop(config: ActuatorConfig) {
     // error!("Donut sensor: {:#x}",val);
     /////////
 
-
-
     // Setup the actuator with the configured ventouses
     #[cfg(feature = "orbita2d")]
     let mut actuator = Actuator::new([ventouse_b, ventouse_c], [aksim, ad5047]);
     #[cfg(feature = "orbita3d")]
-    let mut actuator = Actuator::new([ventouse_a, ventouse_b, ventouse_c], [ad5047top, ad5047mid, ad5047bot]);
-    let mut init_error=false;
-    let res_init=actuator.init().await;
+    let mut actuator = Actuator::new(
+        [ventouse_a, ventouse_b, ventouse_c],
+        [ad5047top, ad5047mid, ad5047bot],
+    );
+    let mut init_error = false;
+    let res_init = actuator.init().await;
     match res_init {
-	Ok(_v) => {
-	    info!("Registers init ok");
-	},
-	Err(e) => {
-	    init_error=true;
-	    error!("init error: {:?}", e);
-	}
+        Ok(_v) => {
+            info!("Registers init ok");
+        }
+        Err(e) => {
+            init_error = true;
+            error!("init error: {:?}", e);
+        }
     }
 
-
-
-
-
-
     #[cfg(feature = "orbita2d")]
-    actuator.set_torque([false,false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
+    actuator.set_torque([false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
     #[cfg(feature = "orbita2d")]
     Timer::after(Duration::from_micros(100000)).await;
 
-    let init_sensors=actuator.get_axis_sensors().unwrap();
+    let init_sensors = actuator.get_axis_sensors().unwrap();
     #[cfg(feature = "orbita2d")]
     Timer::after(Duration::from_micros(100000)).await;
     #[cfg(feature = "orbita2d")]
-    actuator.set_torque([true,true]).unwrap();
+    actuator.set_torque([true, true]).unwrap();
 
     let res = actuator.check_motors_1().await;
     match res {
-	Ok(_v) => {
-
-	},
-	Err(e) => {
-	    init_error=true;
-	    error!("Motor check error: {:?}", e);
-	}
+        Ok(_v) => {}
+        Err(e) => {
+            init_error = true;
+            error!("Motor check error: {:?}", e);
+        }
     }
 
-
     #[cfg(feature = "orbita2d")]
-    actuator.set_torque([false,false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
+    actuator.set_torque([false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
     #[cfg(feature = "orbita2d")]
     Timer::after(Duration::from_micros(100000)).await;
 
@@ -373,103 +352,132 @@ pub async fn control_loop(config: ActuatorConfig) {
     #[cfg(feature = "orbita2d")]
     Timer::after(Duration::from_micros(100000)).await;
     #[cfg(feature = "orbita2d")]
-    actuator.set_torque([true,true]).unwrap();
+    actuator.set_torque([true, true]).unwrap();
 
-    let res =actuator.check_motors_2().await;
+    let res = actuator.check_motors_2().await;
     match res {
-	Ok(_v) => {
-
-	},
-	Err(e) => {
-	    init_error=true;
-	    error!("Motor check error: {:?}", e);
-	}
+        Ok(_v) => {}
+        Err(e) => {
+            init_error = true;
+            error!("Motor check error: {:?}", e);
+        }
     }
 
-    let mut diff=[0.0;config::N_AXIS];
+    let mut diff = [0.0; config::N_AXIS];
     for (i, s) in moved_sensors.iter().enumerate() {
         diff[i] = *s - init_sensors[i];
-	if diff[i]>3.141592 {
-	    diff[i]=diff[i]-2.0*3.141592;
-	}
+        if diff[i] > 3.141592 {
+            diff[i] = diff[i] - 2.0 * 3.141592;
+        }
 
-
-	if (diff[i]<=0.0 && diff[i]>-0.1) || (diff[i]>0.0 || diff[i].is_nan()) {
-	    error!("Axis sensor {:?} moved too little: {:?} Check sensor connection??", i, diff[i]);
-	    init_error=true;
-
-	}
-
+        if (diff[i] <= 0.0 && diff[i] > -0.1) || (diff[i] > 0.0 || diff[i].is_nan()) {
+            error!(
+                "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
+                i, diff[i]
+            );
+            init_error = true;
+        }
     }
 
     debug!("init sensors: {:?}", init_sensors);
     debug!("moved sensors: {:?}", moved_sensors);
     debug!("diff sensors: {:?}", diff);
 
-
     //Find index for Orbita3D motors
     #[cfg(feature = "orbita3d")]
     {
-    actuator.set_torque([false,false,false]).unwrap();
-    // #[cfg(feature = "orbita3d")]
-    let indices= actuator.find_index(&mut donut_hall).unwrap_or_else(|e|
-								    {
-									error!("Error finding index: {:?}", e);
-									init_error=true;
-									[255;config::N_AXIS]
-								    }
-    );
-    // #[cfg(feature = "orbita3d")]
-    actuator.set_index_sensor(indices);
-    // #[cfg(feature = "orbita3d")]
-    debug!("indices: {:?}", indices);
+        //FIXME:
+        // - Maybe torque off is not so good, moving motor can induce motion in the torque off motor...
+
+        // actuator.set_torque([false, false, false]).unwrap();
+        // #[cfg(feature = "orbita3d")]
+        let indices = actuator.find_index(&mut donut_hall).unwrap_or_else(|e| {
+            error!("Error finding index: {:?}", e);
+            init_error = true;
+            [255; config::N_AXIS]
+        });
+        // #[cfg(feature = "orbita3d")]
+        actuator.set_index_sensor(indices);
+        // #[cfg(feature = "orbita3d")]
+        debug!("indices: {:?}", indices);
     }
     // - Get the "closest" Hall for each motor
     // - Get the "absolute" position of each motor
     // - Set the index of the detected Hall for each motor
     // - Wait for the PC to read theses values...
 
-
     block_for(Duration::from_millis(100));
     #[cfg(feature = "orbita2d")]
-    actuator.set_torque([false,false]).unwrap();
-
+    actuator.set_torque([false, false]).unwrap();
 
     // For compatibility with Orbita3d Houston
     #[cfg(feature = "orbita3d")]
     {
-    actuator.set_torque([false,false,false]).unwrap();
-    // #[cfg(feature = "orbita3d")]
-    let init_sensors=actuator.get_axis_sensors().unwrap();
-    // #[cfg(feature = "orbita3d")]
-    let res = actuator.set_current_position(init_sensors);
-    // #[cfg(feature = "orbita3d")]
-    match res {
-	Ok(_) => {
-	}
-	Err(e) => {
-	    init_error=true;
-	    error!("Error setting current position: {:?}", e);
-	}
+        actuator.set_torque([false, false, false]).unwrap();
+        // #[cfg(feature = "orbita3d")]
+        let init_sensors = actuator.get_axis_sensors().unwrap();
+        debug!("init axis sensors: {:?}", init_sensors);
+
+        // #[cfg(feature = "orbita3d")]
+        let res = actuator.set_current_position(init_sensors);
+        // #[cfg(feature = "orbita3d")]
+        match res {
+            Ok(_) => {
+                SHARED_MEMORY
+                    .lock()
+                    .await
+                    .set_current_position(init_sensors);
+            }
+            Err(e) => {
+                init_error = true;
+                error!("Error setting current position: {:?}", e);
+            }
+        }
+        // #[cfg(feature = "orbita3d")]
+        let res = actuator.set_target_position(init_sensors);
+        // #[cfg(feature = "orbita3d")]
+        match res {
+            Ok(_) => {
+                SHARED_MEMORY.lock().await.set_target_position(init_sensors);
+            }
+            Err(e) => {
+                init_error = true;
+                error!("Error setting target position: {:?}", e);
+            }
+        }
     }
-    // #[cfg(feature = "orbita3d")]
-    let res=actuator.set_target_position(init_sensors);
-    // #[cfg(feature = "orbita3d")]
-    match res {
-	Ok(_) => {
-	}
-	Err(e) => {
-	    init_error=true;
-	    error!("Error setting target position: {:?}", e);
-	}
-    }
-    }
+
+    let curpos = actuator.get_current_position().unwrap();
+    let tarpos = actuator.get_target_position().unwrap();
+
+    debug!(
+        "Current position: {:?} target position: {:?}",
+        curpos, tarpos
+    );
+    ////////// DEBUG
+
+    // actuator.set_torque([true, true, true]).unwrap();
+    // let axis = actuator.get_axis_sensors().unwrap();
+    // let pos = actuator.get_current_position().unwrap();
+    // let mut goal = pos.clone();
+    // goal[0] += 1.0;
+    // goal[1] += 1.0;
+    // goal[2] += 1.0;
+    // actuator.set_target_position(goal).unwrap();
+    // Timer::after(Duration::from_millis(1000)).await;
+    // let axis2 = actuator.get_axis_sensors().unwrap();
+    // let pos2 = actuator.get_current_position().unwrap();
+    // info!(
+    //     "DEBUG: pos {:?}, axis: {:?} goal: {:?} pos2: {:?} axis2: {:?}",
+    //     pos, axis, goal, pos2, axis2,
+    // );
+    //////////////
 
     info!("init done");
     // Init SharedMemory with real values before actually running the control loop
     SHARED_MEMORY.lock().await.init(&mut actuator);
     if init_error {
-	SHARED_MEMORY.lock().await.set_error_led(true);
+        SHARED_MEMORY.lock().await.set_error_led(true);
     }
 
     //"Slow" registers
@@ -481,315 +489,319 @@ pub async fn control_loop(config: ActuatorConfig) {
     let mut init_torquefluxlimit = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
     let mut init_velocitylimit = { SHARED_MEMORY.lock().await.get_velocity_limit() };
 
-
     let mut init_torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
     let mut init_target_position = { SHARED_MEMORY.lock().await.get_target_position() };
 
-
     // actuator.set_torque([false,false]).unwrap();
-    let mut error_led=init_error;
-    let mut prev_error_led=init_error;
+    let mut error_led = init_error;
+    let mut prev_error_led = init_error;
 
     use biquad::*;
     let f0 = 10.hz();
     let fs = 1.khz();
 
     // Create coefficients for the biquads
-    let coeffs = Coefficients::<f32>::from_params(Type::LowPass, fs, f0, Q_BUTTERWORTH_F32).unwrap();
+    let coeffs =
+        Coefficients::<f32>::from_params(Type::LowPass, fs, f0, Q_BUTTERWORTH_F32).unwrap();
 
     // Create two different biquads
     // let mut biquad = DirectForm1::<f32>::new(coeffs);
     // let mut biquad = DirectForm2Transposed::<f32>::new(coeffs);
-    let mut torque_filter=[DirectForm2Transposed::<f32>::new(coeffs); config::N_AXIS];
-    let mut vel_filter=[DirectForm2Transposed::<f32>::new(coeffs); config::N_AXIS];
+    let mut torque_filter = [DirectForm2Transposed::<f32>::new(coeffs); config::N_AXIS];
+    let mut vel_filter = [DirectForm2Transposed::<f32>::new(coeffs); config::N_AXIS];
 
-
-
-    let mut cmd_filter=[DirectForm2Transposed::<f32>::new(coeffs); config::N_AXIS];
+    let mut cmd_filter = [DirectForm2Transposed::<f32>::new(coeffs); config::N_AXIS];
     // velocity feedforward filter
     let f0_ff = 30.hz();
-    let coeffs_vel = Coefficients::<f32>::from_params(Type::LowPass, fs, f0_ff, Q_BUTTERWORTH_F32).unwrap();
-    let mut vel_ff_filter=[DirectForm2Transposed::<f32>::new(coeffs_vel); config::N_AXIS];
+    let coeffs_vel =
+        Coefficients::<f32>::from_params(Type::LowPass, fs, f0_ff, Q_BUTTERWORTH_F32).unwrap();
+    let mut vel_ff_filter = [DirectForm2Transposed::<f32>::new(coeffs_vel); config::N_AXIS];
 
-    let mut slow_timer:u32=1000;
+    let mut slow_timer: u32 = 1000;
 
     let mut target_old = { SHARED_MEMORY.lock().await.get_target_position() };
 
     let mut ticker = Ticker::every(Duration::from_micros(1000));
     loop {
-	// let t0=Instant::now();
-	// warn!("ELAPSED -1 {:?}",t0.elapsed().as_micros());
-	//TODO match and set error led for every call
+        // let t0=Instant::now();
+        // warn!("ELAPSED -1 {:?}",t0.elapsed().as_micros());
+        //TODO match and set error led for every call
 
+        /////DEBUG HALL
+        // let compute_idx = |d: u16| {
+        //     let mut allindices: [u8; 3] = [0xff; 3]; //Assuming there is only 3 active sensors?
+        //     let mut tmpidx = 0;
+        //     let mut i: usize = 0;
+        //     let mut didx = d.clone();
+        //     while tmpidx < 16 {
+        //         let idx = didx.trailing_ones();
+        //         if idx == 0 && tmpidx > 0 {
+        //             break;
+        //         }
 
+        //         if idx < 16 && idx + tmpidx < 16 {
+        //             allindices[i] = (idx + tmpidx) as u8;
+        //         }
+        //         tmpidx += idx + 1;
+        //         didx >>= (idx + 1);
+        //         i += 1;
+        //         if i == 3 {
+        //             return allindices; //FIXME: what if there are more? It should not...
+        //         }
+        //     }
+        //     allindices
+        // };
 
-        let pos = actuator.get_current_position().unwrap_or_else(|e|
-	    {
-		error!("Error reading position: {:?}", e);
-		error_led=true;
-		[f32::NAN; config::N_AXIS]
-	    });
+        // let index = donut_hall.get_index().unwrap();
+        // let d = compute_idx(index[0]);
+
+        // // debug!("index: {:#018b} {:x} {:?}", index, index, d);
+
+        // let ax = actuator.get_axis_sensors().unwrap();
+        // debug!("axis sensors: {:?}", ax);
+
+        // ////////
+
+        // // For testing idx sensor
+        // actuator.set_index_sensor(d);
+        // {
+        //     SHARED_MEMORY.lock().await.set_index_sensor(d);
+        // }
+
+        //////////////
+
+        let pos = actuator.get_current_position().unwrap_or_else(|e| {
+            error!("Error reading position: {:?}", e);
+            error_led = true;
+            [f32::NAN; config::N_AXIS]
+        });
         {
-	    // warn!("ELAPSED 0 {:?}",t0.elapsed().as_micros());
-	    // info!("pos: {:?}", pos);
+            // warn!("ELAPSED 0 {:?}",t0.elapsed().as_micros());
+            // info!("pos: {:?}", pos);
             SHARED_MEMORY.lock().await.set_current_position(pos);
-	    // warn!("ELAPSED 1 {:?}",t0.elapsed().as_micros());
+            // warn!("ELAPSED 1 {:?}",t0.elapsed().as_micros());
         }
 
-
         let torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
-        actuator.set_torque(torque_on).unwrap_or_else(|e|
-						      {
-							  error!("Error setting torque: {:?}", e);
-							  error_led=true;
-						      }
-	);
+        actuator.set_torque(torque_on).unwrap_or_else(|e| {
+            error!("Error setting torque: {:?}", e);
+            error_led = true;
+        });
 
-
-
-	//Unfiltered
-	#[cfg(not(feature = "cmd_filter"))]
+        //Unfiltered
+        #[cfg(not(feature = "cmd_filter"))]
         let target = { SHARED_MEMORY.lock().await.get_target_position() };
 
-	//Filtered
+        //Filtered
         let mut target = { SHARED_MEMORY.lock().await.get_target_position() };
-	#[cfg(feature = "cmd_filter")]
-	target.iter_mut().enumerate().for_each(|(i,t)|
-					       {
-						   if !torque_on[i]
-						   {//Trick to make the filter converge => reset target
-						       for _ in 0..1000{
-							   cmd_filter[i].run(*t);
-						       }
-						   }
-						   *t=cmd_filter[i].run(*t)
-					       });
+        #[cfg(feature = "cmd_filter")]
+        target.iter_mut().enumerate().for_each(|(i, t)| {
+            if !torque_on[i] {
+                //Trick to make the filter converge => reset target
+                for _ in 0..1000 {
+                    cmd_filter[i].run(*t);
+                }
+            }
+            *t = cmd_filter[i].run(*t)
+        });
 
-	actuator.set_target_position(target).unwrap_or_else(|e|
-							    {
-								error!("Error setting target pos: {:?}", e);
-								error_led=true;
-							    }
-	);
+        actuator.set_target_position(target).unwrap_or_else(|e| {
+            error!("Error setting target pos: {:?}", e);
+            error_led = true;
+        });
 
         // add the feedforward control to the velocity loop
         #[cfg(feature = "velocity_feedforward")]
         {
-                // velocity feedforward from shared memory
-                let mut velocity_ff = { SHARED_MEMORY.lock().await.get_velocity_feedforward() };
-                
-                // get velocity feedforward timestamp
-                let velocity_ff_timestamp = { SHARED_MEMORY.lock().await.get_velocity_feedforward_timestamp() };
-                // check if the velocity feedforward value has been set and is it too old (older than 200ms)
-                match velocity_ff_timestamp {
-                    Some(timestamp) => {
-                        if timestamp.elapsed().as_millis() > 200 {
-                            velocity_ff = [0.0; config::N_AXIS];
-                        }
-                    },
-                    None => {
+            // velocity feedforward from shared memory
+            let mut velocity_ff = { SHARED_MEMORY.lock().await.get_velocity_feedforward() };
+
+            // get velocity feedforward timestamp
+            let velocity_ff_timestamp = {
+                SHARED_MEMORY
+                    .lock()
+                    .await
+                    .get_velocity_feedforward_timestamp()
+            };
+            // check if the velocity feedforward value has been set and is it too old (older than 200ms)
+            match velocity_ff_timestamp {
+                Some(timestamp) => {
+                    if timestamp.elapsed().as_millis() > 200 {
                         velocity_ff = [0.0; config::N_AXIS];
                     }
                 }
-                
-                // filter the velocity feedforward
-                velocity_ff.iter_mut().enumerate().for_each(|(i,v)| {*v=vel_ff_filter[i].run(*v)});
-                // set the velocity feedforward
-                actuator.set_velocity_feedforward(velocity_ff).unwrap_or_else(|e|
-                {
-                        error!("Error setting velocity feedforward: {:?}", e);
-                        error_led=true;
+                None => {
+                    velocity_ff = [0.0; config::N_AXIS];
                 }
-                );
+            }
+
+            // filter the velocity feedforward
+            velocity_ff
+                .iter_mut()
+                .enumerate()
+                .for_each(|(i, v)| *v = vel_ff_filter[i].run(*v));
+            // set the velocity feedforward
+            actuator
+                .set_velocity_feedforward(velocity_ff)
+                .unwrap_or_else(|e| {
+                    error!("Error setting velocity feedforward: {:?}", e);
+                    error_led = true;
+                });
         }
 
+        let torque = actuator.get_current_torque();
+        match torque {
+            Ok(mut torque) => {
+                torque
+                    .iter_mut()
+                    .enumerate()
+                    .for_each(|(i, t)| *t = torque_filter[i].run(*t));
+                SHARED_MEMORY.lock().await.set_current_torque(torque);
+                // info!("sensors: {:?}", sensors);
+            }
+            Err(_e) => {
+                error_led = true;
+                error!("Torque error");
+            }
+        }
 
+        let vel = actuator.get_current_velocity();
+        match vel {
+            Ok(mut vel) => {
+                vel.iter_mut()
+                    .enumerate()
+                    .for_each(|(i, t)| *t = vel_filter[i].run(*t));
+                SHARED_MEMORY.lock().await.set_current_velocity(vel);
+                // info!("sensors: {:?}", sensors);
+            }
+            Err(_e) => {
+                error_led = true;
+                error!("Vel error");
+            }
+        }
+        // warn!("ELAPSED 6 {:?}",t0.elapsed().as_micros());
 
+        let sensors = actuator.get_axis_sensors();
+        match sensors {
+            Ok(sensors) => {
+                if !sensors.iter().any(|s| s.is_nan()) {
+                    //FIXME: hope it the sensor reading will better work to remove this
+                    SHARED_MEMORY.lock().await.set_axis_sensor(sensors);
+                }
 
+                // info!("sensors: {:?}", sensors);
+            }
+            Err(_e) => {
+                // SHARED_MEMORY.lock().await.set_axis_sensor([999999.0, 999999.0]);
+                // error_led=true;
+                // error!("Axis sensors error");
+            }
+        }
 
-	let torque=actuator.get_current_torque();
-	match torque {
-	    Ok(mut torque) => {
-		torque.iter_mut().enumerate().for_each(|(i,t)| {*t=torque_filter[i].run(*t)});
-		SHARED_MEMORY.lock().await.set_current_torque(torque);
-		// info!("sensors: {:?}", sensors);
-	    },
-	    Err(_e) => {
+        if error_led != prev_error_led {
+            SHARED_MEMORY.lock().await.set_error_led(error_led);
+            prev_error_led = error_led;
+        }
 
-		error_led=true;
-		error!("Torque error");
-	    }
-	}
-
-
-	let vel=actuator.get_current_velocity();
-	match vel {
-	    Ok(mut vel) => {
-		vel.iter_mut().enumerate().for_each(|(i,t)| {*t=vel_filter[i].run(*t)});
-		SHARED_MEMORY.lock().await.set_current_velocity(vel);
-		// info!("sensors: {:?}", sensors);
-	    },
-	    Err(_e) => {
-
-		error_led=true;
-		error!("Vel error");
-	    }
-	}
-	// warn!("ELAPSED 6 {:?}",t0.elapsed().as_micros());
-
-	let sensors=actuator.get_axis_sensors();
-	match sensors {
-	    Ok(sensors) => {
-		if ! sensors.iter().any(|s| s.is_nan()) { //FIXME: hope it the sensor reading will better work to remove this
-		    SHARED_MEMORY.lock().await.set_axis_sensor(sensors);
-		}
-
-
-
-		// info!("sensors: {:?}", sensors);
-	    },
-	    Err(_e) => {
-		// SHARED_MEMORY.lock().await.set_axis_sensor([999999.0, 999999.0]);
-		// error_led=true;
-		// error!("Axis sensors error");
-	    }
-	}
-
-
-
-
-
-	if error_led!=prev_error_led {
-	    SHARED_MEMORY.lock().await.set_error_led(error_led);
-	    prev_error_led=error_led;
-	}
-
-
-	if slow_timer == 0
-	{
-	    //PID and limits: only for debug
-
+        if slow_timer == 0 {
+            //PID and limits: only for debug
 
             let fluxpid = { SHARED_MEMORY.lock().await.get_flux_pid_gains() };
-	    if fluxpid!=init_fluxpid {
-
-		actuator.set_flux_pid_gains(fluxpid).unwrap_or_else(|e|
-								    {
-									error!("Error setting flux pid: {:?}", e);
-									error_led=true;
-								    }
-		);
-		init_fluxpid=fluxpid;
-
-	    }
-
+            if fluxpid != init_fluxpid {
+                actuator.set_flux_pid_gains(fluxpid).unwrap_or_else(|e| {
+                    error!("Error setting flux pid: {:?}", e);
+                    error_led = true;
+                });
+                init_fluxpid = fluxpid;
+            }
 
             let torquepid = { SHARED_MEMORY.lock().await.get_torque_pid_gains() };
-	    if torquepid!=init_torquepid {
-
-		actuator.set_torque_pid_gains(torquepid).unwrap_or_else(|e|
-									{
-									    error!("Error setting torque pid: {:?}", e);
-									    error_led=true;
-									}
-		);
-		init_torquepid=torquepid;
-	    }
+            if torquepid != init_torquepid {
+                actuator
+                    .set_torque_pid_gains(torquepid)
+                    .unwrap_or_else(|e| {
+                        error!("Error setting torque pid: {:?}", e);
+                        error_led = true;
+                    });
+                init_torquepid = torquepid;
+            }
 
             let velocitypid = { SHARED_MEMORY.lock().await.get_velocity_pid_gains() };
-	    if velocitypid!=init_velocitypid {
-
-		actuator.set_velocity_pid_gains(velocitypid).unwrap_or_else(|e|
-									    {
-										error!("Error setting velocity pid: {:?}", e);
-										error_led=true;
-									    }
-		);
-		init_velocitypid=velocitypid;
-	    }
+            if velocitypid != init_velocitypid {
+                actuator
+                    .set_velocity_pid_gains(velocitypid)
+                    .unwrap_or_else(|e| {
+                        error!("Error setting velocity pid: {:?}", e);
+                        error_led = true;
+                    });
+                init_velocitypid = velocitypid;
+            }
 
             let positionpid = { SHARED_MEMORY.lock().await.get_position_pid_gains() };
-	    if positionpid!=init_positionpid {
-
-		actuator.set_position_pid_gains(positionpid).unwrap_or_else(|e|
-									    {
-										error!("Error setting position pid: {:?}", e);
-										error_led=true;
-									    }
-		);
-		init_positionpid=positionpid;
-	    }
+            if positionpid != init_positionpid {
+                actuator
+                    .set_position_pid_gains(positionpid)
+                    .unwrap_or_else(|e| {
+                        error!("Error setting position pid: {:?}", e);
+                        error_led = true;
+                    });
+                init_positionpid = positionpid;
+            }
 
             let uqudlimit = { SHARED_MEMORY.lock().await.get_uq_ud_limit() };
-	    if uqudlimit!=init_uqudlimit {
-
-		actuator.set_uq_ud_limit(uqudlimit).unwrap_or_else(|e|
-								   {
-								       error!("Error setting uq/ud limit: {:?}", e);
-								       error_led=true;
-								   }
-		);
-		init_uqudlimit=uqudlimit;
-	    }
-
+            if uqudlimit != init_uqudlimit {
+                actuator.set_uq_ud_limit(uqudlimit).unwrap_or_else(|e| {
+                    error!("Error setting uq/ud limit: {:?}", e);
+                    error_led = true;
+                });
+                init_uqudlimit = uqudlimit;
+            }
 
             let torquefluxlimit = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
-	    if torquefluxlimit!=init_torquefluxlimit {
-
-		actuator.set_torque_flux_limit(torquefluxlimit).unwrap_or_else(|e|
-									       {
-										   error!("Error setting torque/flux limit: {:?}", e);
-										   error_led=true;
-									       }
-		);
-		init_torquefluxlimit=torquefluxlimit;
-	    }
+            if torquefluxlimit != init_torquefluxlimit {
+                actuator
+                    .set_torque_flux_limit(torquefluxlimit)
+                    .unwrap_or_else(|e| {
+                        error!("Error setting torque/flux limit: {:?}", e);
+                        error_led = true;
+                    });
+                init_torquefluxlimit = torquefluxlimit;
+            }
 
             let velocitylimit = { SHARED_MEMORY.lock().await.get_velocity_limit() };
-	    if velocitylimit!=init_velocitylimit {
+            if velocitylimit != init_velocitylimit {
+                actuator
+                    .set_velocity_limit(velocitylimit)
+                    .unwrap_or_else(|e| {
+                        error!("Error setting velocity limit: {:?}", e);
+                        error_led = true;
+                    });
+                init_velocitylimit = velocitylimit;
+            }
 
-		actuator.set_velocity_limit(velocitylimit).unwrap_or_else(|e|
-									  {
-									      error!("Error setting velocity limit: {:?}", e);
-									      error_led=true;
-									  }
-		);
-		init_velocitylimit=velocitylimit;
-	    }
+            // //Less error at lower frequency...
+            // let sensors=actuator.get_axis_sensors();
+            // match sensors {
+            // 	Ok(sensors) => {
+            // 	    SHARED_MEMORY.lock().await.set_axis_sensor(sensors);
+            // 	    info!("sensors: {:?}", sensors);
+            // 	},
+            // 	Err(_e) => {
+            // 	    // SHARED_MEMORY.lock().await.set_axis_sensor([999999.0, 999999.0]);
+            // 	    error_led=true;
+            // 	    error!("Axis sensors error");
+            // 	}
+            // }
 
+            slow_timer = 1000;
+        } else {
+            slow_timer -= 1;
+        }
 
-	    // //Less error at lower frequency...
-	    // let sensors=actuator.get_axis_sensors();
-	    // match sensors {
-	    // 	Ok(sensors) => {
-	    // 	    SHARED_MEMORY.lock().await.set_axis_sensor(sensors);
-	    // 	    info!("sensors: {:?}", sensors);
-	    // 	},
-	    // 	Err(_e) => {
-	    // 	    // SHARED_MEMORY.lock().await.set_axis_sensor([999999.0, 999999.0]);
-	    // 	    error_led=true;
-	    // 	    error!("Axis sensors error");
-	    // 	}
-	    // }
-
-
-
-
-
-	    slow_timer=1000;
-
-
-	}
-	else
-	{
-	    slow_timer-=1;
-	}
-
-	// let elapsed=t0.elapsed().as_micros();
-	// warn!("ELAPSED: {:?}",elapsed);
+        // let elapsed=t0.elapsed().as_micros();
+        // warn!("ELAPSED: {:?}",elapsed);
         // Timer::after(Duration::from_micros(1000-elapsed)).await;
         // Timer::after(Duration::from_millis(1)).await;
-	ticker.next().await;
-
+        ticker.next().await;
     }
 }

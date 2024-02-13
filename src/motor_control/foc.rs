@@ -8,16 +8,14 @@ use embedded_hal_1::spi::SpiDevice;
 
 use crate::config;
 
-
-
 // PWM configuration
 const PWM_POLARITIES: u32 = 0x00000000;
 // const PWM_MAXCNT: u32 = 0x00000F9F; // PWM-freq 3999 = > 25KHz
 const PWM_MAXCNT: u32 = 0x000007CF; // PWM-freq 1999 = > 50KHz slightly less noisy
-// const PWM_MAXCNT: u32 = 0x000003E7; // PWM-freq 999 = > 100KHz
+                                    // const PWM_MAXCNT: u32 = 0x000003E7; // PWM-freq 999 = > 100KHz
 
 const PWM_BBM_H_BBM_L: u32 = 0x00001919; // Break-Before-Make
-// const PWM_SV_CHOP: u32 = 0x00000107; //Space vector On + PWM centered
+                                         // const PWM_SV_CHOP: u32 = 0x00000107; //Space vector On + PWM centered
 const PWM_SV_CHOP: u32 = 0x00000007; //Space vector On + PWM centered
 
 // ADC configuration
@@ -30,34 +28,30 @@ const DS_ADC_MDEC_B_MDEC_A: u32 = 0x014E014E;
 // full resolution of the ADC is 2^16 - 1
 // bidirectional current measurement is used
 // center is around 2^15 - 1
-pub const ADC_RESOLUTION: f32 = 65535.0; // 16 bit 
+pub const ADC_RESOLUTION: f32 = 65535.0; // 16 bit
 
 // ABN encoder settings
 const ABN_DECODER_MODE: u32 = 0x00000000;
 // const ABN_DECODER_PPR: u32 = 0x00001000;
 const ABN_DECODER_PHI_E_PHI_M_OFFSET: u32 = 0x00000000;
 
-
-// in TMC4671 one electrical revolution 
+// in TMC4671 one electrical revolution
 // is always represented with 16 bits
 pub const PPR_PER_ELECTRICAL_REVOLUTION: f32 = 65535.0; // 16 bit
 
 // Limits
 // const PID_TORQUE_FLUX_LIMITS: u32 = 0x00001000; // 4096
 const PID_TORQUE_FLUX_LIMITS: u32 = 0x00005a81; //tuned ok at 500Hz
-// const PID_TORQUE_FLUX_LIMITS: u32 = 0x00000800; // 2048
+                                                // const PID_TORQUE_FLUX_LIMITS: u32 = 0x00000800; // 2048
 
 // const PID_VELOCITY_LIMIT: u32 = 0x0000_FFFF;
 const PID_VELOCITY_LIMIT: u32 = 0x0000_7D00; //32000 //tuned ok at 500Hz
-// const PID_VELOCITY_LIMIT: u32 = 0x0000_0FA0; //4000
-
-
+                                             // const PID_VELOCITY_LIMIT: u32 = 0x0000_0FA0; //4000
 
 // Motor alignment
 pub const OPENLOOP_ACCELERATION: u32 = 0x0000003c; // Wizard default
-// pub const UQ_UD_EXT: u32 = 0x000007D0; // Openloop "torque_target" 2000
+                                                   // pub const UQ_UD_EXT: u32 = 0x000007D0; // Openloop "torque_target" 2000
 pub const UQ_UD_EXT: u32 = 0x000001000; // Openloop "torque_target" 2000
-
 
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
@@ -227,7 +221,7 @@ where
         >,
         enable: EnablePin,
         brushless_motor_config: config::BrushlessMotor,
-        current_sensing_config: config::CurrentSensing
+        current_sensing_config: config::CurrentSensing,
     ) -> Self {
         let mut enable = Output::new(enable, Level::Low, Speed::Low);
         enable.set_low();
@@ -259,7 +253,6 @@ where
         self.tmc4671_write_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data)
     }
 
-
     pub fn tmc4671_set_pid_down(&mut self, down: u8) -> Result<u32, embassy_stm32::spi::Error> {
         let mut data = 0x00000000u32;
         // read current state first
@@ -277,84 +270,91 @@ where
         self.tmc4671_write_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8, data)
     }
 
-
-    
-    pub fn tmc4671_get_adc_raw(&mut self) -> Result<(u16,u16), embassy_stm32::spi::Error> {
-        match self.tmc4671_get_u32(Tmc4671Registers::ADC_RAW_DATA as u8){
-            Ok(raw) => Ok(((raw & 0xFFFF) as u16, (raw  >> 16) as u16)),
-            Err(e) => Err(e)
+    pub fn tmc4671_get_adc_raw(&mut self) -> Result<(u16, u16), embassy_stm32::spi::Error> {
+        match self.tmc4671_get_u32(Tmc4671Registers::ADC_RAW_DATA as u8) {
+            Ok(raw) => Ok(((raw & 0xFFFF) as u16, (raw >> 16) as u16)),
+            Err(e) => Err(e),
         }
     }
 
     pub fn tmc4671_get_pid_flux(&mut self) -> Result<u32, embassy_stm32::spi::Error> {
-	self.tmc4671_get_u32(Tmc4671Registers::PID_FLUX_P_FLUX_I as u8)
+        self.tmc4671_get_u32(Tmc4671Registers::PID_FLUX_P_FLUX_I as u8)
     }
     pub fn tmc4671_get_pid_torque(&mut self) -> Result<u32, embassy_stm32::spi::Error> {
-	self.tmc4671_get_u32(Tmc4671Registers::PID_TORQUE_P_TORQUE_I as u8)
+        self.tmc4671_get_u32(Tmc4671Registers::PID_TORQUE_P_TORQUE_I as u8)
     }
     pub fn tmc4671_get_pid_velocity(&mut self) -> Result<u32, embassy_stm32::spi::Error> {
-	self.tmc4671_get_u32(Tmc4671Registers::PID_VELOCITY_P_VELOCITY_I as u8)
+        self.tmc4671_get_u32(Tmc4671Registers::PID_VELOCITY_P_VELOCITY_I as u8)
     }
     pub fn tmc4671_get_pid_position(&mut self) -> Result<u32, embassy_stm32::spi::Error> {
-	self.tmc4671_get_u32(Tmc4671Registers::PID_POSITION_P_POSITION_I as u8)
+        self.tmc4671_get_u32(Tmc4671Registers::PID_POSITION_P_POSITION_I as u8)
     }
 
-
-    pub fn tmc4671_set_pid_flux(&mut self, pid:u32) -> Result<u32, embassy_stm32::spi::Error> {
-	self.tmc4671_write_register(Tmc4671Registers::PID_FLUX_P_FLUX_I as u8, pid)
+    pub fn tmc4671_set_pid_flux(&mut self, pid: u32) -> Result<u32, embassy_stm32::spi::Error> {
+        self.tmc4671_write_register(Tmc4671Registers::PID_FLUX_P_FLUX_I as u8, pid)
     }
 
-    pub fn tmc4671_set_pid_torque(&mut self, pid:u32) -> Result<u32, embassy_stm32::spi::Error> {
-	self.tmc4671_write_register(Tmc4671Registers::PID_TORQUE_P_TORQUE_I as u8, pid)
+    pub fn tmc4671_set_pid_torque(&mut self, pid: u32) -> Result<u32, embassy_stm32::spi::Error> {
+        self.tmc4671_write_register(Tmc4671Registers::PID_TORQUE_P_TORQUE_I as u8, pid)
     }
 
-    pub fn tmc4671_set_pid_velocity(&mut self, pid:u32) -> Result<u32, embassy_stm32::spi::Error> {
-	self.tmc4671_write_register(Tmc4671Registers::PID_VELOCITY_P_VELOCITY_I as u8, pid)
+    pub fn tmc4671_set_pid_velocity(&mut self, pid: u32) -> Result<u32, embassy_stm32::spi::Error> {
+        self.tmc4671_write_register(Tmc4671Registers::PID_VELOCITY_P_VELOCITY_I as u8, pid)
     }
 
-    pub fn tmc4671_set_pid_position(&mut self, pid:u32) -> Result<u32, embassy_stm32::spi::Error> {
-	self.tmc4671_write_register(Tmc4671Registers::PID_POSITION_P_POSITION_I as u8, pid)
+    pub fn tmc4671_set_pid_position(&mut self, pid: u32) -> Result<u32, embassy_stm32::spi::Error> {
+        self.tmc4671_write_register(Tmc4671Registers::PID_POSITION_P_POSITION_I as u8, pid)
     }
-
 
     pub fn tmc4671_get_uq_ud_limit(&mut self) -> Result<i16, embassy_stm32::spi::Error> {
-	self.tmc4671_get_lower_i16(Tmc4671Registers::PIDOUT_UQ_UD_LIMITS as u8)
+        self.tmc4671_get_lower_i16(Tmc4671Registers::PIDOUT_UQ_UD_LIMITS as u8)
     }
-    pub fn tmc4671_set_uq_ud_limit(&mut self, limit:i16) -> Result<u32, embassy_stm32::spi::Error> {
-	self.tmc4671_write_register(Tmc4671Registers::PIDOUT_UQ_UD_LIMITS as u8, limit as u32 &0x7FFF as u32)
+    pub fn tmc4671_set_uq_ud_limit(
+        &mut self,
+        limit: i16,
+    ) -> Result<u32, embassy_stm32::spi::Error> {
+        self.tmc4671_write_register(
+            Tmc4671Registers::PIDOUT_UQ_UD_LIMITS as u8,
+            limit as u32 & 0x7FFF as u32,
+        )
     }
 
     pub fn tmc4671_get_torque_flux_limit(&mut self) -> Result<u16, embassy_stm32::spi::Error> {
-	self.tmc4671_get_lower_u16(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8)
+        self.tmc4671_get_lower_u16(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8)
     }
-    pub fn tmc4671_set_torque_flux_limit(&mut self, limit:u16) -> Result<u32, embassy_stm32::spi::Error> {
-	self.tmc4671_write_register(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, limit as u32 & 0x7FFF as u32)
+    pub fn tmc4671_set_torque_flux_limit(
+        &mut self,
+        limit: u16,
+    ) -> Result<u32, embassy_stm32::spi::Error> {
+        self.tmc4671_write_register(
+            Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8,
+            limit as u32 & 0x7FFF as u32,
+        )
     }
 
     pub fn tmc4671_get_velocity_limit(&mut self) -> Result<u32, embassy_stm32::spi::Error> {
-	self.tmc4671_read_register(Tmc4671Registers::PID_VELOCITY_LIMIT as u8)
+        self.tmc4671_read_register(Tmc4671Registers::PID_VELOCITY_LIMIT as u8)
     }
-    pub fn tmc4671_set_velocity_limit(&mut self, limit:u32) -> Result<u32, embassy_stm32::spi::Error> {
-	self.tmc4671_write_register(Tmc4671Registers::PID_VELOCITY_LIMIT as u8, limit)
+    pub fn tmc4671_set_velocity_limit(
+        &mut self,
+        limit: u32,
+    ) -> Result<u32, embassy_stm32::spi::Error> {
+        self.tmc4671_write_register(Tmc4671Registers::PID_VELOCITY_LIMIT as u8, limit)
     }
-
-
 
     pub fn tmc4671_get_mode(&mut self) -> Result<MotionMode, embassy_stm32::spi::Error> {
-
-	match self.tmc4671_read_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8)
-	{
-	    Ok(read) =>
-		{
-		    Ok(MotionMode::from_u8((read & 0x000000FFu32) as u8).unwrap_or(MotionMode::Stopped )) //Hu??
-		}
-	    Err(_e) => {
-		// error!("!!! Error SPI {:?}!!!", e);
-		Err(embassy_stm32::spi::Error::Framing)
-	    }
-
-	}
-
+        match self.tmc4671_read_register(Tmc4671Registers::MODE_RAMP_MODE_MOTION as u8) {
+            Ok(read) => {
+                Ok(
+                    MotionMode::from_u8((read & 0x000000FFu32) as u8)
+                        .unwrap_or(MotionMode::Stopped),
+                ) //Hu??
+            }
+            Err(_e) => {
+                // error!("!!! Error SPI {:?}!!!", e);
+                Err(embassy_stm32::spi::Error::Framing)
+            }
+        }
     }
 
     pub fn tmc4671_get_torque_actual(&mut self) -> Result<i16, embassy_stm32::spi::Error> {
@@ -403,7 +403,8 @@ where
         )
     }
 
-    pub fn tmc4671_set_target_velocity( //TODO Conversion
+    pub fn tmc4671_set_target_velocity(
+        //TODO Conversion
         &mut self,
         velocity_target: i32,
     ) -> Result<u32, embassy_stm32::spi::Error> {
@@ -416,7 +417,6 @@ where
     pub fn tmc4671_get_target_velocity(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
         self.tmc4671_get_i32(Tmc4671Registers::PID_VELOCITY_TARGET as u8)
     }
-
 
     pub fn tmc4671_set_target_torque(
         &mut self,
@@ -432,11 +432,8 @@ where
         self.tmc4671_get_i32(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8)
     }
 
-
-
-
-
-    pub fn tmc4671_get_actual_velocity(&mut self) -> Result<i32, embassy_stm32::spi::Error> { //TODO conversion
+    pub fn tmc4671_get_actual_velocity(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
+        //TODO conversion
         self.tmc4671_get_i32(Tmc4671Registers::PID_VELOCITY_ACTUAL as u8)
     }
 
@@ -461,7 +458,6 @@ where
         )
     }
 
-    
     pub fn tmc4671_set_velocity_offset(
         &mut self,
         velocity_offset: i32,
@@ -476,7 +472,7 @@ where
     }
 
     pub fn tmc4671_get_target_position(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
-        self.tmc4671_get_i32(Tmc4671Registers::PID_POSITION_TARGET as u8)  //TODO should probably check INTERIM_DATA
+        self.tmc4671_get_i32(Tmc4671Registers::PID_POSITION_TARGET as u8) //TODO should probably check INTERIM_DATA
     }
 
     pub fn tmc4671_get_actual_position(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
@@ -499,7 +495,6 @@ where
         // // /!\ Please note that the TMC6200 must be in Single-line mode (aka 6-PMW)
         // self.tmc6200_checked_write(0x00u8, 0x00000000u32);
 
-
         // Motor type & PWM configuration
         self.tmc4671_checked_write(
             Tmc4671Registers::MOTOR_TYPE_N_POLE_PAIRS as u8,
@@ -510,10 +505,8 @@ where
         self.tmc4671_checked_write(Tmc4671Registers::PWM_BBM_H_BBM_L as u8, PWM_BBM_H_BBM_L)?;
         self.tmc4671_checked_write(Tmc4671Registers::PWM_SV_CHOP as u8, PWM_SV_CHOP)?;
 
-	//PID
-	// self.tmc4671_set_pid_down(2)?;
-
-
+        //PID
+        // self.tmc4671_set_pid_down(2)?;
 
         // ADC configuration
         self.tmc4671_checked_write(Tmc4671Registers::ADC_I_SELECT as u8, ADC_I_SELECT)?;
@@ -527,6 +520,7 @@ where
             Tmc4671Registers::dsADC_MDEC_B_MDEC_A as u8,
             DS_ADC_MDEC_B_MDEC_A,
         )?;
+
         self.tmc4671_checked_write(
             Tmc4671Registers::ADC_I1_SCALE_OFFSET as u8,
             self.current_sensing_config.adc_i1_scale_offset(),
@@ -538,7 +532,10 @@ where
 
         // ABN encoder settings
         self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_MODE as u8, ABN_DECODER_MODE)?;
-        self.tmc4671_checked_write(Tmc4671Registers::ABN_DECODER_PPR as u8, self.brushless_motor_config.abn_decoder_ppr())?;
+        self.tmc4671_checked_write(
+            Tmc4671Registers::ABN_DECODER_PPR as u8,
+            self.brushless_motor_config.abn_decoder_ppr(),
+        )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::ABN_DECODER_PHI_E_PHI_M_OFFSET as u8,
             ABN_DECODER_PHI_E_PHI_M_OFFSET,
@@ -569,14 +566,11 @@ where
             self.brushless_motor_config.pid_position_p_position_i(),
         )?;
 
-	//Limite the vel
+        //Limite the vel
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_VELOCITY_LIMIT as u8,
             PID_VELOCITY_LIMIT,
         )?;
-
-
-
 
         Ok(())
     }
@@ -591,7 +585,10 @@ where
         if data_r == data_w {
             Ok(())
         } else {
-            error!("!!! TMC4671 Error checked write addr: {:#x} {:#x}_r / {:#x}_w !!!", reg,data_r, data_w);
+            error!(
+                "!!! TMC4671 Error checked write addr: {:#x} {:#x}_r / {:#x}_w !!!",
+                reg, data_r, data_w
+            );
             Err(embassy_stm32::spi::Error::Framing)
         }
     }
@@ -631,7 +628,6 @@ where
             data_u8_array[1],
             data_u8_array[0],
         ];
-
 
         // Sending data
         self.spi
@@ -694,5 +690,4 @@ where
             Err(e) => Err(e),
         }
     }
-
 }
