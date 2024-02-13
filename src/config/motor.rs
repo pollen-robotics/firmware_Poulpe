@@ -1,13 +1,15 @@
-pub struct BrushlessMotor {
-    // 0x00030004: 3-phase brushless motor, 4 pole pairs - register MOTOR_TYPE_N_POLE_PAIRS
-    motor_type_n_pole_pairs: u32,
+use crate::motor_control::Pid;
 
-    // pid flux and torque P and I gains - register PID_FLUX_P_FLUX_I and PID_TORQUE_P_TORQUE_I
-    pid_flux_p_flux_i: u32,
-    pid_torque_p_torque_i: u32,
-    // pid velocity and position P and I gains - register PID_VELOCITY_P_VELOCITY_I and PID_POSITION_P_POSITION_I
-    pid_velocity_p_velocity_i: u32,
-    pid_position_p_position_i: u32,
+pub struct BrushlessMotor {
+    // number of pole pairs 
+    n_pole_pairs: u32,
+
+    // PID gains of the motor controllers
+    // using only P and I gains
+    pid_flux: Pid,
+    pid_torque:Pid,
+    pid_velocity: Pid,
+    pid_position: Pid,
     // The encoder PPR value - register ABN_DECODER_PPR
     abn_decoder_ppr: u32,
     // ratio of motor's gearbox
@@ -21,16 +23,16 @@ impl BrushlessMotor {
     #[allow(dead_code)]
     pub fn ecx22() -> Self {
         Self {
-            // 0x00030004: 3-phase brushless motor, 4 pole pairs
-            motor_type_n_pole_pairs: 0x00030004,
+            // 4 pole pairs for the ecx22
+            n_pole_pairs: 4,
 
             // the encoder with 4096 ppr
             abn_decoder_ppr: 0x00001000,
             // PI controller params
-            pid_flux_p_flux_i: 0x02000200,
-            pid_torque_p_torque_i: 0x02000200,
-            pid_velocity_p_velocity_i: 0x02000008,
-            pid_position_p_position_i: 0x02000000,
+            pid_flux: Pid{p:200, i:500},
+            pid_torque: Pid{p:200, i:500},
+            pid_velocity: Pid{p:500, i:100},
+            pid_position: Pid{p:150, i:0},
 
             // gearing ratios
             gearbox_ratio: 1.0/35.0,
@@ -41,16 +43,16 @@ impl BrushlessMotor {
     #[allow(dead_code)]
     pub fn ec60() -> Self {
         Self {
-            // 0x00030007: 3-phase brushless motor, 7 pole pairs
-            motor_type_n_pole_pairs: 0x00030007,
+            // 7 pole pairs for the ec60
+            n_pole_pairs: 7,
 
             // the encoder with 4096 ppr
             abn_decoder_ppr: 0x00001000,
             // PI controller params
-            pid_flux_p_flux_i: 0x03200000,
-            pid_torque_p_torque_i: 0x03200000,
-            pid_velocity_p_velocity_i: 0x01F401C2,
-            pid_position_p_position_i: 0x00500000,
+            pid_flux: Pid{p:44, i:120},
+            pid_torque: Pid{p:44, i:120},
+            pid_velocity: Pid{p:600, i:400},
+            pid_position: Pid{p:50, i:0},
 
             // gearing ratios
             gearbox_ratio: 1.0/25.01,
@@ -60,18 +62,17 @@ impl BrushlessMotor {
     #[allow(dead_code)]
     pub fn ec45() -> Self {
         Self {
-            // 0x00030007: 3-phase brushless motor, 8 pole pairs
-            motor_type_n_pole_pairs: 0x00030008,
+            // 8 pole pairs for the ec45
+            n_pole_pairs: 8,
 
             // the encoder with 4096 ppr
             abn_decoder_ppr: 0x00001000,
 
             // PI controller params
-            // pid_flux_p_flux_i: 0x02000200,
-            pid_flux_p_flux_i: 0x01000100,
-            pid_torque_p_torque_i: 0x01000100,
-            pid_velocity_p_velocity_i: 0x08000000,
-            pid_position_p_position_i: 0x01000000,
+            pid_flux: Pid{p:0x100, i:0x100},
+            pid_torque: Pid{p:0x100, i:0x100},
+            pid_velocity: Pid{p:0x800, i:0},
+            pid_position: Pid{p:0x100, i:0},
 
             // gearing ratios
             gearbox_ratio: 1.0,
@@ -81,34 +82,45 @@ impl BrushlessMotor {
 }
 
 impl BrushlessMotor {
+
+    // 0x00030004: 3-phase brushless motor, 4 pole pairs - register MOTOR_TYPE_N_POLE_PAIRS
     pub fn motor_type_n_pole_pairs(&self) -> u32 {
-	self.motor_type_n_pole_pairs
+        0x00030000 | (self.n_pole_pairs & 0x0000FFFF)
     }
-    pub fn pid_flux_p_flux_i(&self) -> u32 {
-        self.pid_flux_p_flux_i
+
+    pub fn pid_flux_p_flux_i(&self) -> u32{
+        self.pid_to_reg(self.pid_flux)
     }
-    pub fn pid_torque_p_torque_i(&self) -> u32 {
-        self.pid_torque_p_torque_i
+    pub fn pid_torque_p_torque_i(&self) -> u32{
+        self.pid_to_reg(self.pid_torque)
     }
-    pub fn pid_velocity_p_velocity_i(&self) -> u32 {
-        self.pid_velocity_p_velocity_i
+    pub fn pid_position_p_position_i(&self) -> u32{
+        self.pid_to_reg(self.pid_position)
     }
-    pub fn pid_position_p_position_i(&self) -> u32 {
-        self.pid_position_p_position_i
+    pub fn pid_velocity_p_velocity_i(&self) -> u32{
+        self.pid_to_reg(self.pid_velocity)
     }
 
     pub fn gearbox_ratio(&self) -> f32 {
-	self.gearbox_ratio
+	    self.gearbox_ratio
     }
     pub fn axis_ratio(&self) -> f32 {
-	self.axis_ratio
+	    self.axis_ratio
     }
     pub fn pole_pairs(&self) -> f32 {
-	(self.motor_type_n_pole_pairs & 0x0000FFFF) as f32
+	    self.n_pole_pairs as f32
     }
     
     pub fn abn_decoder_ppr(&self) -> u32 {
-	self.abn_decoder_ppr
+	    self.abn_decoder_ppr
+    }
+
+
+    // conversion of the pid class to the TMC register value
+    // bits  0..15 - I gain
+    // bits 16..32 - P gain
+    fn pid_to_reg(&self, pid: Pid) -> u32{
+        return ((pid.p as u32) << 16) | ((pid.i  as u32) & 0xFFFF)
     }
 
     // conversion from electrical to mechanical angle
