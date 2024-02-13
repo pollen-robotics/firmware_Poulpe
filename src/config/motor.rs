@@ -29,10 +29,10 @@ impl BrushlessMotor {
             // the encoder with 4096 ppr
             abn_decoder_ppr: 0x00001000,
             // PI controller params
-            pid_flux: Pid{p:0x200, i:0x200},
-            pid_torque: Pid{p:0x200, i:0x200},
-            pid_velocity: Pid{p:0x200, i:0x8},
-            pid_position: Pid{p:0x200, i:0x0},
+            pid_flux: Pid{p:200, i:500},
+            pid_torque: Pid{p:200, i:500},
+            pid_velocity: Pid{p:500, i:100},
+            pid_position: Pid{p:150, i:0},
 
             // gearing ratios
             gearbox_ratio: 1.0/35.0,
