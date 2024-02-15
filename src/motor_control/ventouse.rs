@@ -264,7 +264,7 @@ where
                 .map_err(IOError::SpiError)?;
         } else {
             self.foc
-                .tmc4671_set_target_velocity(50)
+                .tmc4671_set_target_velocity(250)
                 .map_err(IOError::SpiError)?;
         }
         #[cfg(feature = "orbita3d")]
@@ -314,7 +314,7 @@ where
                 .map_err(IOError::SpiError)?;
         } else {
             self.foc
-                .tmc4671_set_target_velocity(-50)
+                .tmc4671_set_target_velocity(-250)
                 .map_err(IOError::SpiError)?;
         }
         // self.foc.tmc4671_set_target_velocity(-150).map_err(IOError::SpiError)?;

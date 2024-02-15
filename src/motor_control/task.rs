@@ -303,13 +303,19 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     // Setup the actuator with the configured ventouses
     #[cfg(feature = "orbita2d")]
-    let mut actuator = Actuator::new([ventouse_b, ventouse_c], [aksim, ad5047]);
+    // let mut actuator = Actuator::new([ventouse_b, ventouse_c], [aksim, ad5047]);
+    //We invert motor_a and motor_b because of... mechanics
+    let mut actuator = Actuator::new([ventouse_c, ventouse_b], [aksim, ad5047]);
     #[cfg(feature = "orbita3d")]
     let mut actuator = Actuator::new(
         [ventouse_a, ventouse_b, ventouse_c],
         [ad5047top, ad5047mid, ad5047bot],
     );
     let mut init_error = false;
+
+    //wait for a random duration to avoid all the actuators to start at the same time
+    block_for(Duration::from_millis(config::DXL_ID as u64 * 10));
+
     let res_init = actuator.init().await;
     match res_init {
         Ok(_v) => {
@@ -323,14 +329,18 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     #[cfg(feature = "orbita2d")]
     actuator.set_torque([false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
-    #[cfg(feature = "orbita2d")]
+    #[cfg(feature = "orbita3d")]
+    actuator.set_torque([false, false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
+                                                         // #[cfg(feature = "orbita2d")]
     Timer::after(Duration::from_micros(100000)).await;
 
     let init_sensors = actuator.get_axis_sensors().unwrap();
-    #[cfg(feature = "orbita2d")]
+    // #[cfg(feature = "orbita2d")]
     Timer::after(Duration::from_micros(100000)).await;
     #[cfg(feature = "orbita2d")]
     actuator.set_torque([true, true]).unwrap();
+    #[cfg(feature = "orbita3d")]
+    actuator.set_torque([true, true, true]).unwrap();
 
     let res = actuator.check_motors_1().await;
     match res {
@@ -343,16 +353,20 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     #[cfg(feature = "orbita2d")]
     actuator.set_torque([false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
-    #[cfg(feature = "orbita2d")]
+    #[cfg(feature = "orbita3d")]
+    actuator.set_torque([false, false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
+                                                         // #[cfg(feature = "orbita2d")]
     Timer::after(Duration::from_micros(100000)).await;
 
     let moved_sensors = actuator.get_axis_sensors().unwrap();
-    #[cfg(feature = "orbita2d")]
+    // #[cfg(feature = "orbita2d")]
     SHARED_MEMORY.lock().await.set_axis_sensor(moved_sensors);
-    #[cfg(feature = "orbita2d")]
+    // #[cfg(feature = "orbita2d")]
     Timer::after(Duration::from_micros(100000)).await;
     #[cfg(feature = "orbita2d")]
     actuator.set_torque([true, true]).unwrap();
+    #[cfg(feature = "orbita3d")]
+    actuator.set_torque([true, true, true]).unwrap();
 
     let res = actuator.check_motors_2().await;
     match res {
@@ -364,18 +378,56 @@ pub async fn control_loop(config: ActuatorConfig) {
     }
 
     let mut diff = [0.0; config::N_AXIS];
-    for (i, s) in moved_sensors.iter().enumerate() {
-        diff[i] = *s - init_sensors[i];
-        if diff[i] > 3.141592 {
-            diff[i] = diff[i] - 2.0 * 3.141592;
-        }
+    #[cfg(feature = "orbita3d")]
+    {
+        for (i, s) in moved_sensors.iter().enumerate() {
+            diff[i] = *s - init_sensors[i];
+            if diff[i] > 3.141592 {
+                diff[i] = diff[i] - 2.0 * 3.141592;
+            }
 
-        if (diff[i] <= 0.0 && diff[i] > -0.1) || (diff[i] > 0.0 || diff[i].is_nan()) {
-            error!(
-                "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
-                i, diff[i]
-            );
-            init_error = true;
+            if (diff[i] <= 0.0 && diff[i] > -0.08) || (diff[i] > 0.0 || diff[i].is_nan()) {
+                error!(
+                    "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
+                    i, diff[i]
+                );
+                init_error = true;
+            }
+        }
+    }
+    #[cfg(feature = "orbita2d")]
+    {
+        for (i, s) in moved_sensors.iter().enumerate() {
+            diff[i] = *s - init_sensors[i];
+            if diff[i] > 3.141592 {
+                diff[i] = diff[i] - 2.0 * 3.141592;
+            }
+
+            // //WTF? We cannot use abs() for f32?
+            // let absdiff: f32 = if diff[i].is_sign_positive() {
+            //     diff[i]
+            // } else {
+            //     -diff[i]
+            // };
+
+            if i == 0 {
+                if (diff[i] > -0.1) || diff[i].is_nan() {
+                    error!(
+                        "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
+                        i, diff[i]
+                    );
+                    init_error = true;
+                }
+            }
+            if i == 1 {
+                if (diff[i] < 0.05) || diff[i].is_nan() {
+                    error!(
+                        "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
+                        i, diff[i]
+                    );
+                    init_error = true;
+                }
+            }
         }
     }
 
