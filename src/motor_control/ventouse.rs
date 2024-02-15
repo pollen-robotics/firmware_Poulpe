@@ -181,6 +181,11 @@ where
             self.foc.current_sensing_config.adc_i1_scale_offset(),
         )?;
 
+        debug!(
+            "[Ventouse{:?}] ADC offsets: {:?}",
+            self.kind, adc_offset
+        );
+
         Ok(())
     }
 
@@ -593,6 +598,16 @@ where
             .map(|_| ())
             .map_err(IOError::SpiError)
     }
+
+    // get temperature
+    fn get_temperature(&mut self) -> Result<[f32; 1], IOError> {
+        let temp = self
+            .foc
+            .tmc4671_get_board_temperature()
+            .map_err(IOError::SpiError)?;
+        Ok([temp as f32])
+    }
+
 
     // /// Get the torque limit of the motors (in Nm)
     // fn get_torque_limit(&mut self) -> Result<[f32; 1], IOError> {
@@ -1191,6 +1206,15 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
             VentouseKind::A(va) => va.set_flux_pid_gains(pid),
             VentouseKind::B(vb) => vb.set_flux_pid_gains(pid),
             VentouseKind::C(vc) => vc.set_flux_pid_gains(pid),
+        }
+    }
+
+    /// get the temperature of the motors
+    fn get_temperature(&mut self) -> super::Result<[f32; 1]> {
+        match self {
+            VentouseKind::A(va) => va.get_temperature(),
+            VentouseKind::B(vb) => vb.get_temperature(),
+            VentouseKind::C(vc) => vc.get_temperature(),
         }
     }
 

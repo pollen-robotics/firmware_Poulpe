@@ -6,6 +6,8 @@ use embassy_stm32::spi::{Instance, Spi};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embedded_hal_1::spi::SpiDevice;
 
+use libm;
+
 use crate::config;
 
 // PWM configuration
@@ -23,7 +25,7 @@ const PWM_SV_CHOP: u32 = 0x00000007; //Space vector On + PWM centered
 const ADC_I_SELECT: u32 = 0x18000100;
 const DS_ADC_MCFG_B_MCFG_A: u32 = 0x00100010;
 const DS_ADC_MCLK_A: u32 = 0x20000000;
-const DS_ADC_MCLK_B: u32 = 0x00000000;
+const DS_ADC_MCLK_B: u32 = 0x20000000;
 const DS_ADC_MDEC_B_MDEC_A: u32 = 0x014E014E;
 // full resolution of the ADC is 2^16 - 1
 // bidirectional current measurement is used
@@ -271,8 +273,34 @@ where
     }
 
     pub fn tmc4671_get_adc_raw(&mut self) -> Result<(u16, u16), embassy_stm32::spi::Error> {
+        self.tmc4671_write_register(Tmc4671Registers::ADC_RAW_ADDR as u8, 0x0)?;
         match self.tmc4671_get_u32(Tmc4671Registers::ADC_RAW_DATA as u8) {
             Ok(raw) => Ok(((raw & 0xFFFF) as u16, (raw >> 16) as u16)),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn adc_to_temperature(&self, adc_raw: u32) -> f32 {
+        // datasheet BOB: https://www.mouser.fr/datasheet/2/281/r44e-522712.pdf
+        // ADC is operated in a single ended mode it measures the voltage from 0 to 2.5V
+        // and zero is at the center of the ADC range (32768)
+        // the 10k NTC is supplyed with 3.3V and pulled down to ground with two 4.7k resistor
+        // the voltage is measured at the center of the two resistors
+        let volt = (((adc_raw - 32768) as f64) / 32768.0) * 1.13 * 2.5; // 1.13 is a magic number - not shure why its here
+        let r_div: f64 = 4700.0;
+        let beta: f64 = 3455.0;
+        let room_temp_inv: f64 = 1.0 / 298.15; //[K]
+        let r_t: f64 = r_div * (3.3 / volt - 2.0); // estimated resistance of the NTC
+        let r_10k: f64 = 10000.0;
+        let t: f64 = 1.0 / ((libm::log(r_t / r_10k) / beta) + room_temp_inv);
+        return (t as f32) - 273.15; // final conversion to Celsius
+    }
+
+    pub fn tmc4671_get_board_temperature(&mut self) -> Result<(f32), embassy_stm32::spi::Error> {
+        self.tmc4671_write_register(Tmc4671Registers::ADC_RAW_ADDR as u8, 0x2)?;
+
+        match self.tmc4671_get_u32(Tmc4671Registers::ADC_RAW_DATA as u8) {
+            Ok(raw) => Ok(self.adc_to_temperature((raw & 0xffff) as u32)),
             Err(e) => Err(e),
         }
     }
@@ -571,6 +599,23 @@ where
             Tmc4671Registers::PID_VELOCITY_LIMIT as u8,
             PID_VELOCITY_LIMIT,
         )?;
+
+        // calibrate the adc for temperature sensing
+        self.tmc4671_checked_write(Tmc4671Registers::ADC_RAW_ADDR as u8, 0x2)?;
+        self.tmc4671_checked_write(Tmc4671Registers::DS_ANALOG_INPUT_STAGE_CFG as u8, 0x54400)?;
+
+        let mut val: f32 = 0.0;
+        for i in 0..50 {
+            match self.tmc4671_read_register(Tmc4671Registers::ADC_RAW_DATA as u8) {
+                Ok(raw) => val += (raw & 0xffff) as f32,
+                Err(e) => {
+                    error!("!!! Error SPI {:?}!!!", e);
+                }
+            }
+        }
+        val = val / 50.0;
+
+        self.tmc4671_checked_write(Tmc4671Registers::DS_ANALOG_INPUT_STAGE_CFG as u8, 0x44400)?;
 
         Ok(())
     }

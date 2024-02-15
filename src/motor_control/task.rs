@@ -793,6 +793,11 @@ pub async fn control_loop(config: ActuatorConfig) {
             // 	}
             // }
 
+            // get temperature
+            let temp = actuator.get_temperature();
+            // print temperature
+            info!("Temperature: {:?}", temp);
+
             slow_timer = 1000;
         } else {
             slow_timer -= 1;
