@@ -20,6 +20,7 @@ use crate::{
     motor_control::{
         sensors::{AD5047Sensor, I2cHallSensor, SensorKind},
         RawSensorsIO,
+        BoardStatus,
     },
     IrqsI2c, SHARED_MEMORY,
 };
@@ -313,13 +314,13 @@ pub async fn control_loop(config: ActuatorConfig) {
     );
 
     // trying to init the actuator
-    let mut init_error: u8 = 0;
+    let mut init_error : BoardStatus = BoardStatus::Ok;
     // initialisation of the actuator (try two times)
     for try_i in 0..2 {
 
         info!("Initialization try no. {:?}", try_i+1);
         // no error at the beginning
-        init_error = 0;
+        init_error = BoardStatus::Ok;
 
         //wait for a random duration to avoid all the actuators to start at the same time
         block_for(Duration::from_millis(config::DXL_ID as u64 * 10));
@@ -331,7 +332,7 @@ pub async fn control_loop(config: ActuatorConfig) {
             }
             Err(e) => {
                 // error on init
-                init_error = 1;
+                init_error = BoardStatus::InitError;
                 error!("init error: {:?}", e);
                 continue; //  retry the init if there is an error
             }
@@ -356,7 +357,7 @@ pub async fn control_loop(config: ActuatorConfig) {
         match res {
             Ok(_v) => {}
             Err(e) => {
-                init_error = 1;
+                init_error = BoardStatus::InitError;
                 error!("Motor check error: {:?}", e);
                 continue; //  retry the init if there is an error
             }
@@ -385,7 +386,7 @@ pub async fn control_loop(config: ActuatorConfig) {
         match res {
             Ok(_v) => {}
             Err(e) => {
-                init_error = 1;
+                init_error = BoardStatus::InitError;
                 error!("Motor check error: {:?}", e);
                 continue; //  retry the init if there is an error
             }
@@ -405,7 +406,7 @@ pub async fn control_loop(config: ActuatorConfig) {
                         "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
                         i, diff[i]
                     );
-                    init_error = 2;
+                    init_error = BoardStatus::SensorError;
                 }
             }
         }
@@ -430,7 +431,7 @@ pub async fn control_loop(config: ActuatorConfig) {
                             "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
                             i, diff[i]
                         );
-                        init_error = 2;
+                        init_error = BoardStatus::SensorError;
                     }
                 }
                 if i == 1 {
@@ -439,7 +440,7 @@ pub async fn control_loop(config: ActuatorConfig) {
                             "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
                             i, diff[i]
                         );
-                        init_error = 2;
+                        init_error = BoardStatus::SensorError;
                     }
                 }
             }
@@ -455,7 +456,7 @@ pub async fn control_loop(config: ActuatorConfig) {
             // #[cfg(feature = "orbita3d")]
             let indices = actuator.find_index(&mut donut_hall).unwrap_or_else(|e| {
                 error!("Error finding index: {:?}", e);
-                init_error = 3;
+                init_error = BoardStatus::IndexError;
                 [255; config::N_AXIS]
             });
             // #[cfg(feature = "orbita3d")]
@@ -491,7 +492,7 @@ pub async fn control_loop(config: ActuatorConfig) {
                         .set_current_position(init_sensors);
                 }
                 Err(e) => {
-                    init_error = 3;
+                    init_error = BoardStatus::IndexError;
                     error!("Error setting current position: {:?}", e);
                 }
             }
@@ -503,13 +504,13 @@ pub async fn control_loop(config: ActuatorConfig) {
                     SHARED_MEMORY.lock().await.set_target_position(init_sensors);
                 }
                 Err(e) => {
-                    init_error = 3;
+                    init_error = BoardStatus::IndexError;
                     error!("Error setting target position: {:?}", e);
                 }
             }
         }
         // if no error during init, we can break the loop
-        if init_error == 0 {
+        if init_error == BoardStatus::Ok {
             debug!("init sensors: {:?}", init_sensors);
             debug!("moved sensors: {:?}", moved_sensors);
             debug!("diff sensors: {:?}", diff);
@@ -518,7 +519,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     }
 
     // Print the error if there is one
-    if init_error == 0 { info!("Init successfull!"); }
+    if init_error == BoardStatus::Ok { info!("Init successfull!"); }
     else { error!("Error during init, stopping control loop!");}
 
     let curpos = actuator.get_current_position().unwrap();
@@ -549,7 +550,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     // Init SharedMemory with real values before actually running the control loop
     SHARED_MEMORY.lock().await.init(&mut actuator);
-    if init_error >= 0{
+    if init_error != BoardStatus::Ok{
         SHARED_MEMORY.lock().await.set_error_led(true);
     }
     // set the error state of the system
@@ -568,8 +569,12 @@ pub async fn control_loop(config: ActuatorConfig) {
     let mut init_target_position = { SHARED_MEMORY.lock().await.get_target_position() };
 
     // actuator.set_torque([false,false]).unwrap();
-    let mut error_led = init_error > 0;
-    let mut prev_error_led = init_error > 0;
+    let mut error_led = false;
+    let mut prev_error_led = false;
+    if init_error != BoardStatus::Ok {
+        error_led = true;
+        prev_error_led = true;
+    }
 
     use biquad::*;
     let f0 = 10.hz();
@@ -612,7 +617,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 
         let mut torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
         let mut error_state = { SHARED_MEMORY.lock().await.get_error_state() };
-        if error_state > 0 { // if init error, we turn off the torque
+        if error_state != BoardStatus::Ok { // if init error, we turn off the torque
             torque_on = [false; config::N_AXIS]; 
             {SHARED_MEMORY.lock().await.set_torque_on(torque_on)};
         }
