@@ -43,6 +43,7 @@ pub struct Memory<const N: usize> {
     // hall_states: u16,
 
     error_led: bool,
+    error_state: u8,
 
 }
 
@@ -131,6 +132,13 @@ impl<const N: usize> SharedMemory<N> {
 
     pub fn set_axis_sensor(&self, sensor: [f32;N]) {
 	self.inner.borrow_mut().axis_sensor=sensor;
+    }
+
+    pub fn set_error_state(&self, state: u8) {
+        self.inner.borrow_mut().error_state=state;
+    }
+    pub fn get_error_state(&self) -> u8 {
+        self.inner.borrow().error_state
     }
 
     pub fn set_error_led(&self, error: bool) {
@@ -271,6 +279,7 @@ impl<const N: usize> SharedMemory<N> {
 
 
 		error_led: false,
+        error_state: 0
 
             }),
         }
@@ -313,7 +322,7 @@ impl<const N: usize> SharedMemory<N> {
 	    // hall_states: actuator.get_hall_states(),
 
 	    error_led: false,
-
+        error_state: 0
         };
     }
 
