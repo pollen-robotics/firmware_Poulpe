@@ -271,7 +271,20 @@ where
         self.foc
             .tmc4671_set_target_velocity(500)
             .map_err(IOError::SpiError)?;
-        let _ = Timer::after(Duration::from_millis(1000)).await;
+
+        loop {
+            let velocity = self
+                .foc
+                .tmc4671_get_actual_velocity()
+                .map_err(IOError::SpiError)?;
+            info!(
+                "[Ventouse{:?}] velocity: {} - {}",
+                self.kind,
+                velocity, 1000
+            );
+            let _ = Timer::after(Duration::from_millis(10)).await;
+        }
+
         self.foc
             .tmc4671_set_target_velocity(0)
             .map_err(IOError::SpiError)?;
