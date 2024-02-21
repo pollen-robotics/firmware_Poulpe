@@ -24,7 +24,7 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
         match dxl.read().await {
             Ok(packet) => {
                 debug!("Got packet: {:?}", packet);
-                dxl_error = {SHARED_MEMORY.lock().await.get_error_state()} as u8;
+                dxl_error = { SHARED_MEMORY.lock().await.get_error_state() } as u8;
                 match packet {
                     InstructionPacketKind::Ping(_) => {
                         let sp = StatusPacket::ack(id, dxl_error);
