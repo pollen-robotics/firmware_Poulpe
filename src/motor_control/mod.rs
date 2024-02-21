@@ -13,3 +13,16 @@ pub use sensors_io::RawSensorsIO;
 
 pub mod task;
 pub mod ventouse;
+
+#[derive(PartialEq)] 
+#[derive(Clone, Copy,defmt::Format)]
+pub enum BoardStatus{
+    Ok = 0,
+    InitError = 1,
+    SensorError = 2,
+    IndexError = 3,
+    ZeroingError = 4,
+    OverTemperatureError = 5,
+    OverCurrentError = 6,
+    BusVoltageError = 7,
+}
