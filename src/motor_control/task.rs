@@ -315,7 +315,8 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     // trying to init the actuator
     let mut init_error : BoardStatus = BoardStatus::Ok;
-    // initialisation of the actuator (try two times)
+    
+    // initialization of the actuator (try two times)
     for try_i in 0..2 {
 
         info!("Initialization try no. {:?}", try_i+1);
@@ -333,11 +334,12 @@ pub async fn control_loop(config: ActuatorConfig) {
             Err(e) => {
                 // error on init
                 init_error = BoardStatus::InitError;
-                error!("init error: {:?}", e);
+                error!("Registers init error: {:?}", e);
                 continue; //  retry the init if there is an error
             }
         }
 
+        // read the axis sensors - but disable the torque to avoid the noise
         #[cfg(feature = "orbita2d")]
         actuator.set_torque([false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
         #[cfg(feature = "orbita3d")]
@@ -353,45 +355,49 @@ pub async fn control_loop(config: ActuatorConfig) {
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([true, true, true]).unwrap();
 
+        // motor check - move the motors and check if the sensors are moving
         let res = actuator.check_motors_1().await;
         match res {
             Ok(_v) => {}
             Err(e) => {
                 init_error = BoardStatus::InitError;
-                error!("Motor check error: {:?}", e);
+                error!("Motor check 1 error: {:?}", e);
                 continue; //  retry the init if there is an error
             }
         }
         
+
+        // read the sensors - but disable the torque to avoid the noise
         #[cfg(feature = "orbita2d")]
         actuator.set_torque([false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([false, false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
-                                                            // #[cfg(feature = "orbita2d")]
+
         Timer::after(Duration::from_micros(100000)).await;
 
         let moved_sensors = actuator.get_axis_sensors().unwrap();
-        // #[cfg(feature = "orbita2d")]
         SHARED_MEMORY.lock().await.set_axis_sensor(moved_sensors);
-        // #[cfg(feature = "orbita2d")]
-        Timer::after(Duration::from_micros(100000)).await;
 
-        
+        Timer::after(Duration::from_micros(100000)).await;
+        // enable torques
         #[cfg(feature = "orbita2d")]
         actuator.set_torque([true, true]).unwrap();
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([true, true, true]).unwrap();
 
+        // motor check - move the motors in the other direction
         let res = actuator.check_motors_2().await;
         match res {
             Ok(_v) => {}
             Err(e) => {
                 init_error = BoardStatus::InitError;
-                error!("Motor check error: {:?}", e);
+                error!("Motor check 2 error: {:?}", e);
                 continue; //  retry the init if there is an error
             }
         }
 
+        // verify that the sensors have moved
+        // checking if the sensors are read properly and they are in the correct direction
         let mut diff = [0.0; config::N_AXIS];
         #[cfg(feature = "orbita3d")]
         {
@@ -492,7 +498,7 @@ pub async fn control_loop(config: ActuatorConfig) {
                         .set_current_position(init_sensors);
                 }
                 Err(e) => {
-                    init_error = BoardStatus::IndexError;
+                    init_error = BoardStatus::ZeroingError;
                     error!("Error setting current position: {:?}", e);
                 }
             }
@@ -504,7 +510,7 @@ pub async fn control_loop(config: ActuatorConfig) {
                     SHARED_MEMORY.lock().await.set_target_position(init_sensors);
                 }
                 Err(e) => {
-                    init_error = BoardStatus::IndexError;
+                    init_error = BoardStatus::ZeroingError;
                     error!("Error setting target position: {:?}", e);
                 }
             }

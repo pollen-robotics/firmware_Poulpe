@@ -21,4 +21,8 @@ pub enum BoardStatus{
     InitError = 1,
     SensorError = 2,
     IndexError = 3,
+    ZeroingError = 4,
+    OverTemperatureError = 5,
+    OverCurrentError = 6,
+    BusVoltageError = 7,
 }
