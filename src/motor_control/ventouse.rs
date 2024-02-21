@@ -156,30 +156,7 @@ where
         // disable potential motion/torque control
         self.foc.tmc4671_set_mode(MotionMode::Stopped)?;
 
-        // read the adc raw values for finding the current offset (1000 times)
-        let mut adc_offset: [u32; 2] = [0; 2];
-        for _ in 0..1000 {
-            self.foc.tmc4671_get_adc_raw().map(|adc| {
-                adc_offset[0] += adc.0 as u32;
-                adc_offset[1] += adc.1 as u32;
-            })?;
-        }
-        // divide by 1000 to get the average
-        adc_offset[0] /= 1000;
-        adc_offset[1] /= 1000;
-
-        // set the new offset values
-        self.foc
-            .current_sensing_config
-            .set_adc_offsets(adc_offset[0], adc_offset[1]);
-        self.foc.tmc4671_checked_write(
-            Tmc4671Registers::ADC_I0_SCALE_OFFSET as u8,
-            self.foc.current_sensing_config.adc_i0_scale_offset(),
-        )?;
-        self.foc.tmc4671_checked_write(
-            Tmc4671Registers::ADC_I1_SCALE_OFFSET as u8,
-            self.foc.current_sensing_config.adc_i1_scale_offset(),
-        )?;
+        let adc_offset = self.foc.tmc4671_calibrate_adc_offsets()?;
 
         debug!(
             "[Ventouse{:?}] ADC offsets: {:?}",
@@ -635,12 +612,22 @@ where
     }
 
     // get temperature
-    fn get_temperature(&mut self) -> Result<[f32; 1], IOError> {
+    fn get_board_temperature(&mut self) -> Result<[f32; 1], IOError> {
         let temp = self
             .foc
             .tmc4671_get_board_temperature()
             .map_err(IOError::SpiError)?;
         Ok([temp as f32])
+    }
+
+    
+    // get dc bus voltage
+    fn get_bus_voltage(&mut self) -> Result<[f32; 1], IOError> {
+        let voltage = self
+            .foc
+            .tmc4671_get_bus_voltage()
+            .map_err(IOError::SpiError)?;
+        Ok([voltage as f32])
     }
 
 
@@ -1245,11 +1232,20 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     }
 
     /// get the temperature of the motors
-    fn get_temperature(&mut self) -> super::Result<[f32; 1]> {
+    fn get_board_temperature(&mut self) -> super::Result<[f32; 1]> {
         match self {
-            VentouseKind::A(va) => va.get_temperature(),
-            VentouseKind::B(vb) => vb.get_temperature(),
-            VentouseKind::C(vc) => vc.get_temperature(),
+            VentouseKind::A(va) => va.get_board_temperature(),
+            VentouseKind::B(vb) => vb.get_board_temperature(),
+            VentouseKind::C(vc) => vc.get_board_temperature(),
+        }
+    }
+    
+    /// get the DC bus voltage
+    fn get_bus_voltage(&mut self) -> super::Result<[f32; 1]> {
+        match self {
+            VentouseKind::A(va) => va.get_bus_voltage(),
+            VentouseKind::B(vb) => vb.get_bus_voltage(),
+            VentouseKind::C(vc) => vc.get_bus_voltage(),
         }
     }
 

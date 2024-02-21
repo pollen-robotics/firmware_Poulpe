@@ -837,10 +837,52 @@ pub async fn control_loop(config: ActuatorConfig) {
             // 	}
             // }
 
+
+            // perform checks on the actuator to determine the error state
             // get temperature
-            let temp = actuator.get_temperature();
-            // print temperature
-            info!("Temperature: {:?}", temp);
+            let mut temp_error = false;
+            match actuator.get_board_temperature(){
+                Ok(t) => {
+                    t.iter().for_each(|t| {
+                        if *t > 100.0 {
+                            temp_error = true;
+                        }
+                    });
+                    info!("Temperature: {:?}", t);
+                }
+                Err(e) => {
+                    error_led = true;
+                    error!("Temperature reading error {:?}", e);
+                }
+            }
+            if temp_error { // stop everything if the temperature is too high
+                error_led = true;
+                {SHARED_MEMORY.lock().await.set_error_state(BoardStatus::OverTemperatureError)};
+                error!("Temperature too high (above 80 degrees)!");
+            }     
+
+            // get dc bus voltage
+            let mut bus_error = false;
+            match  actuator.get_bus_voltage(){
+                Ok(v) => {
+                    v.iter().for_each(|v| {
+                        if *v < 10.0 {
+                            bus_error = true;
+                        }
+                    });
+                    debug!("Bus voltage: {:?}", v);
+                }
+                Err(e) => {
+                    error_led = true;
+                    error!("Bus voltage reading error {:?}", e);
+                }
+            }
+            if bus_error { // stop everything if the bus voltage is too low
+                error_led = true;
+                {SHARED_MEMORY.lock().await.set_error_state(BoardStatus::BusVoltageError)};
+                error!("Bus voltage is too low (under 10V)!");
+            }
+            
 
             slow_timer = 1000;
         } else {

@@ -31,6 +31,7 @@ const DS_ADC_MDEC_B_MDEC_A: u32 = 0x014E014E;
 // bidirectional current measurement is used
 // center is around 2^15 - 1
 pub const ADC_RESOLUTION: f32 = 65535.0; // 16 bit
+pub const ADC_OFFSET: f32 = 32767.0; // initial offset is half of the resolution
 
 // ABN encoder settings
 const ABN_DECODER_MODE: u32 = 0x00000000;
@@ -208,6 +209,8 @@ where
     pub current_sensing_config: config::CurrentSensing,
     pub ppr: f32,
     pub adc_resolution: f32,
+    pub adc_vm_offset: f32,
+    pub adc_temp_offset: f32,
 }
 
 impl<'d, T, P, EnablePin> Foc<'d, T, P, EnablePin>
@@ -237,6 +240,8 @@ where
             current_sensing_config,
             ppr: PPR_PER_ELECTRICAL_REVOLUTION,
             adc_resolution: ADC_RESOLUTION,
+            adc_vm_offset: ADC_OFFSET,
+            adc_temp_offset: ADC_OFFSET,
         }
     }
 
@@ -282,27 +287,86 @@ where
         }
     }
 
+
+    pub fn tmc4671_calibrate_adc_offsets(&mut self) -> Result<(u32,u32), embassy_stm32::spi::Error> {
+
+        // read the adc raw values for finding the current offset (1000 times)
+        let mut adc_offset: [u32; 2] = [0; 2];
+        for _ in 0..1000 {
+            self.tmc4671_get_adc_raw().map(|adc| {
+                adc_offset[0] += adc.0 as u32;
+                adc_offset[1] += adc.1 as u32;
+            })?;
+        }
+        // divide by 1000 to get the average
+        adc_offset[0] /= 1000;
+        adc_offset[1] /= 1000;
+
+        // set the new offset values
+        self.current_sensing_config
+            .set_adc_offsets(adc_offset[0], adc_offset[1]);
+
+        self.tmc4671_checked_write(
+            Tmc4671Registers::ADC_I0_SCALE_OFFSET as u8,
+            0x01000000 | adc_offset[0],
+        )?;
+        self.tmc4671_checked_write(
+            Tmc4671Registers::ADC_I1_SCALE_OFFSET as u8,
+            0x01000000 | adc_offset[0],
+        )?;
+
+        Ok((adc_offset[0] as u32, adc_offset[1] as u32))
+    }
+
     fn adc_to_temperature(&self, adc_raw: u32) -> f32 {
-        // datasheet BOB: https://www.mouser.fr/datasheet/2/281/r44e-522712.pdf
+        // datasheet BOB: https://www.mouser.fr/datasheet/2/281/r44e-522712.pdf  (NCP18XH103F03RB)
         // ADC is operated in a single ended mode it measures the voltage from 0 to 2.5V
-        // and zero is at the center of the ADC range (32768)
-        // the 10k NTC is supplyed with 3.3V and pulled down to ground with two 4.7k resistor
+        // the 10k NTC is supplied with 3.3V and pulled down to ground with two 4.7k resistor
         // the voltage is measured at the center of the two resistors
-        let volt = (((adc_raw - 32768) as f64) / 32768.0) * 1.13 * 2.5; // 1.13 is a magic number - not shure why its here
+        let volt =((adc_raw as f64 - self.adc_temp_offset as f64) / (65535.0 - self.adc_temp_offset as f64)) * 2.5;
         let r_div: f64 = 4700.0;
         let beta: f64 = 3455.0;
         let room_temp_inv: f64 = 1.0 / 298.15; //[K]
         let r_t: f64 = r_div * (3.3 / volt - 2.0); // estimated resistance of the NTC
         let r_10k: f64 = 10000.0;
         let t: f64 = 1.0 / ((libm::log(r_t / r_10k) / beta) + room_temp_inv);
+        // info!("ADC: {} V: {} R: {} T: {}", adc_raw, volt, r_t, t);
         return (t as f32) - 273.15; // final conversion to Celsius
     }
 
-    pub fn tmc4671_get_board_temperature(&mut self) -> Result<(f32), embassy_stm32::spi::Error> {
+    
+    pub fn tmc4671_get_board_temperature_raw(&mut self) -> Result<(u32), embassy_stm32::spi::Error> {
         self.tmc4671_write_register(Tmc4671Registers::ADC_RAW_ADDR as u8, 0x2)?;
 
         match self.tmc4671_get_u32(Tmc4671Registers::ADC_RAW_DATA as u8) {
-            Ok(raw) => Ok(self.adc_to_temperature((raw & 0xffff) as u32)),
+            Ok(raw) => Ok((raw & 0xffff) as u32),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn tmc4671_get_board_temperature(&mut self) -> Result<(f32), embassy_stm32::spi::Error> {
+        match self.tmc4671_get_board_temperature_raw() {
+            Ok(raw) => Ok(self.adc_to_temperature(raw)),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn tmc4671_get_bus_voltage_raw(&mut self) -> Result<(f32), embassy_stm32::spi::Error> {
+        self.tmc4671_write_register(Tmc4671Registers::ADC_RAW_ADDR as u8, 0x1)?;
+
+        match self.tmc4671_get_u32(Tmc4671Registers::ADC_RAW_DATA as u8) {
+            Ok(raw) =>  Ok((raw & 0xffff) as f32),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn tmc4671_get_bus_voltage(&mut self) -> Result<(f32), embassy_stm32::spi::Error> {
+        match self.tmc4671_get_bus_voltage_raw() {
+            Ok(adc_raw) => {
+                let mut voltage = (adc_raw - self.adc_vm_offset)/32768.0 * 2.5; // scale to 0-2.5V
+                voltage = voltage * 48.0; // 47k/1k voltage divider
+                Ok(voltage) // 0.00030517578125 = 5/16384
+            }
             Err(e) => Err(e),
         }
     }
@@ -602,21 +666,35 @@ where
             self.brushless_motor_config.pid_velocity_limit(),
         )?;
 
-        // calibrate the adc for temperature sensing
-        self.tmc4671_checked_write(Tmc4671Registers::ADC_RAW_ADDR as u8, 0x2)?;
-        self.tmc4671_checked_write(Tmc4671Registers::DS_ANALOG_INPUT_STAGE_CFG as u8, 0x54400)?;
 
-        let mut val: f32 = 0.0;
+        // calibrate the adc for temperature sensing
+        // set the 0 voltage to the AGPI_B and ADC_VM
+        self.tmc4671_checked_write(Tmc4671Registers::DS_ANALOG_INPUT_STAGE_CFG as u8, 0x54500)?;
+        self.adc_temp_offset = 0.0;
+        self.adc_vm_offset = 0.0;
         for i in 0..50 {
+            // read AGPI_B for temperature
+            self.tmc4671_checked_write(Tmc4671Registers::ADC_RAW_ADDR as u8, 0x2)?;
             match self.tmc4671_read_register(Tmc4671Registers::ADC_RAW_DATA as u8) {
-                Ok(raw) => val += (raw & 0xffff) as f32,
+                Ok(raw) => self.adc_temp_offset += (raw & 0xffff) as f32,
+                Err(e) => {
+                    error!("!!! Error SPI {:?}!!!", e);
+                }
+            }
+            // read ADC_VM for bus voltage
+            self.tmc4671_checked_write(Tmc4671Registers::ADC_RAW_ADDR as u8, 0x1)?;
+            match self.tmc4671_read_register(Tmc4671Registers::ADC_RAW_DATA as u8) {
+                Ok(raw) => self.adc_vm_offset += (raw & 0xffff) as f32,
                 Err(e) => {
                     error!("!!! Error SPI {:?}!!!", e);
                 }
             }
         }
-        val = val / 50.0;
-
+        self.adc_temp_offset /= 50.0;
+        debug!("ADC offset for temperatures measurement {}", self.adc_temp_offset);
+        self.adc_vm_offset /= 50.0;
+        debug!("ADC offset for DC bus voltage measurement: {}", self.adc_vm_offset);
+        // start measuring with ADC_VM and AGPI_B again
         self.tmc4671_checked_write(Tmc4671Registers::DS_ANALOG_INPUT_STAGE_CFG as u8, 0x44400)?;
 
         Ok(())
