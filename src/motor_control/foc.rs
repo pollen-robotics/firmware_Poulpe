@@ -43,8 +43,10 @@ pub const PPR_PER_ELECTRICAL_REVOLUTION: f32 = 65535.0; // 16 bit
 
 // Limits
 // const PID_TORQUE_FLUX_LIMITS: u32 = 0x00001000; // 4096
-const PID_TORQUE_FLUX_LIMITS: u32 = 0x00005a81; //tuned ok at 500Hz
-                                                // const PID_TORQUE_FLUX_LIMITS: u32 = 0x00000800; // 2048
+// const PID_TORQUE_FLUX_LIMITS: u32 = 0x00005a81; //Max: 58.9A
+// const PID_TORQUE_FLUX_LIMITS: u32 = 0x00000b82; //2.9A
+
+// const PID_TORQUE_FLUX_LIMITS: u32 = 0x00000800; // 2048
 
 // const PID_VELOCITY_LIMIT: u32 = 0x0000_FFFF;
 const PID_VELOCITY_LIMIT: u32 = 0x0000_7D00; //32000 //tuned ok at 500Hz
@@ -573,7 +575,7 @@ where
         //        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, 0x00007D00)?; // 32000
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8,
-            PID_TORQUE_FLUX_LIMITS,
+            self.brushless_motor_config.pid_torque_flux_limit(),
         )?;
 
         // PI settings
@@ -597,7 +599,7 @@ where
         //Limite the vel
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_VELOCITY_LIMIT as u8,
-            PID_VELOCITY_LIMIT,
+            self.brushless_motor_config.pid_velocity_limit(),
         )?;
 
         // calibrate the adc for temperature sensing

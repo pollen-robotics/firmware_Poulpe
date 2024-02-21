@@ -262,21 +262,41 @@ where
 
         // Rotate right
         info!("[Ventouse{:?}] Rotate right...", self.kind);
+
+        let mut target: i32 = 1000;
+        //Assume that check_motors_1 has been called
         #[cfg(feature = "orbita2d")]
-        if self.kind == 'B' {
-            self.foc
-                .tmc4671_set_target_velocity(1000)
-                .map_err(IOError::SpiError)?;
-        } else {
-            self.foc
-                .tmc4671_set_target_velocity(50)
-                .map_err(IOError::SpiError)?;
+        {
+            if self.kind == 'B' { target = 1000; }
+            else { target = 500; }
         }
         #[cfg(feature = "orbita3d")]
+        let target = 500;
         self.foc
-            .tmc4671_set_target_velocity(500)
+            .tmc4671_set_target_velocity(target)
             .map_err(IOError::SpiError)?;
-        let _ = Timer::after(Duration::from_millis(1000)).await;
+
+        let t0 = Instant::now();
+        loop {
+            let velocity = self
+                .foc
+                .tmc4671_get_actual_velocity()
+                .map_err(IOError::SpiError)?;
+            if velocity > 2*target || velocity < -200 {
+                // check if the motor is moving in the right direction and not too fast
+                self.foc.tmc4671_disable();
+                error!(
+                    "[Ventouse{:?}] Motor initialization error! {}/{}",
+                    self.kind, velocity, target
+                );
+                return Err(IOError::InitError);
+            }
+            let _ = Timer::after(Duration::from_millis(100)).await;
+            if t0.elapsed().as_millis() > 1000 {
+                break;
+            }
+        }
+
         self.foc
             .tmc4671_set_target_velocity(0)
             .map_err(IOError::SpiError)?;
@@ -308,26 +328,41 @@ where
     }
 
     pub async fn check_motors_2(&mut self) -> Result<(), IOError> {
-        //Assume that check_motors_1 has been called
 
-        // Rotate left
-        info!("[Ventouse{:?}] Rotate left...", self.kind);
+        let mut target: i32 = -1000;
+        //Assume that check_motors_1 has been called
         #[cfg(feature = "orbita2d")]
-        if self.kind == 'B' {
-            self.foc
-                .tmc4671_set_target_velocity(-1000)
-                .map_err(IOError::SpiError)?;
-        } else {
-            self.foc
-                .tmc4671_set_target_velocity(-50)
-                .map_err(IOError::SpiError)?;
+        {
+            if self.kind == 'B' { target = -1000; }
+            else { target = -500; }
         }
-        // self.foc.tmc4671_set_target_velocity(-150).map_err(IOError::SpiError)?;
         #[cfg(feature = "orbita3d")]
+        let target = -500;
+        
         self.foc
-            .tmc4671_set_target_velocity(-500)
+            .tmc4671_set_target_velocity(target)
             .map_err(IOError::SpiError)?;
-        let _ = Timer::after(Duration::from_millis(1000)).await;
+
+        let t0 = Instant::now();
+        loop {
+            let velocity = self
+                .foc
+                .tmc4671_get_actual_velocity()
+                .map_err(IOError::SpiError)?;
+            if velocity < 2*target || velocity > 200 {
+                // check if the motor is moving in the right direction and not too fast
+                self.foc.tmc4671_disable();
+                error!(
+                    "[Ventouse{:?}] Motor initialization error! {}/{}",
+                    self.kind, velocity, target
+                );
+                return Err(IOError::InitError);
+            }
+            let _ = Timer::after(Duration::from_millis(100)).await;
+            if t0.elapsed().as_millis() > 1000 {
+                break;
+            }
+        }
 
         // Stop
         info!("[Ventouse{:?}] Stop...", self.kind);

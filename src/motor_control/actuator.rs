@@ -24,15 +24,16 @@ impl<'d, const N: usize> Actuator<'d, N> {
             axes,
             sensors,
             index_sensor: [0xff; N],
-            #[cfg(feature = "orbita3d")]
             inverted: -1.0,
-            #[cfg(feature = "orbita2d")]
-            inverted: 1.0,
         }
     }
     #[cfg(feature = "orbita2d")]
     pub fn new(axes: [VentouseKind<'d>; N], sensors: [SensorKind<'d>; N]) -> Self {
-        Self { axes, sensors }
+        Self {
+            axes,
+            sensors,
+            inverted: 1.0,
+        }
     }
 
     pub async fn init(&mut self) -> Result<()> {
@@ -434,6 +435,7 @@ impl<'d, const N: usize> RawSensorsIO<N> for Actuator<'d, N> {
         }
 
         // FIXME: reordering the sensors because the Donut board is not in the same order as the motors...
+        #[cfg(feature = "orbita3d")]
         res.swap(1, 2);
         Ok(res)
     }

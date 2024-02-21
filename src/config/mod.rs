@@ -1,20 +1,23 @@
 // use crate::motor_control::Ventouse;
 
+use embassy_stm32::dma::NoDma;
 use embassy_stm32::peripherals as p;
 use embassy_stm32::usart::Uart;
-use embassy_stm32::dma::NoDma;
 
 #[cfg(feature = "orbita2d")]
 pub const N_AXIS: usize = 2;
 #[cfg(feature = "orbita3d")]
 pub const N_AXIS: usize = 3;
 
-pub static DXL_ID: u8 = 42;
+pub static DXL_ID: u8 = 52;
 
 pub type DynamixelUart = Uart<'static, p::USART1, p::DMA1_CH0, p::DMA1_CH1>;
 
-
-use crate::motor_control::{ventouse::{Ventouse, VentouseConfig}, sensors::{SensorConfig, I2cHallConfig}, sensors::{AksimSensor, AD5047Sensor, I2cHallSensor}};
+use crate::motor_control::{
+    sensors::{AD5047Sensor, AksimSensor, I2cHallSensor},
+    sensors::{I2cHallConfig, SensorConfig},
+    ventouse::{Ventouse, VentouseConfig},
+};
 
 pub type VentouseA<'d> = Ventouse<'d, p::SPI1, p::PA3, p::PC0, p::PA2>;
 pub type VentouseB<'d> = Ventouse<'d, p::SPI4, p::PE3, p::PE0, p::PC15>;
@@ -35,17 +38,15 @@ pub type AD5047ConfigBot = SensorConfig<p::PA15>;
 
 pub type DonutHallConfig = I2cHallConfig<p::I2C1, p::PB6, p::PB7>;
 
+pub type Aksim<'d> = AksimSensor<'d, p::SPI6, p::PA15>;
+pub type AD5047<'d> = AD5047Sensor<'d, p::SPI4, p::PE4>;
 
-pub type Aksim<'d> = AksimSensor<'d,p::SPI6, p::PA15>;
-pub type AD5047<'d> = AD5047Sensor<'d, p::SPI4,p::PE4>;
-
-pub type AD5047Top<'d> = AD5047Sensor<'d, p::SPI4,p::PA4>;
-pub type AD5047Mid<'d> = AD5047Sensor<'d, p::SPI4,p::PE4>;
-pub type AD5047Bot<'d> = AD5047Sensor<'d, p::SPI4,p::PA15>;
+pub type AD5047Top<'d> = AD5047Sensor<'d, p::SPI4, p::PA4>;
+pub type AD5047Mid<'d> = AD5047Sensor<'d, p::SPI4, p::PE4>;
+pub type AD5047Bot<'d> = AD5047Sensor<'d, p::SPI4, p::PA15>;
 
 // pub type DonutHall<'d> = I2cHallSensor<'d, p::I2C1, p::PB6, p::PB7>;
 pub type DonutHall<'d> = I2cHallSensor<p::I2C1>;
-
 
 pub struct ActuatorConfig {
     #[cfg(feature = "orbita3d")]
@@ -66,8 +67,6 @@ pub struct ActuatorConfig {
     pub ad5047bot: AD5047ConfigBot,
     #[cfg(feature = "orbita3d")]
     pub donut_hall: DonutHallConfig,
-
-
 }
 
 mod motor;
