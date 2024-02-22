@@ -848,7 +848,7 @@ pub async fn control_loop(config: ActuatorConfig) {
                             temp_error = true;
                         }
                     });
-                    info!("Temperature: {:?}", t);
+                    debug!("Temperature: {:?}", t);
                 }
                 Err(e) => {
                     error_led = true;
@@ -858,7 +858,7 @@ pub async fn control_loop(config: ActuatorConfig) {
             if temp_error { // stop everything if the temperature is too high
                 error_led = true;
                 {SHARED_MEMORY.lock().await.set_error_state(BoardStatus::OverTemperatureError)};
-                error!("Temperature too high (above 80 degrees)!");
+                error!("Temperature too high (above 100 degrees)!");
             }     
 
             // get dc bus voltage
