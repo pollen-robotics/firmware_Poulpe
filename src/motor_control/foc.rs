@@ -323,6 +323,8 @@ where
         // ADC is operated in a single ended mode it measures the voltage from 0 to 2.5V
         // the 10k NTC is supplied with 3.3V and pulled down to ground with two 4.7k resistor
         // the voltage is measured at the center of the two resistors
+        // the temperature reading is very bad on TMC4761 for low temperatures especially
+        // but for higher temperatures it is quite accurate (above 60°C) - good for security
         let volt = ( adc_raw as f64 - self.adc_temp_offset as f64) / 65535.0  * 5.0;
         let r_div: f64 = 4700.0;
         let beta: f64 = 3455.0;
