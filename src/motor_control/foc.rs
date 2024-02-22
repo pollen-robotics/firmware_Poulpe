@@ -325,6 +325,7 @@ where
         // the voltage is measured at the center of the two resistors
         // the temperature reading is very bad on TMC4761 for low temperatures especially
         // but for higher temperatures it is quite accurate (above 60°C) - good for security
+        // - empirically tested
         let volt = ( adc_raw as f64 - self.adc_temp_offset as f64) / 65535.0  * 5.0;
         let r_div: f64 = 4700.0;
         let beta: f64 = 3455.0;
