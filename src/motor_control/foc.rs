@@ -8,6 +8,8 @@ use embedded_hal_1::spi::SpiDevice;
 
 use libm;
 
+use crate::motor_control::motors_io::IOError;
+
 use crate::config;
 
 // PWM configuration
@@ -318,7 +320,7 @@ where
         Ok((adc_offset[0] as u32, adc_offset[1] as u32))
     }
 
-    fn adc_to_temperature(&self, adc_raw: u32) -> f32 {
+    fn adc_to_temperature(&self, adc_raw: u32) -> Result<f32, IOError>{
         // datasheet BOB: https://www.mouser.fr/datasheet/2/281/r44e-522712.pdf  (NCP18XH103F03RB)
         // ADC is operated in a single ended mode it measures the voltage from 0 to 2.5V
         // the 10k NTC is supplied with 3.3V and pulled down to ground with two 4.7k resistor
@@ -326,21 +328,30 @@ where
         // the temperature reading is very bad on TMC4761 for low temperatures especially
         // but for higher temperatures it is quite accurate (above 60°C) - good for security
         // - empirically tested
-        let volt = ( adc_raw as f64 - self.adc_temp_offset as f64) / 65535.0  * 5.0;
-        let r_div: f64 = 4700.0;
-        let beta: f64 = 3455.0;
-        let room_temp_inv: f64 = 1.0 / 298.15; //[K]
-        let r_t: f64 = r_div * (3.3 / volt - 2.0); // estimated resistance of the NTC
-        let r_10k: f64 = 10000.0;
-        let t: f64 = 1.0 / ((libm::log(r_t / r_10k) / beta) + room_temp_inv);
-        return (t as f32) - 273.15; // final conversion to Celsius
+        let volt = ( adc_raw as f32 - self.adc_temp_offset as f32) / 65535.0  * 5.0;
+        let r_div: f32 = 4700.0;
+        let beta: f32 = 3455.0;
+        let room_temp_inv: f32 = 1.0 / 298.15; //[K]
+        let r_t: f32 = r_div * (3.3 / volt - 2.0); // estimated resistance of the NTC
+        let r_10k: f32 = 10000.0;
+        let t: f32 = 1.0 / (((libm::log((r_t / r_10k) as f64) as f32) / beta) + room_temp_inv);
+
+        match t{
+            t if t.is_nan() => Err(IOError::InvalidData),
+            _ => Ok((t as f32) - 273.15) // final conversion to Celsius
+        }
     }
 
     pub fn tmc4671_get_board_temperature(&mut self) -> Result<(f32), embassy_stm32::spi::Error> {
         self.tmc4671_write_register(Tmc4671Registers::ADC_RAW_ADDR as u8, 0x2)?;
 
         match self.tmc4671_get_u32(Tmc4671Registers::ADC_RAW_DATA as u8) {
-            Ok(raw) => Ok(self.adc_to_temperature((raw & 0xffff) as u32)),
+            Ok(raw) => {
+                match self.adc_to_temperature((raw & 0xffff) as u32){
+                    Ok(temp) => Ok(temp),
+                    Err(e) =>Err(embassy_stm32::spi::Error::Framing) // send the math error as a framing error
+                    }
+                },
             Err(e) => Err(e),
         }
     }

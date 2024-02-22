@@ -17,6 +17,7 @@ use crate::motor_control::{
     sensors::{AD5047Sensor, AksimSensor, I2cHallSensor},
     sensors::{I2cHallConfig, SensorConfig},
     ventouse::{Ventouse, VentouseConfig},
+    analog::AnalogInputConfig,
 };
 
 pub type VentouseA<'d> = Ventouse<'d, p::SPI1, p::PA3, p::PC0, p::PA2>;
@@ -45,6 +46,10 @@ pub type AD5047Top<'d> = AD5047Sensor<'d, p::SPI4, p::PA4>;
 pub type AD5047Mid<'d> = AD5047Sensor<'d, p::SPI4, p::PE4>;
 pub type AD5047Bot<'d> = AD5047Sensor<'d, p::SPI4, p::PA15>;
 
+
+pub type TemperatureSensorConfig = AnalogInputConfig<p::ADC1, p::PB1>;
+
+
 // pub type DonutHall<'d> = I2cHallSensor<'d, p::I2C1, p::PB6, p::PB7>;
 pub type DonutHall<'d> = I2cHallSensor<p::I2C1>;
 
@@ -67,6 +72,7 @@ pub struct ActuatorConfig {
     pub ad5047bot: AD5047ConfigBot,
     #[cfg(feature = "orbita3d")]
     pub donut_hall: DonutHallConfig,
+    pub temperature_sensor: TemperatureSensorConfig
 }
 
 mod motor;

@@ -13,6 +13,7 @@ pub use sensors_io::RawSensorsIO;
 
 pub mod task;
 pub mod ventouse;
+pub mod analog;
 
 #[derive(PartialEq)] 
 #[derive(Clone, Copy,defmt::Format)]
