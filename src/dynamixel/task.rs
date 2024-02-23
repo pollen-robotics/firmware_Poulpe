@@ -13,8 +13,8 @@ use crate::{
 };
 
 #[embassy_executor::task]
-pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
-    let id = config::DXL_ID;
+pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin, id: u8) {
+    let id = id;
     let mut dxl = super::DynamixelUsartIO::new(usart, dir_pin, id);
 
     let mut dxl_error = 0;

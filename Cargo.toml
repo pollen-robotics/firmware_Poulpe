@@ -25,6 +25,9 @@ velocity_feedforward = []
 gearbox_output = []  # control the motor angle after the gearbox
 axis_output = []  # control the motor angle after the gearbox and axis reduction
 
+# update flash
+update_flash = []
+
 [dependencies]
 # rustypot = "0.4.2"
 # stm32h742vg

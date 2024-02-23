@@ -6,23 +6,27 @@
 #![feature(async_fn_in_trait)]
 #![feature(array_methods)]
 
-use defmt::{info, unwrap};
+use defmt::{info, unwrap, error};
 use embassy_executor::Spawner;
+use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_stm32::usart::Config as usart_config;
-use embassy_stm32::{Config as stm32_config, i2c};
 use embassy_stm32::{bind_interrupts, peripherals, usart};
-use embassy_stm32::dma::NoDma;
+use embassy_stm32::{i2c, Config as stm32_config};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_time::{Duration, Timer, block_for};
+use embassy_time::{block_for, Duration, Timer};
+
+use embassy_stm32::flash::{Flash,get_flash_regions};
 
 mod config;
 mod dynamixel;
 mod motor_control;
 mod shared_memory;
 
-use crate::config::{ActuatorConfig, AksimConfig, AD5047Config, AD5047ConfigTop, AD5047ConfigMid, AD5047ConfigBot};
+use crate::config::{
+    AD5047Config, AD5047ConfigBot, AD5047ConfigMid, AD5047ConfigTop, ActuatorConfig, AksimConfig,
+};
 use crate::motor_control::sensors::I2cHallConfig;
 use crate::motor_control::ventouse::VentouseConfig;
 use crate::shared_memory::SharedMemory;
@@ -59,7 +63,6 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "orbita2d")]
     info!("Poulpe: Orbita 2D");
 
-
     // 440MHz (without HSE)
     let mut stm32_conf = stm32_config::default();
     {
@@ -69,7 +72,7 @@ async fn main(spawner: Spawner) {
                                    // stm32_conf.rcc.hse = Som(Hse{Hertz::mhz(48), HseMode::Oscillator}); //TODO hse external clock might be more accurate
         stm32_conf.rcc.pll1 = Some(Pll {
             // source: PllSource::HSI
-            source: PllSource::CSI,   //PLLSource = RCC_PLLSOURCE_CSI
+            source: PllSource::CSI, //PLLSource = RCC_PLLSOURCE_CSI
 
             prediv: PllPreDiv::DIV1,  //PLLM = 1;
             mul: PllMul::MUL220,      //PLLN = 220
@@ -86,12 +89,33 @@ async fn main(spawner: Spawner) {
         stm32_conf.rcc.voltage_scale = VoltageScale::Scale0;
     }
 
-    let p = embassy_stm32::init(stm32_conf);
+    let mut p = embassy_stm32::init(stm32_conf);
+
+    use config::flash::{FlashManager, FlashData};
+    let mut flash_manager = FlashManager::new(p.FLASH);
+
+    #[cfg(feature = "update_flash")]
+    {
+        let save_to_flash = FlashData{
+            board_id : config::DXL_ID,
+            sensor_offsets : [0.0, 0.0, 0.0],
+        };
+        unwrap!(flash_manager.write(save_to_flash));
+    }
+    let mut board_id = config::DXL_ID;
+    match flash_manager.read(){
+        Ok(b) => {
+            info!("Read from flash: {:?}", b);
+            board_id = b.board_id;
+        }
+        Err(e) => {
+            error!("Error reading from flash: {:?}", e);
+        }
+    }
 
     // Spawn the control loop
     #[cfg(feature = "orbita3d")]
     let actuator_config = ActuatorConfig {
-
         a: VentouseConfig {
             peri: p.SPI1,
             sck: p.PA5,
@@ -120,27 +144,18 @@ async fn main(spawner: Spawner) {
             driver_cs: p.PD6,
         },
 
-        ad5047top: AD5047ConfigTop {
-            cs: p.PA4,
-        },
-        ad5047mid: AD5047ConfigMid {
-            cs: p.PE4,
-        },
-        ad5047bot: AD5047ConfigBot {
-            cs: p.PA15,
-        },
+        ad5047top: AD5047ConfigTop { cs: p.PA4 },
+        ad5047mid: AD5047ConfigMid { cs: p.PE4 },
+        ad5047bot: AD5047ConfigBot { cs: p.PA15 },
 
-	donut_hall: I2cHallConfig {
-	    peri: p.I2C1,
-	    scl: p.PB6,
-	    sda: p.PB7,
-	},
-
-
+        donut_hall: I2cHallConfig {
+            peri: p.I2C1,
+            scl: p.PB6,
+            sda: p.PB7,
+        },
     };
     #[cfg(feature = "orbita2d")]
     let actuator_config = ActuatorConfig {
-
         b: VentouseConfig {
             peri: p.SPI4,
             sck: p.PE12,
@@ -160,15 +175,9 @@ async fn main(spawner: Spawner) {
             driver_cs: p.PD6,
         },
 
-        aksim: AksimConfig {
-            cs: p.PA15,
-        },
-        ad5047: AD5047Config {
-            cs: p.PE4,
-        },
-
+        aksim: AksimConfig { cs: p.PA15 },
+        ad5047: AD5047Config { cs: p.PE4 },
     };
-
 
     unwrap!(spawner.spawn(motor_control::task::control_loop(actuator_config)));
 
@@ -193,14 +202,13 @@ async fn main(spawner: Spawner) {
     //     usart_config,
     // )
     // .unwrap();
-    // unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
-
+    // unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into(), board_id)));
 
     // Poulpe B1
     let usart = config::DynamixelUart::new(
         p.USART1,
         p.PB15, //RX
-        p.PA9, //TX
+        p.PA9,  //TX
         Irqs,
         p.DMA1_CH0,
         p.DMA1_CH1,
@@ -208,8 +216,7 @@ async fn main(spawner: Spawner) {
     )
     .unwrap();
 
-
-    unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
+    unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into(), board_id)));
 
     // Prepare and spawn the main task
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
@@ -218,14 +225,13 @@ async fn main(spawner: Spawner) {
     led_hello.set_low();
 
     loop {
+        let errorled = { SHARED_MEMORY.lock().await.get_error_led() };
 
-	let errorled= {SHARED_MEMORY.lock().await.get_error_led()};
-
-	if errorled {
-	    led_error.set_high();
-	} else {
-	    led_error.set_low();
-	}
+        if errorled {
+            led_error.set_high();
+        } else {
+            led_error.set_low();
+        }
 
         // Robots should dance, LED should blink.
         led_hello.set_high();

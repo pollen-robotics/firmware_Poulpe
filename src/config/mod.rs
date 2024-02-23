@@ -11,6 +11,7 @@ pub const N_AXIS: usize = 3;
 
 pub static DXL_ID: u8 = 52;
 
+
 pub type DynamixelUart = Uart<'static, p::USART1, p::DMA1_CH0, p::DMA1_CH1>;
 
 use crate::motor_control::{
@@ -18,6 +19,7 @@ use crate::motor_control::{
     sensors::{I2cHallConfig, SensorConfig},
     ventouse::{Ventouse, VentouseConfig},
 };
+
 
 pub type VentouseA<'d> = Ventouse<'d, p::SPI1, p::PA3, p::PC0, p::PA2>;
 pub type VentouseB<'d> = Ventouse<'d, p::SPI4, p::PE3, p::PE0, p::PC15>;
@@ -73,3 +75,4 @@ mod motor;
 pub use motor::BrushlessMotor;
 mod current_sense;
 pub use current_sense::CurrentSensing;
+pub mod flash;
