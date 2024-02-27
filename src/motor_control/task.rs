@@ -848,6 +848,7 @@ pub async fn control_loop(config: ActuatorConfig) {
             let mut temp_error = false;
             match actuator.get_board_temperature(){
                 Ok(t) => {
+                    {SHARED_MEMORY.lock().await.set_board_temperature(t)};
                     t.iter().for_each(|t| {
                         if *t > 100.0 { // if temperature is not a number or above 100 degrees
                             temp_error = true;
@@ -870,6 +871,7 @@ pub async fn control_loop(config: ActuatorConfig) {
             let mut bus_error = false;
             match  actuator.get_bus_voltage(){
                 Ok(v) => {
+                    {SHARED_MEMORY.lock().await.set_bus_voltage(v)};
                     v.iter().for_each(|v| {
                         if *v < 10.0 {
                             bus_error = true;
@@ -891,6 +893,7 @@ pub async fn control_loop(config: ActuatorConfig) {
             // read the motor temperature
             match motor_temperature_sensor.read_temperature(){
                 Ok(t) => {
+                    {SHARED_MEMORY.lock().await.set_motor_temperature(t)};
                     if t > 100.0 {
                         error_led = true;
                         error!("Motor temperature too high (above 100 degrees)!");

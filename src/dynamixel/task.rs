@@ -24,7 +24,7 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
         match dxl.read().await {
             Ok(packet) => {
                 debug!("Got packet: {:?}", packet);
-                dxl_error = {SHARED_MEMORY.lock().await.get_error_state()} as u8;
+                dxl_error = { SHARED_MEMORY.lock().await.get_error_state() } as u8;
                 match packet {
                     InstructionPacketKind::Ping(_) => {
                         let sp = StatusPacket::ack(id, dxl_error);
@@ -157,6 +157,31 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                             DynamixelRegister::UqUdLimit => {
                                 let value = { SHARED_MEMORY.lock().await.get_uq_ud_limit() };
                                 let value = conversion::i16_to_bytes(value);
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
+                            DynamixelRegister::BusVoltage => {
+                                let value = { SHARED_MEMORY.lock().await.get_bus_voltage() };
+                                let value = conversion::float_to_bytes(value);
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+                            
+                            DynamixelRegister::Temperature => {
+                                let board_values =
+                                    { SHARED_MEMORY.lock().await.get_board_temperature() };
+                                let motor_value =
+                                    { SHARED_MEMORY.lock().await.get_motor_temperature() };
+                                // concatenate the values
+                                let value: [f32; 4] = [board_values[0], board_values[1], board_values[2], motor_value];
+                                let value = conversion::float_to_bytes(value);
                                 let sp = StatusPacket::with_value(id, dxl_error, value);
                                 trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
                                 if let Some(e) = dxl.write(&sp).await.err() {
