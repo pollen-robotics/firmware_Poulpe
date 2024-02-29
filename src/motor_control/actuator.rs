@@ -100,7 +100,7 @@ impl<'d, const N: usize> Actuator<'d, N> {
         &mut self,
         hall_idx: [u8; N],
         hardware_zero: [f32; N],
-    ) -> Result<[f32; N]> {
+    ) -> Result<([f32; N], [i16; N])> {
         let mut zero_hall_offsets: [f32; 3] = [0.0, 0.0, 0.0]; //orbita domain
         zero_hall_offsets[0] =
             hall_diff(hall_idx[0], 0) * 22.5_f32.to_radians() + 11.25_f32.to_radians();
@@ -109,10 +109,13 @@ impl<'d, const N: usize> Actuator<'d, N> {
         zero_hall_offsets[2] =
             hall_diff(hall_idx[2], 10) * 22.5_f32.to_radians() - 3.75_f32.to_radians();
 
-        let mut found_turn: [i16; 3] = [0; 3];
+        let mut found_turn: [i16; N] = [0; N];
 
         //TODO match and check errors NaN
         let mut current_pos = self.get_axis_sensors()?; //gearbox domain
+        if current_pos.iter().any(|&x| x.is_nan()) {
+            return Err(IOError::InitError);
+        }
 
         let reductions = 1.0 / self.axes[0].get_ratio(); //5.3333
 
@@ -120,9 +123,11 @@ impl<'d, const N: usize> Actuator<'d, N> {
         current_pos[1] /= reductions;
         current_pos[2] /= reductions;
         let mut hardware_zero_orbita = [0.0, 0.0, 0.0];
-        hardware_zero_orbita[0] = hardware_zero[0] / reductions;
-        hardware_zero_orbita[1] = hardware_zero[1] / reductions;
-        hardware_zero_orbita[2] = hardware_zero[2] / reductions;
+
+        // Should be in Orbita domain
+        hardware_zero_orbita[0] = hardware_zero[0]; // / reductions;
+        hardware_zero_orbita[1] = hardware_zero[1]; // / reductions;
+        hardware_zero_orbita[2] = hardware_zero[2]; // / reductions;
 
         let mut offsets: [f32; N] = [0.0; N];
         hardware_zero_orbita
@@ -164,7 +169,7 @@ impl<'d, const N: usize> Actuator<'d, N> {
         // offsets[1] %= TAU;
         // offsets[2] %= TAU;
 
-        Ok(offsets)
+        Ok((offsets, found_turn))
     }
 }
 

@@ -421,6 +421,12 @@ where
 
         // Combine the two u8 values into a 16-bit integer
         let mut combined_value: u16 = ((data_read[0] as u16) << 8) | (data_read[1] as u16);
+
+        if combined_value == 0 {
+            //very very unlikely in normal conditions, but maybe if spi problems?
+            return Err(IOError::InvalidData);
+        }
+
         // check if data has good parity
         if (combined_value.count_ones() % 2) != 0 {
             // error!("Parity error reading Center sensor");

@@ -462,34 +462,56 @@ pub async fn control_loop(config: ActuatorConfig) {
                 init_error = BoardStatus::IndexError;
                 [255; config::N_AXIS]
             });
-
+            info!("Found indices: {:?}", indices);
             //TODO retry if 255 or duplicate
-            actuator.set_index_sensor(indices);
 
-            let zeros = [5.232344, 3.865484, 2.260075];
-            let mut offsets = actuator.compute_offset(indices, zeros).unwrap();
+            if indices.contains(&255)
+            // errors in finding the Hall
+            {
+                error!("Bad index!");
+                continue; //Retry
+            }
+            if (1..indices.len()).any(|i| indices[i..].contains(&indices[i - 1])) {
+                //thanks Stackoverflow
+                error!("Duplicate index!");
+                continue; //Retry
+            }
+            actuator.set_index_sensor(indices);
+            actuator.set_torque([false, false, false]).unwrap(); //be sure to torque off to avoid noise in axis sensors?
+            block_for(Duration::from_millis(10));
+            // let zeros = [1.0193205177783966, 0.7377220094203949, 0.4328247159719467]; //Orbita domain
+            let zeros = config::HARDWARE_ZEROS;
+            info!("Hardware zeros: {:?}", zeros);
+            let (mut offsets, found_turn) = actuator.compute_offset(indices, zeros).unwrap();
+
+            if !(found_turn[0] == found_turn[1] && found_turn[1] == found_turn[2]) {
+                //It may be possible in certain case?? But better forbid this
+                error!("Incoherent number of turn found! {:?}", found_turn);
+                continue;
+            }
+            if offsets.iter().any(|&x| x.is_nan()) {
+                // Check for NaN
+                error!("Bad offsets! {:?}", offsets);
+                continue;
+            }
+
             let curpos = actuator.get_axis_sensors().unwrap();
 
-            offsets[0] *= -1.0;
-            offsets[1] *= -1.0;
-            offsets[2] *= -1.0;
+            offsets[0] *= -1.0 / config::BrushlessMotor::ecx22().axis_ratio();
+            offsets[1] *= -1.0 / config::BrushlessMotor::ecx22().axis_ratio();
+            offsets[2] *= -1.0 / config::BrushlessMotor::ecx22().axis_ratio();
 
-            offsets[0] *= 5.33333333;
-            offsets[1] *= 5.33333333;
-            offsets[2] *= 5.33333333;
+            // offsets[0] *= 5.33333333;
+            // offsets[1] *= 5.33333333;
+            // offsets[2] *= 5.33333333;
 
             offsets[0] += curpos[0];
             offsets[1] += curpos[1];
             offsets[2] += curpos[2];
 
+            debug!("indices: {:?} offsets: {:?}", indices, offsets);
             actuator.set_current_position(offsets);
-
-            debug!("indices: {:?}", indices);
         }
-        // - Get the "closest" Hall for each motor
-        // - Get the "absolute" position of each motor
-        // - Set the index of the detected Hall for each motor
-        // - Wait for the PC to read theses values...
 
         block_for(Duration::from_millis(100));
         #[cfg(feature = "orbita2d")]
@@ -500,6 +522,7 @@ pub async fn control_loop(config: ActuatorConfig) {
         {
             actuator.set_torque([false, false, false]).unwrap();
 
+            // Set the initial position to the axis sensor values (used for pc-side "sofwtare" zeroring )
             /*
                 let init_sensors = actuator.get_axis_sensors().unwrap();
                 debug!("init axis sensors: {:?}", init_sensors);

@@ -148,6 +148,7 @@ where
         if ret_err {
             return Err(err);
         }
+
         Ok(())
     }
 
@@ -163,10 +164,23 @@ where
                 adc_offset[0] += adc.0 as u32;
                 adc_offset[1] += adc.1 as u32;
             })?;
+            // debug!("adc_offset: {:?}", adc_offset);
+            block_for(Duration::from_micros(10));
         }
         // divide by 1000 to get the average
         adc_offset[0] /= 1000;
         adc_offset[1] /= 1000;
+
+        // should not be very far from 32758 (0x8000)
+        if (adc_offset[0] as i32 - 0x8000).abs() > 10000
+            || (adc_offset[1] as i32 - 0x8000).abs() > 10000
+        {
+            error!(
+                "[Ventouse{:?}] Incoherent ADC offset!: {:?}",
+                self.kind, adc_offset
+            );
+            return Err(embassy_stm32::spi::Error::ModeFault); //FIXME: better error return
+        }
 
         // set the new offset values
         self.foc

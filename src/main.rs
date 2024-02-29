@@ -53,6 +53,9 @@ pub fn exit() -> ! {
     }
 }
 
+// from build.rs
+// include!(concat!(env!("OUT_DIR"), "/constants.rs"));
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     info!("==== Pollen Robotics ====");
@@ -61,7 +64,9 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "orbita2d")]
     info!("Poulpe: Orbita 2D");
 
-    info!("Git commit: {:?}", env!("GIT_HASH"));
+    info!("Git commit: {:?}", config::GIT_HASH); //TODO: read access from a dxl msg?
+                                                 // info!("Hardware_zeros: {:?}", config::HARDWARE_ZEROS); // For Orbita3d firmware zero
+
     // 440MHz (without HSE)
     let mut stm32_conf = stm32_config::default();
     {
