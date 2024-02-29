@@ -481,49 +481,13 @@ pub async fn control_loop(config: ActuatorConfig) {
             block_for(Duration::from_millis(10));
             // let zeros = [1.0193205177783966, 0.7377220094203949, 0.4328247159719467]; //Orbita domain
             let zeros = config::HARDWARE_ZEROS;
-            info!("Hardware zeros: {:?}", zeros);
-            let (mut offsets, found_turn) = actuator.compute_offset(indices, zeros).unwrap();
 
-            if !(found_turn[0] == found_turn[1] && found_turn[1] == found_turn[2]) {
-                //It may be possible in certain case?? But better forbid this
-                error!("Incoherent number of turn found! {:?}", found_turn);
-                continue;
-            }
-            if offsets.iter().any(|&x| x.is_nan()) {
-                // Check for NaN
-                error!("Bad offsets! {:?}", offsets);
-                continue;
-            }
+            if zeros[0] == zeros[1] && zeros[1] == zeros[2] && zeros[0] == 0.0 {
+                //Forgot to pass the zeros as argument! FIXME switch to a different zeroing mode?
+                // => assuming HallZero mode
+                error!("No zero given in paramter! => HallZero mode");
+                // Set the initial position to the axis sensor values (used for pc-side "sofwtare" zeroring )
 
-            let curpos = actuator.get_axis_sensors().unwrap();
-
-            offsets[0] *= -1.0 / config::BrushlessMotor::ecx22().axis_ratio();
-            offsets[1] *= -1.0 / config::BrushlessMotor::ecx22().axis_ratio();
-            offsets[2] *= -1.0 / config::BrushlessMotor::ecx22().axis_ratio();
-
-            // offsets[0] *= 5.33333333;
-            // offsets[1] *= 5.33333333;
-            // offsets[2] *= 5.33333333;
-
-            offsets[0] += curpos[0];
-            offsets[1] += curpos[1];
-            offsets[2] += curpos[2];
-
-            debug!("indices: {:?} offsets: {:?}", indices, offsets);
-            actuator.set_current_position(offsets);
-        }
-
-        block_for(Duration::from_millis(100));
-        #[cfg(feature = "orbita2d")]
-        actuator.set_torque([false, false]).unwrap();
-
-        // For compatibility with Orbita3d Houston
-        #[cfg(feature = "orbita3d")]
-        {
-            actuator.set_torque([false, false, false]).unwrap();
-
-            // Set the initial position to the axis sensor values (used for pc-side "sofwtare" zeroring )
-            /*
                 let init_sensors = actuator.get_axis_sensors().unwrap();
                 debug!("init axis sensors: {:?}", init_sensors);
                 let res = actuator.set_current_position(init_sensors);
@@ -552,8 +516,40 @@ pub async fn control_loop(config: ActuatorConfig) {
                         error!("Error setting target position: {:?}", e);
                     }
                 }
-            */
+            } else {
+                info!("Hardware zeros: {:?}", zeros);
+                let (mut offsets, found_turn) = actuator.compute_offset(indices, zeros).unwrap();
+
+                if !(found_turn[0] == found_turn[1] && found_turn[1] == found_turn[2]) {
+                    //It may be possible in certain case?? But better forbid this
+                    error!("Incoherent number of turn found! {:?}", found_turn);
+                    continue;
+                }
+                if offsets.iter().any(|&x| x.is_nan()) {
+                    // Check for NaN
+                    error!("Bad offsets! {:?}", offsets);
+                    continue;
+                }
+
+                let curpos = actuator.get_axis_sensors().unwrap();
+
+                offsets[0] *= -1.0 / config::BrushlessMotor::ecx22().axis_ratio();
+                offsets[1] *= -1.0 / config::BrushlessMotor::ecx22().axis_ratio();
+                offsets[2] *= -1.0 / config::BrushlessMotor::ecx22().axis_ratio();
+
+                offsets[0] += curpos[0];
+                offsets[1] += curpos[1];
+                offsets[2] += curpos[2];
+
+                debug!("indices: {:?} offsets: {:?}", indices, offsets);
+                actuator.set_current_position(offsets);
+            }
         }
+
+        block_for(Duration::from_millis(100));
+        #[cfg(feature = "orbita2d")]
+        actuator.set_torque([false, false]).unwrap();
+
         // if no error during init, we can break the loop
         if init_error == BoardStatus::Ok {
             debug!("init sensors: {:?}", init_sensors);
