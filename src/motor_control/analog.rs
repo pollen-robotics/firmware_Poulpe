@@ -50,7 +50,7 @@ where
         value * 3.3 / 65535.0
     }
 
-    pub fn read_temperature(&mut self) -> Result<(f32), IOError>{
+    pub fn read_temperature(&mut self) -> Result<(f32), IOError> {
         let voltage: f32 = self.read_voltage();
         // Formula: https://www.giangrandi.org/electronics/ntc/ntc.shtml
         let r_div: f32 = 4700.0;
@@ -59,11 +59,11 @@ where
         let r_t: f32 = r_div * ((3.3 / voltage) - 1.0);
         let r_25: f32 = 5000.0;
 
-        let mut t: f32 = 1.0 / (( ( log((r_t / r_25) as f64) as f32) / beta) + room_temp_inv);
-        
-        match t{
+        let mut t: f32 = 1.0 / (((log((r_t / r_25) as f64) as f32) / beta) + room_temp_inv);
+
+        match t {
             t if t.is_nan() => Err(IOError::InvalidData),
-            _ => Ok((t as f32) - 273.15) // final conversion to Celsius
+            _ => Ok((t as f32) - 273.15), // final conversion to Celsius
         }
     }
 }

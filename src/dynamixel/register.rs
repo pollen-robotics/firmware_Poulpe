@@ -3,6 +3,8 @@ pub enum DynamixelRegister {
     FirmwareVersion,
     Id,
 
+    BoardState,
+
     FluxPID,
     TorquePID,
     VelocityPID,
@@ -62,6 +64,8 @@ impl DynamixelRegister {
 
             70 => Some(DynamixelRegister::Temperature),
             72 => Some(DynamixelRegister::BusVoltage),
+
+            80 => Some(DynamixelRegister::BoardState),
 
             90 => Some(DynamixelRegister::AxisSensor),
 
