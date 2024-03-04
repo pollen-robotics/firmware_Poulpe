@@ -11,11 +11,12 @@ pub use motors_io::{Pid, RawMotorsIO, Result};
 mod sensors_io;
 pub use sensors_io::RawSensorsIO;
 
+pub mod analog;
 pub mod task;
 pub mod ventouse;
-pub mod analog;
 
 #[derive(PartialEq, Clone, Copy, defmt::Format)]
+#[repr(u8)]
 pub enum BoardStatus {
     Ok = 0,
     InitError = 1,
@@ -25,4 +26,22 @@ pub enum BoardStatus {
     OverTemperatureError = 5,
     OverCurrentError = 6,
     BusVoltageError = 7,
+    Unknown = 255,
+}
+
+impl BoardStatus {
+    pub fn from_u8(value: u8) -> BoardStatus {
+        match value {
+            0 => BoardStatus::Ok,
+            1 => BoardStatus::InitError,
+            2 => BoardStatus::SensorError,
+            3 => BoardStatus::IndexError,
+            4 => BoardStatus::ZeroingError,
+            5 => BoardStatus::OverTemperatureError,
+            6 => BoardStatus::OverCurrentError,
+            7 => BoardStatus::BusVoltageError,
+            255 => BoardStatus::Unknown,
+            _ => BoardStatus::Unknown,
+        }
+    }
 }
