@@ -75,6 +75,7 @@ pub struct ActuatorConfig {
     pub ad5047bot: AD5047ConfigBot,
     #[cfg(feature = "orbita3d")]
     pub donut_hall: DonutHallConfig,
+    #[cfg(not(feature = "no_temperture_sensor"))]
     pub temperature_sensor: TemperatureSensorConfig
 }
 
