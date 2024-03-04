@@ -139,6 +139,7 @@ async fn main(spawner: Spawner) {
         ad5047top: AD5047ConfigTop { cs: p.PA4 },
         ad5047mid: AD5047ConfigMid { cs: p.PE4 },
         ad5047bot: AD5047ConfigBot { cs: p.PA15 },
+        #[cfg(not(feature = "no_temperture_sensor"))]
         temperature_sensor: TemperatureSensorConfig { adc: p.ADC1, pin: p.PB1 },
 
         donut_hall: I2cHallConfig {
@@ -170,6 +171,7 @@ async fn main(spawner: Spawner) {
 
         aksim: AksimConfig { cs: p.PA15 },
         ad5047: AD5047Config { cs: p.PE4 },
+        #[cfg(not(feature = "no_temperture_sensor"))]
         temperature_sensor: TemperatureSensorConfig { adc: p.ADC1, pin: p.PB1 },
     };
 

@@ -305,6 +305,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 
 
     // initialise the adc for motor temperature reading
+    #[cfg(not(feature = "no_temperture_sensor"))]
     let mut motor_temperature_sensor =  AnalogInput::new(config.temperature_sensor);
 
     // Setup the actuator with the configured ventouses
@@ -932,6 +933,8 @@ pub async fn control_loop(config: ActuatorConfig) {
                 error!("Bus voltage is too low (under 10V)!");
             }
             
+            #[cfg(not(feature = "no_temperature_sensor"))]
+            {
             // read the motor temperature
             match motor_temperature_sensor.read_temperature(){
                 Ok(t) => {
@@ -947,6 +950,7 @@ pub async fn control_loop(config: ActuatorConfig) {
                     error_led = true;
                     error!("Motor temperature reading error {:?}", e);
                 }
+            }
             }
 
             slow_timer = 1000;
