@@ -15,9 +15,8 @@ pub mod task;
 pub mod ventouse;
 pub mod analog;
 
-#[derive(PartialEq)] 
-#[derive(Clone, Copy,defmt::Format)]
-pub enum BoardStatus{
+#[derive(PartialEq, Clone, Copy, defmt::Format)]
+pub enum BoardStatus {
     Ok = 0,
     InitError = 1,
     SensorError = 2,

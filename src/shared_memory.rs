@@ -28,17 +28,16 @@ pub struct Memory<const N: usize> {
     velocity_pid_gains: [Pid; N],
     position_pid_gains: [Pid; N],
 
-
     board_temperatures: [f32; N],
     motor_temperature: f32,
-    bus_voltages: [f32; N], 
+    bus_voltages: [f32; N],
 
     uq_ud_limit: [i16; N],
     torque_flux_limit: [f32; N],
     velocity_limit: [f32; N],
 
     axis_sensor: [f32; N],
-
+  
     #[cfg(feature = "orbita3d")]
     index_sensor: [u8; N],
 

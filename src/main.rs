@@ -55,6 +55,9 @@ pub fn exit() -> ! {
     }
 }
 
+// from build.rs
+// include!(concat!(env!("OUT_DIR"), "/constants.rs"));
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     info!("==== Pollen Robotics ====");
@@ -62,6 +65,9 @@ async fn main(spawner: Spawner) {
     info!("Poulpe: Orbita 3D");
     #[cfg(feature = "orbita2d")]
     info!("Poulpe: Orbita 2D");
+
+    info!("Git commit: {:?}", config::GIT_HASH); //TODO: read access from a dxl msg?
+                                                 // info!("Hardware_zeros: {:?}", config::HARDWARE_ZEROS); // For Orbita3d firmware zero
 
     // 440MHz (without HSE)
     let mut stm32_conf = stm32_config::default();
@@ -133,14 +139,13 @@ async fn main(spawner: Spawner) {
         ad5047top: AD5047ConfigTop { cs: p.PA4 },
         ad5047mid: AD5047ConfigMid { cs: p.PE4 },
         ad5047bot: AD5047ConfigBot { cs: p.PA15 },
+        temperature_sensor: TemperatureSensorConfig { adc: p.ADC1, pin: p.PB1 },
 
         donut_hall: I2cHallConfig {
             peri: p.I2C1,
             scl: p.PB6,
             sda: p.PB7,
         },
-        temperature_sensor: TemperatureSensorConfig { adc: p.ADC1, pin: p.PB1 },
-
     };
     #[cfg(feature = "orbita2d")]
     let actuator_config = ActuatorConfig {

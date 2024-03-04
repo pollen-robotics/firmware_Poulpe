@@ -9,7 +9,7 @@ pub const N_AXIS: usize = 2;
 #[cfg(feature = "orbita3d")]
 pub const N_AXIS: usize = 3;
 
-pub static DXL_ID: u8 = 52;
+// pub static DXL_ID: u8 = 42;
 
 pub type DynamixelUart = Uart<'static, p::USART1, p::DMA1_CH0, p::DMA1_CH1>;
 
@@ -52,6 +52,9 @@ pub type TemperatureSensorConfig = AnalogInputConfig<p::ADC1, p::PB1>;
 
 // pub type DonutHall<'d> = I2cHallSensor<'d, p::I2C1, p::PB6, p::PB7>;
 pub type DonutHall<'d> = I2cHallSensor<p::I2C1>;
+
+// from build.rs (should contain DXL_ID, HARDWARE_ZEROS and GIT_HASH)
+include!(concat!(env!("OUT_DIR"), "/constants.rs"));
 
 pub struct ActuatorConfig {
     #[cfg(feature = "orbita3d")]

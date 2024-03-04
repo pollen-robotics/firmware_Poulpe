@@ -1,6 +1,6 @@
 use defmt::Format;
 use embassy_embedded_hal::shared_bus;
-use embassy_stm32::{spi, i2c};
+use embassy_stm32::{i2c, spi};
 
 use crate::config::DonutHall;
 
@@ -21,7 +21,6 @@ pub enum IOError {
 pub struct Pid {
     pub p: i16,
     pub i: i16,
-
 }
 
 pub trait RawMotorsIO<const N: usize> {
@@ -33,13 +32,12 @@ pub trait RawMotorsIO<const N: usize> {
     /// Get the control mode
     fn get_control_mode(&mut self) -> Result<[MotionMode; N]>;
     /// Set the control mode
-    fn set_control_mode(&mut self, mode:MotionMode) -> Result<()>;
-
+    fn set_control_mode(&mut self, mode: MotionMode) -> Result<()>;
 
     /// Get the current position of the motors (in radians)
     fn get_current_position(&mut self) -> Result<[f32; N]>;
 
-    fn set_current_position(&mut self, pos:[f32;N]) -> Result<()>;
+    fn set_current_position(&mut self, pos: [f32; N]) -> Result<()>;
 
     /// Get the current velocity of the motors (in radians per second)
     fn get_current_velocity(&mut self) -> Result<[f32; N]>;
@@ -54,7 +52,6 @@ pub trait RawMotorsIO<const N: usize> {
     fn set_velocity_feedforward(&mut self, velocity: [f32; N]) -> Result<()>;
     fn get_velocity_feedforward(&mut self) -> Result<[f32; N]>;
 
-
     fn get_board_temperature(&mut self) -> Result<[f32; N]>;
     fn get_bus_voltage(&mut self) -> Result<[f32; N]>; 
 
@@ -63,12 +60,10 @@ pub trait RawMotorsIO<const N: usize> {
     /// Set the current target velocity of the motors (in rpm)
     fn set_target_velocity(&mut self, velocity: [f32; N]) -> Result<()>;
 
-
     /// Get the current target torque of the motors (in ?? mA)
     fn get_target_torque(&mut self) -> Result<[f32; N]>;
     /// Set the current target torque of the motors (in ?? mA)
     fn set_target_torque(&mut self, torque: [f32; N]) -> Result<()>;
-
 
     /// Get uq/ud limit
     fn get_uq_ud_limit(&mut self) -> Result<[i16; N]>;
@@ -95,7 +90,6 @@ pub trait RawMotorsIO<const N: usize> {
     // /// Set the current PID gains of the motors
     // fn set_pid_gains(&mut self, pid: [Pid; N]) -> Result<()>;
 
-
     /// Get the current flux PID gains of the motors
     fn get_flux_pid_gains(&mut self) -> Result<[Pid; N]>;
     /// Set the current flux PID gains of the motors
@@ -116,8 +110,5 @@ pub trait RawMotorsIO<const N: usize> {
     /// Set the current position PID gains of the motors
     fn set_position_pid_gains(&mut self, pid: [Pid; N]) -> Result<()>;
 
-
-    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<[u8;N]>;
-
-
+    fn find_index(&mut self, donut_sensor: &mut DonutHall) -> Result<[u8; N]>;
 }
