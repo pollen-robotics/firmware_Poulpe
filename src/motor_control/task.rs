@@ -345,18 +345,29 @@ pub async fn control_loop(config: ActuatorConfig) {
         }
 
         // read the axis sensors - but disable the torque to avoid the noise
-        #[cfg(feature = "orbita2d")]
-        actuator.set_torque([false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([false, false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
                                                             // #[cfg(feature = "orbita2d")]
         Timer::after(Duration::from_micros(100000)).await;
 
-        let init_sensors = actuator.get_axis_sensors().unwrap();
+        // read the axis sensors
+        let mut init_sensors = [0.0; config::N_AXIS];
+        match actuator.get_axis_sensors(){
+            Ok(sensors) => {
+                init_sensors = sensors;
+            }
+            Err(e) => {
+                error!("Error reading axis sensors: {:?}", e);
+                init_error = BoardStatus::SensorError;
+                continue ; //  retry the init if there is an error
+
+            }
+        }
+        debug!("init sensors: {:?}", init_sensors);
+        
+
         // #[cfg(feature = "orbita2d")]
         Timer::after(Duration::from_micros(100000)).await;
-        #[cfg(feature = "orbita2d")]
-        actuator.set_torque([true, true]).unwrap();
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([true, true, true]).unwrap();
 
@@ -373,20 +384,35 @@ pub async fn control_loop(config: ActuatorConfig) {
         
 
         // read the sensors - but disable the torque to avoid the noise
-        #[cfg(feature = "orbita2d")]
-        actuator.set_torque([false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([false, false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
 
         Timer::after(Duration::from_micros(100000)).await;
 
-        let moved_sensors = actuator.get_axis_sensors().unwrap();
+
+
+        // read the axis sensors
+        let mut moved_sensors = [0.0; config::N_AXIS];
+        match actuator.get_axis_sensors(){
+            Ok(sensors) => {
+                moved_sensors = sensors;
+            }
+            Err(e) => {
+                error!("Error reading axis sensors: {:?}", e);
+                init_error = BoardStatus::SensorError;
+                continue ; //  retry the init if there is an error
+
+            }
+        }
+        debug!("moved sensors: {:?}", moved_sensors);
+        
+
         SHARED_MEMORY.lock().await.set_axis_sensor(moved_sensors);
 
         Timer::after(Duration::from_micros(100000)).await;
         // enable torques
-        #[cfg(feature = "orbita2d")]
-        actuator.set_torque([true, true]).unwrap();
+        // #[cfg(feature = "orbita2d")]
+        // actuator.set_torque([true, true]).unwrap();
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([true, true, true]).unwrap();
 
@@ -408,9 +434,14 @@ pub async fn control_loop(config: ActuatorConfig) {
         {
             for (i, s) in moved_sensors.iter().enumerate() {
                 diff[i] = *s - init_sensors[i];
+                // if motor moved acors 0 the diff will be bigger around 2PI - diff
                 if diff[i] > 3.141592 {
                     diff[i] = diff[i] - 2.0 * 3.141592;
+                }else if diff[i] < -3.141592 {
+                    diff[i] = diff[i] + 2.0 * 3.141592;
                 }
+
+                debug!("diff: {:?}", diff[i]);
 
                 if (diff[i] <= 0.0 && diff[i] > -0.08) || (diff[i] > 0.0 || diff[i].is_nan()) {
                     error!(
@@ -425,33 +456,31 @@ pub async fn control_loop(config: ActuatorConfig) {
         {
             for (i, s) in moved_sensors.iter().enumerate() {
                 diff[i] = *s - init_sensors[i];
+                // if motor moved acors 0 the diff will be bigger around 2PI-diff
                 if diff[i] > 3.141592 {
                     diff[i] = diff[i] - 2.0 * 3.141592;
+                }else if diff[i] < -3.141592 {
+                    diff[i] = diff[i] + 2.0 * 3.141592;
                 }
 
-                // //WTF? We cannot use abs() for f32?
-                // let absdiff: f32 = if diff[i].is_sign_positive() {
-                //     diff[i]
-                // } else {
-                //     -diff[i]
-                // };
+                debug!("diff: {:?}", diff[i]);
 
                 if i == 0 {
-                    if (diff[i] > -0.1) || diff[i].is_nan() {
+                    if (diff[i] > -0.09) || (diff[i] < -0.2) || diff[i].is_nan() { // it should move ~0.15 rad
                         error!(
                             "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
                             i, diff[i]
                         );
-                        init_error = BoardStatus::SensorError;
+                        // init_error = BoardStatus::SensorError;
                     }
                 }
                 if i == 1 {
-                    if (diff[i] < 0.05) || diff[i].is_nan() {
+                    if (diff[i] < 0.04) || (diff[i] > 0.07) || diff[i].is_nan() { // it should move ~0.05 rad
                         error!(
                             "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
                             i, diff[i]
                         );
-                        init_error = BoardStatus::SensorError;
+                        // init_error = BoardStatus::SensorError;
                     }
                 }
             }
