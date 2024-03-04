@@ -159,10 +159,7 @@ where
 
         let adc_offset = self.foc.tmc4671_calibrate_adc_offsets()?;
 
-        debug!(
-            "[Ventouse{:?}] ADC offsets: {:?}",
-            self.kind, adc_offset
-        );
+        debug!("[Ventouse{:?}] ADC offsets: {:?}", self.kind, adc_offset);
 
         Ok(())
     }
@@ -629,7 +626,6 @@ where
         Ok([temp as f32])
     }
 
-    
     // get dc bus voltage
     fn get_bus_voltage(&mut self) -> Result<[f32; 1], IOError> {
         let voltage = self
@@ -638,7 +634,6 @@ where
             .map_err(IOError::SpiError)?;
         Ok([voltage as f32])
     }
-
 
     // /// Get the torque limit of the motors (in Nm)
     // fn get_torque_limit(&mut self) -> Result<[f32; 1], IOError> {
@@ -1255,7 +1250,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
             VentouseKind::C(vc) => vc.get_board_temperature(),
         }
     }
-    
+
     /// get the DC bus voltage
     fn get_bus_voltage(&mut self) -> super::Result<[f32; 1]> {
         match self {

@@ -18,10 +18,9 @@ const SPI_FREQ: u32 = 2_000_000;
 use crate::{
     config::{self, ActuatorConfig, DonutHall},
     motor_control::{
+        analog::AnalogInput,
         sensors::{AD5047Sensor, I2cHallSensor, SensorKind},
-        RawSensorsIO,
-        BoardStatus,
-        analog::AnalogInput
+        BoardStatus, RawSensorsIO,
     },
     IrqsI2c, SHARED_MEMORY,
 };
@@ -303,9 +302,9 @@ pub async fn control_loop(config: ActuatorConfig) {
     // error!("Donut sensor: {:#x}",val);
     /////////
 
-
     // initialise the adc for motor temperature reading
-    let mut motor_temperature_sensor =  AnalogInput::new(config.temperature_sensor);
+    #[cfg(not(feature = "no_temperture_sensor"))]
+    let mut motor_temperature_sensor = AnalogInput::new(config.temperature_sensor);
 
     // Setup the actuator with the configured ventouses
     #[cfg(feature = "orbita2d")]
@@ -339,6 +338,7 @@ pub async fn control_loop(config: ActuatorConfig) {
                 // error on init
                 init_error = BoardStatus::InitError;
                 error!("Registers init error: {:?}", e);
+                #[cfg(not(feature = "ignore_errors"))]
                 continue; //  retry the init if there is an error
             }
         }
@@ -377,6 +377,7 @@ pub async fn control_loop(config: ActuatorConfig) {
             Err(e) => {
                 init_error = BoardStatus::InitError;
                 error!("Motor check 1 error: {:?}", e);
+                #[cfg(not(feature = "ignore_errors"))]
                 continue; //  retry the init if there is an error
             }
         }
@@ -421,6 +422,7 @@ pub async fn control_loop(config: ActuatorConfig) {
             Err(e) => {
                 init_error = BoardStatus::InitError;
                 error!("Motor check 2 error: {:?}", e);
+                #[cfg(not(feature = "ignore_errors"))]
                 continue; //  retry the init if there is an error
             }
         }
@@ -447,6 +449,8 @@ pub async fn control_loop(config: ActuatorConfig) {
                         i, diff[i]
                     );
                     init_error = BoardStatus::SensorError;
+                    #[cfg(not(feature = "ignore_errors"))]
+                    continue; //  retry the init if there is an error
                 }
             }
         }
@@ -469,7 +473,9 @@ pub async fn control_loop(config: ActuatorConfig) {
                             "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
                             i, diff[i]
                         );
-                        // init_error = BoardStatus::SensorError;
+                        init_error = BoardStatus::SensorError;
+                        #[cfg(not(feature = "ignore_errors"))]
+                        continue; //  retry the init if there is an error
                     }
                 }
                 if i == 1 {
@@ -478,7 +484,9 @@ pub async fn control_loop(config: ActuatorConfig) {
                             "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
                             i, diff[i]
                         );
-                        // init_error = BoardStatus::SensorError;
+                        init_error = BoardStatus::SensorError;
+                        #[cfg(not(feature = "ignore_errors"))]
+                        continue; //  retry the init if there is an error
                     }
                 }
             }
@@ -504,11 +512,13 @@ pub async fn control_loop(config: ActuatorConfig) {
             // errors in finding the Hall
             {
                 error!("Bad index!");
+                #[cfg(not(feature = "ignore_errors"))]
                 continue; //Retry
             }
             if (1..indices.len()).any(|i| indices[i..].contains(&indices[i - 1])) {
                 //thanks Stackoverflow
                 error!("Duplicate index!");
+                #[cfg(not(feature = "ignore_errors"))]
                 continue; //Retry
             }
             actuator.set_index_sensor(indices);
@@ -558,11 +568,13 @@ pub async fn control_loop(config: ActuatorConfig) {
                 if !(found_turn[0] == found_turn[1] && found_turn[1] == found_turn[2]) {
                     //It may be possible in certain case?? But better forbid this
                     error!("Incoherent number of turn found! {:?}", found_turn);
+                    #[cfg(not(feature = "ignore_errors"))]
                     continue;
                 }
                 if offsets.iter().any(|&x| x.is_nan()) {
                     // Check for NaN
                     error!("Bad offsets! {:?}", offsets);
+                    #[cfg(not(feature = "ignore_errors"))]
                     continue;
                 }
 
@@ -592,6 +604,9 @@ pub async fn control_loop(config: ActuatorConfig) {
             debug!("diff sensors: {:?}", diff);
             break;
         }
+
+        #[cfg(not(feature = "ignore_errors"))]
+        break; //  break the loop regardless of the error
     }
 
     // Print the error if there is one
@@ -696,6 +711,8 @@ pub async fn control_loop(config: ActuatorConfig) {
 
         let mut torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
         let mut error_state = { SHARED_MEMORY.lock().await.get_error_state() };
+
+        #[cfg(not(feature = "ignore_errors"))] // if errors are ignored the operation continues
         if error_state != BoardStatus::Ok {
             // if init error, we turn off the torque
             torque_on = [false; config::N_AXIS];
@@ -913,15 +930,17 @@ pub async fn control_loop(config: ActuatorConfig) {
             // 	}
             // }
 
-
             // perform checks on the actuator to determine the error state
             // get temperature
             let mut temp_error = false;
-            match actuator.get_board_temperature(){
+            match actuator.get_board_temperature() {
                 Ok(t) => {
-                    {SHARED_MEMORY.lock().await.set_board_temperature(t)};
+                    {
+                        SHARED_MEMORY.lock().await.set_board_temperature(t)
+                    };
                     t.iter().for_each(|t| {
-                        if *t > 100.0 { // if temperature is not a number or above 100 degrees
+                        if *t > 100.0 {
+                            // if temperature is not a number or above 100 degrees
                             temp_error = true;
                         }
                     });
@@ -932,17 +951,25 @@ pub async fn control_loop(config: ActuatorConfig) {
                     error!("Board temperature reading error {:?}", e);
                 }
             }
-            if temp_error { // stop everything if the temperature is too high
+            if temp_error {
+                // stop everything if the temperature is too high
                 error_led = true;
-                {SHARED_MEMORY.lock().await.set_error_state(BoardStatus::OverTemperatureError)};
+                {
+                    SHARED_MEMORY
+                        .lock()
+                        .await
+                        .set_error_state(BoardStatus::OverTemperatureError)
+                };
                 error!("Board temperature too high (above 100 degrees)!");
-            }     
+            }
 
             // get dc bus voltage
             let mut bus_error = false;
-            match  actuator.get_bus_voltage(){
+            match actuator.get_bus_voltage() {
                 Ok(v) => {
-                    {SHARED_MEMORY.lock().await.set_bus_voltage(v)};
+                    {
+                        SHARED_MEMORY.lock().await.set_bus_voltage(v)
+                    };
                     v.iter().for_each(|v| {
                         if *v < 10.0 {
                             bus_error = true;
@@ -955,26 +982,42 @@ pub async fn control_loop(config: ActuatorConfig) {
                     error!("Bus voltage reading error {:?}", e);
                 }
             }
-            if bus_error { // stop everything if the bus voltage is too low
+            if bus_error {
+                // stop everything if the bus voltage is too low
                 error_led = true;
-                {SHARED_MEMORY.lock().await.set_error_state(BoardStatus::BusVoltageError)};
+                {
+                    SHARED_MEMORY
+                        .lock()
+                        .await
+                        .set_error_state(BoardStatus::BusVoltageError)
+                };
                 error!("Bus voltage is too low (under 10V)!");
             }
-            
-            // read the motor temperature
-            match motor_temperature_sensor.read_temperature(){
-                Ok(t) => {
-                    {SHARED_MEMORY.lock().await.set_motor_temperature(t)};
-                    if t > 100.0 {
-                        error_led = true;
-                        error!("Motor temperature too high (above 100 degrees)!");
-                        {SHARED_MEMORY.lock().await.set_error_state(BoardStatus::OverTemperatureError)};
+
+            #[cfg(not(feature = "no_temperature_sensor"))]
+            {
+                // read the motor temperature
+                match motor_temperature_sensor.read_temperature() {
+                    Ok(t) => {
+                        {
+                            SHARED_MEMORY.lock().await.set_motor_temperature(t)
+                        };
+                        if t > 100.0 {
+                            error_led = true;
+                            error!("Motor temperature too high (above 100 degrees)!");
+                            {
+                                SHARED_MEMORY
+                                    .lock()
+                                    .await
+                                    .set_error_state(BoardStatus::OverTemperatureError)
+                            };
+                        }
+                        debug!("Motor temperature: {:?}", t);
                     }
-                    debug!("Motor temperature: {:?}", t);
-                }
-                Err(e) => {
-                    error_led = true;
-                    error!("Motor temperature reading error {:?}", e);
+                    Err(e) => {
+                        error_led = true;
+                        error!("Motor temperature reading error {:?}", e);
+                    }
                 }
             }
 
