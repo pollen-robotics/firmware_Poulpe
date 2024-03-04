@@ -338,7 +338,15 @@ where
 
         match t{
             t if t.is_nan() => Err(IOError::InvalidData),
-            _ => Ok((t as f32) - 273.15) // final conversion to Celsius
+            _ => {
+                let mut t_celsius = (t as f32) - 273.15;
+                // a seemingly constant linear error
+                // empirically tested correction
+                t_celsius = ( t_celsius - 1.75297 ) / 1.0987;
+                Ok(t_celsius) // final conversion to Celsius
+
+            }
+            
         }
     }
 
@@ -363,6 +371,9 @@ where
                 let adc_raw = (raw & 0xffff) as f32; // extract the raw value
                 let mut voltage = (adc_raw - self.adc_vm_offset)/32768.0 * 2.5; // scale to 0-2.5V
                 voltage = voltage * 48.0; // 47k/1k voltage divider
+                // a seemingly constant linear error 
+                // empirically tested correction
+                voltage = ( voltage - 0.8580 ) / 1.0285; 
                 Ok(voltage) 
             }
             Err(e) => Err(e),
