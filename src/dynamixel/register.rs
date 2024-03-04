@@ -24,6 +24,9 @@ pub enum DynamixelRegister {
     TargetPositionWithVelocityFF,
     TargetPositionEstimateVelocityFF,
 
+    Temperature,
+    BusVoltage,
+
     AxisSensor,
 
     #[cfg(feature = "orbita3d")]
@@ -56,6 +59,9 @@ impl DynamixelRegister {
             60 => Some(DynamixelRegister::TargetPosition),
             62 => Some(DynamixelRegister::TargetPositionWithVelocityFF),
             64 => Some(DynamixelRegister::TargetPositionEstimateVelocityFF),
+
+            70 => Some(DynamixelRegister::Temperature),
+            72 => Some(DynamixelRegister::BusVoltage),
 
             90 => Some(DynamixelRegister::AxisSensor),
 

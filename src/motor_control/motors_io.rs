@@ -52,6 +52,9 @@ pub trait RawMotorsIO<const N: usize> {
     fn set_velocity_feedforward(&mut self, velocity: [f32; N]) -> Result<()>;
     fn get_velocity_feedforward(&mut self) -> Result<[f32; N]>;
 
+    fn get_board_temperature(&mut self) -> Result<[f32; N]>;
+    fn get_bus_voltage(&mut self) -> Result<[f32; N]>; 
+
     /// Get the current target velocity of the motors (in rpm)
     fn get_target_velocity(&mut self) -> Result<[f32; N]>;
     /// Set the current target velocity of the motors (in rpm)

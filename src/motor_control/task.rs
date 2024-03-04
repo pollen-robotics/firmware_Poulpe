@@ -19,7 +19,9 @@ use crate::{
     config::{self, ActuatorConfig, DonutHall},
     motor_control::{
         sensors::{AD5047Sensor, I2cHallSensor, SensorKind},
-        BoardStatus, RawSensorsIO,
+        RawSensorsIO,
+        BoardStatus,
+        analog::AnalogInput
     },
     IrqsI2c, SHARED_MEMORY,
 };
@@ -300,6 +302,10 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     // error!("Donut sensor: {:#x}",val);
     /////////
+
+
+    // initialise the adc for motor temperature reading
+    let mut motor_temperature_sensor =  AnalogInput::new(config.temperature_sensor);
 
     // Setup the actuator with the configured ventouses
     #[cfg(feature = "orbita2d")]
@@ -877,6 +883,71 @@ pub async fn control_loop(config: ActuatorConfig) {
             // 	    error!("Axis sensors error");
             // 	}
             // }
+
+
+            // perform checks on the actuator to determine the error state
+            // get temperature
+            let mut temp_error = false;
+            match actuator.get_board_temperature(){
+                Ok(t) => {
+                    {SHARED_MEMORY.lock().await.set_board_temperature(t)};
+                    t.iter().for_each(|t| {
+                        if *t > 100.0 { // if temperature is not a number or above 100 degrees
+                            temp_error = true;
+                        }
+                    });
+                    debug!("Board temperature: {:?}", t);
+                }
+                Err(e) => {
+                    error_led = true;
+                    error!("Board temperature reading error {:?}", e);
+                }
+            }
+            if temp_error { // stop everything if the temperature is too high
+                error_led = true;
+                {SHARED_MEMORY.lock().await.set_error_state(BoardStatus::OverTemperatureError)};
+                error!("Board temperature too high (above 100 degrees)!");
+            }     
+
+            // get dc bus voltage
+            let mut bus_error = false;
+            match  actuator.get_bus_voltage(){
+                Ok(v) => {
+                    {SHARED_MEMORY.lock().await.set_bus_voltage(v)};
+                    v.iter().for_each(|v| {
+                        if *v < 10.0 {
+                            bus_error = true;
+                        }
+                    });
+                    debug!("Bus voltage: {:?}", v);
+                }
+                Err(e) => {
+                    error_led = true;
+                    error!("Bus voltage reading error {:?}", e);
+                }
+            }
+            if bus_error { // stop everything if the bus voltage is too low
+                error_led = true;
+                {SHARED_MEMORY.lock().await.set_error_state(BoardStatus::BusVoltageError)};
+                error!("Bus voltage is too low (under 10V)!");
+            }
+            
+            // read the motor temperature
+            match motor_temperature_sensor.read_temperature(){
+                Ok(t) => {
+                    {SHARED_MEMORY.lock().await.set_motor_temperature(t)};
+                    if t > 100.0 {
+                        error_led = true;
+                        error!("Motor temperature too high (above 100 degrees)!");
+                        {SHARED_MEMORY.lock().await.set_error_state(BoardStatus::OverTemperatureError)};
+                    }
+                    debug!("Motor temperature: {:?}", t);
+                }
+                Err(e) => {
+                    error_led = true;
+                    error!("Motor temperature reading error {:?}", e);
+                }
+            }
 
             slow_timer = 1000;
         } else {

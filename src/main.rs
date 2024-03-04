@@ -29,6 +29,8 @@ use crate::motor_control::sensors::I2cHallConfig;
 use crate::motor_control::ventouse::VentouseConfig;
 use crate::shared_memory::SharedMemory;
 
+use crate::config::{TemperatureSensorConfig};
+
 use {defmt_rtt as _, panic_probe as _};
 
 bind_interrupts!(struct Irqs {
@@ -84,6 +86,14 @@ async fn main(spawner: Spawner) {
             divq: Some(PllDiv::DIV5), //PLLQ = 5;
             divr: Some(PllDiv::DIV5), //PLLR = 5;
         });
+        stm32_conf.rcc.pll2 = Some(Pll {
+            source: PllSource::CSI,
+            prediv: PllPreDiv::DIV1,  //PLLM = 1;
+            mul: PllMul::MUL220,      //PLLN = 220
+            divp: Some(PllDiv::DIV2), //PLLP = 2;
+            divq: Some(PllDiv::DIV5), //PLLQ = 5;
+            divr: Some(PllDiv::DIV5), //PLLR = 5;
+        });
         stm32_conf.rcc.sys = Sysclk::PLL1_P; // 440 Mhz
         stm32_conf.rcc.ahb_pre = AHBPrescaler::DIV2; // 220 Mhz
         stm32_conf.rcc.apb1_pre = APBPrescaler::DIV2; // 110 Mhz
@@ -129,6 +139,7 @@ async fn main(spawner: Spawner) {
         ad5047top: AD5047ConfigTop { cs: p.PA4 },
         ad5047mid: AD5047ConfigMid { cs: p.PE4 },
         ad5047bot: AD5047ConfigBot { cs: p.PA15 },
+        temperature_sensor: TemperatureSensorConfig { adc: p.ADC1, pin: p.PB1 },
 
         donut_hall: I2cHallConfig {
             peri: p.I2C1,
@@ -159,6 +170,7 @@ async fn main(spawner: Spawner) {
 
         aksim: AksimConfig { cs: p.PA15 },
         ad5047: AD5047Config { cs: p.PE4 },
+        temperature_sensor: TemperatureSensorConfig { adc: p.ADC1, pin: p.PB1 },
     };
 
     unwrap!(spawner.spawn(motor_control::task::control_loop(actuator_config)));

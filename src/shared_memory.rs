@@ -28,12 +28,16 @@ pub struct Memory<const N: usize> {
     velocity_pid_gains: [Pid; N],
     position_pid_gains: [Pid; N],
 
+    board_temperatures: [f32; N],
+    motor_temperature: f32,
+    bus_voltages: [f32; N],
+
     uq_ud_limit: [i16; N],
     torque_flux_limit: [f32; N],
     velocity_limit: [f32; N],
 
     axis_sensor: [f32; N],
-
+  
     #[cfg(feature = "orbita3d")]
     index_sensor: [u8; N],
 
@@ -208,6 +212,26 @@ impl<const N: usize> SharedMemory<N> {
         self.inner.borrow().get_target_set_timestamp
     }
 
+    pub fn get_board_temperature(&self) -> [f32; N] {
+        self.inner.borrow().board_temperatures
+    }
+    pub fn set_board_temperature(&self, temp: [f32; N]) {
+        self.inner.borrow_mut().board_temperatures = temp;
+    }
+    pub fn get_motor_temperature(&self) -> f32 {
+        self.inner.borrow().motor_temperature
+    }
+    pub fn set_motor_temperature(&self, temp: f32) {
+        self.inner.borrow_mut().motor_temperature = temp;
+    }
+    pub fn get_bus_voltage(&self) -> [f32; N] {
+        self.inner.borrow().bus_voltages
+    }
+    pub fn set_bus_voltage(&self, volt: [f32; N]) {
+        self.inner.borrow_mut().bus_voltages = volt;
+    }
+
+
     #[cfg(feature = "orbita3d")]
     pub fn get_index_sensor(&self) -> [u8; N] {
         self.inner.borrow_mut().index_sensor
@@ -256,6 +280,10 @@ impl<const N: usize> SharedMemory<N> {
                 torque_pid_gains: [Pid { p: 0, i: 0 }; N],
                 velocity_pid_gains: [Pid { p: 0, i: 0 }; N],
                 position_pid_gains: [Pid { p: 0, i: 0 }; N],
+
+                board_temperatures: [0.0; N],
+                motor_temperature: 0.0,
+                bus_voltages: [0.0; N],
 
                 uq_ud_limit: [0; N],
                 torque_flux_limit: [0.0; N],
@@ -307,6 +335,10 @@ impl<const N: usize> SharedMemory<N> {
             torque_flux_limit: actuator.get_torque_flux_limit().unwrap_or([0.0; N]),
             velocity_limit: actuator.get_velocity_limit().unwrap_or([0.0; N]),
             velocity_feedforward: actuator.get_velocity_feedforward().unwrap_or([0.0; N]),
+
+            board_temperatures: actuator.get_board_temperature().unwrap_or([0.0; N]),
+            motor_temperature: 0.0,
+            bus_voltages: actuator.get_bus_voltage().unwrap_or([0.0; N]),
 
             #[cfg(feature = "orbita3d")]
             index_sensor: actuator.get_index_sensor(),

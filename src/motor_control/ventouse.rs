@@ -157,46 +157,10 @@ where
         // disable potential motion/torque control
         self.foc.tmc4671_set_mode(MotionMode::Stopped)?;
 
-        // read the adc raw values for finding the current offset (1000 times)
-        let mut adc_offset: [u32; 2] = [0; 2];
-        for _ in 0..1000 {
-            self.foc.tmc4671_get_adc_raw().map(|adc| {
-                adc_offset[0] += adc.0 as u32;
-                adc_offset[1] += adc.1 as u32;
-            })?;
-            // debug!("adc_offset: {:?}", adc_offset);
-            block_for(Duration::from_micros(10));
-        }
-        // divide by 1000 to get the average
-        adc_offset[0] /= 1000;
-        adc_offset[1] /= 1000;
+        let adc_offset = self.foc.tmc4671_calibrate_adc_offsets()?;
 
-        // should not be very far from 32758 (0x8000)
-        if (adc_offset[0] as i32 - 0x8000).abs() > 10000
-            || (adc_offset[1] as i32 - 0x8000).abs() > 10000
-        {
-            error!(
-                "[Ventouse{:?}] Incoherent ADC offset!: {:?}",
-                self.kind, adc_offset
-            );
-            return Err(embassy_stm32::spi::Error::ModeFault); //FIXME: better error return
-        }
-
-        // set the new offset values
-        self.foc
-            .current_sensing_config
-            .set_adc_offsets(adc_offset[0], adc_offset[1]);
-        self.foc.tmc4671_checked_write(
-            Tmc4671Registers::ADC_I0_SCALE_OFFSET as u8,
-            self.foc.current_sensing_config.adc_i0_scale_offset(),
-        )?;
-        self.foc.tmc4671_checked_write(
-            Tmc4671Registers::ADC_I1_SCALE_OFFSET as u8,
-            self.foc.current_sensing_config.adc_i1_scale_offset(),
-        )?;
-
-        info!(
-            "[Ventouse{:?}] ADC offset calibration done: {:?}",
+        debug!(
+            "[Ventouse{:?}] ADC offsets: {:?}",
             self.kind, adc_offset
         );
 
@@ -655,6 +619,26 @@ where
             .map(|_| ())
             .map_err(IOError::SpiError)
     }
+
+    // get temperature
+    fn get_board_temperature(&mut self) -> Result<[f32; 1], IOError> {
+        let temp = self
+            .foc
+            .tmc4671_get_board_temperature()
+            .map_err(IOError::SpiError)?;
+        Ok([temp as f32])
+    }
+
+    
+    // get dc bus voltage
+    fn get_bus_voltage(&mut self) -> Result<[f32; 1], IOError> {
+        let voltage = self
+            .foc
+            .tmc4671_get_bus_voltage()
+            .map_err(IOError::SpiError)?;
+        Ok([voltage as f32])
+    }
+
 
     // /// Get the torque limit of the motors (in Nm)
     // fn get_torque_limit(&mut self) -> Result<[f32; 1], IOError> {
@@ -1260,6 +1244,24 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
             VentouseKind::A(va) => va.set_flux_pid_gains(pid),
             VentouseKind::B(vb) => vb.set_flux_pid_gains(pid),
             VentouseKind::C(vc) => vc.set_flux_pid_gains(pid),
+        }
+    }
+
+    /// get the temperature of the motors
+    fn get_board_temperature(&mut self) -> super::Result<[f32; 1]> {
+        match self {
+            VentouseKind::A(va) => va.get_board_temperature(),
+            VentouseKind::B(vb) => vb.get_board_temperature(),
+            VentouseKind::C(vc) => vc.get_board_temperature(),
+        }
+    }
+    
+    /// get the DC bus voltage
+    fn get_bus_voltage(&mut self) -> super::Result<[f32; 1]> {
+        match self {
+            VentouseKind::A(va) => va.get_bus_voltage(),
+            VentouseKind::B(vb) => vb.get_bus_voltage(),
+            VentouseKind::C(vc) => vc.get_bus_voltage(),
         }
     }
 
