@@ -148,6 +148,7 @@ where
         if ret_err {
             return Err(err);
         }
+
         Ok(())
     }
 
@@ -163,10 +164,23 @@ where
                 adc_offset[0] += adc.0 as u32;
                 adc_offset[1] += adc.1 as u32;
             })?;
+            // debug!("adc_offset: {:?}", adc_offset);
+            block_for(Duration::from_micros(10));
         }
         // divide by 1000 to get the average
         adc_offset[0] /= 1000;
         adc_offset[1] /= 1000;
+
+        // should not be very far from 32758 (0x8000)
+        if (adc_offset[0] as i32 - 0x8000).abs() > 10000
+            || (adc_offset[1] as i32 - 0x8000).abs() > 10000
+        {
+            error!(
+                "[Ventouse{:?}] Incoherent ADC offset!: {:?}",
+                self.kind, adc_offset
+            );
+            return Err(embassy_stm32::spi::Error::ModeFault); //FIXME: better error return
+        }
 
         // set the new offset values
         self.foc
@@ -267,8 +281,11 @@ where
         //Assume that check_motors_1 has been called
         #[cfg(feature = "orbita2d")]
         {
-            if self.kind == 'B' { target = 1000; }
-            else { target = 500; }
+            if self.kind == 'B' {
+                target = 1000;
+            } else {
+                target = 500;
+            }
         }
         #[cfg(feature = "orbita3d")]
         let target = 500;
@@ -282,7 +299,7 @@ where
                 .foc
                 .tmc4671_get_actual_velocity()
                 .map_err(IOError::SpiError)?;
-            if velocity > 2*target || velocity < -200 {
+            if velocity > 2 * target || velocity < -200 {
                 // check if the motor is moving in the right direction and not too fast
                 self.foc.tmc4671_disable();
                 error!(
@@ -328,17 +345,19 @@ where
     }
 
     pub async fn check_motors_2(&mut self) -> Result<(), IOError> {
-
         let mut target: i32 = -1000;
         //Assume that check_motors_1 has been called
         #[cfg(feature = "orbita2d")]
         {
-            if self.kind == 'B' { target = -1000; }
-            else { target = -500; }
+            if self.kind == 'B' {
+                target = -1000;
+            } else {
+                target = -500;
+            }
         }
         #[cfg(feature = "orbita3d")]
         let target = -500;
-        
+
         self.foc
             .tmc4671_set_target_velocity(target)
             .map_err(IOError::SpiError)?;
@@ -349,7 +368,7 @@ where
                 .foc
                 .tmc4671_get_actual_velocity()
                 .map_err(IOError::SpiError)?;
-            if velocity < 2*target || velocity > 200 {
+            if velocity < 2 * target || velocity > 200 {
                 // check if the motor is moving in the right direction and not too fast
                 self.foc.tmc4671_disable();
                 error!(
@@ -391,6 +410,9 @@ where
     // 	let d=donut_sensor.read();
     // 	Ok(())
     // }
+    pub fn get_ratio(&mut self) -> f32 {
+        self.foc.brushless_motor_config.axis_ratio()
+    }
 }
 
 impl<'d, T, FocP, FocEnb, DrvP> RawMotorsIO<1> for Ventouse<'d, T, FocP, FocEnb, DrvP>
@@ -995,6 +1017,13 @@ impl<'d> VentouseKind<'d> {
         }
     }
 
+    pub fn get_ratio(&mut self) -> f32 {
+        match self {
+            VentouseKind::A(va) => va.get_ratio(),
+            VentouseKind::B(vb) => vb.get_ratio(),
+            VentouseKind::C(vc) => vc.get_ratio(),
+        }
+    }
     // pub fn get_ventouse(&mut self, v: char) -> Option<&mut dyn RawMotorsIO<1>> {
     // 		match v {
     // 			'A' => match self {
