@@ -340,6 +340,7 @@ pub async fn control_loop(config: ActuatorConfig) {
                 // error on init
                 init_error = BoardStatus::InitError;
                 error!("Registers init error: {:?}", e);
+                #[cfg(not(feature = "ignore_errors"))]
                 continue; //  retry the init if there is an error
             }
         }
@@ -367,6 +368,7 @@ pub async fn control_loop(config: ActuatorConfig) {
             Err(e) => {
                 init_error = BoardStatus::InitError;
                 error!("Motor check 1 error: {:?}", e);
+                #[cfg(not(feature = "ignore_errors"))]
                 continue; //  retry the init if there is an error
             }
         }
@@ -396,6 +398,7 @@ pub async fn control_loop(config: ActuatorConfig) {
             Err(e) => {
                 init_error = BoardStatus::InitError;
                 error!("Motor check 2 error: {:?}", e);
+                #[cfg(not(feature = "ignore_errors"))]
                 continue; //  retry the init if there is an error
             }
         }
@@ -417,6 +420,8 @@ pub async fn control_loop(config: ActuatorConfig) {
                         i, diff[i]
                     );
                     init_error = BoardStatus::SensorError;
+                    #[cfg(not(feature = "ignore_errors"))]
+                    continue; //  retry the init if there is an error
                 }
             }
         }
@@ -442,6 +447,8 @@ pub async fn control_loop(config: ActuatorConfig) {
                             i, diff[i]
                         );
                         init_error = BoardStatus::SensorError;
+                        #[cfg(not(feature = "ignore_errors"))]
+                        continue; //  retry the init if there is an error
                     }
                 }
                 if i == 1 {
@@ -451,6 +458,8 @@ pub async fn control_loop(config: ActuatorConfig) {
                             i, diff[i]
                         );
                         init_error = BoardStatus::SensorError;
+                        #[cfg(not(feature = "ignore_errors"))]
+                        continue; //  retry the init if there is an error
                     }
                 }
             }
@@ -476,11 +485,13 @@ pub async fn control_loop(config: ActuatorConfig) {
             // errors in finding the Hall
             {
                 error!("Bad index!");
+                #[cfg(not(feature = "ignore_errors"))]
                 continue; //Retry
             }
             if (1..indices.len()).any(|i| indices[i..].contains(&indices[i - 1])) {
                 //thanks Stackoverflow
                 error!("Duplicate index!");
+                #[cfg(not(feature = "ignore_errors"))]
                 continue; //Retry
             }
             actuator.set_index_sensor(indices);
@@ -530,11 +541,13 @@ pub async fn control_loop(config: ActuatorConfig) {
                 if !(found_turn[0] == found_turn[1] && found_turn[1] == found_turn[2]) {
                     //It may be possible in certain case?? But better forbid this
                     error!("Incoherent number of turn found! {:?}", found_turn);
+                    #[cfg(not(feature = "ignore_errors"))]
                     continue;
                 }
                 if offsets.iter().any(|&x| x.is_nan()) {
                     // Check for NaN
                     error!("Bad offsets! {:?}", offsets);
+                    #[cfg(not(feature = "ignore_errors"))]
                     continue;
                 }
 
@@ -564,6 +577,9 @@ pub async fn control_loop(config: ActuatorConfig) {
             debug!("diff sensors: {:?}", diff);
             break;
         }
+
+        #[cfg(not(feature = "ignore_errors"))]
+        break; //  break the loop regardless of the error
     }
 
     // Print the error if there is one
@@ -668,6 +684,8 @@ pub async fn control_loop(config: ActuatorConfig) {
 
         let mut torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
         let mut error_state = { SHARED_MEMORY.lock().await.get_error_state() };
+
+        #[cfg(not(feature = "ignore_errors"))] // if errors are ignored the operation continues
         if error_state != BoardStatus::Ok {
             // if init error, we turn off the torque
             torque_on = [false; config::N_AXIS];

@@ -27,7 +27,8 @@ axis_output = []  # control the motor angle after the gearbox and axis reduction
 
 # feature signaling that the board does not have a temperature sensor
 no_temperature_sensor = []
-# feature allowing to ignore the errors and continue the operation
+# feature allowing to ignore the errors and continue the operation 
+# this is a debug feature and should not be used in production
 ignore_errors = []
 
 [dependencies]
