@@ -632,6 +632,9 @@ pub async fn control_loop(config: ActuatorConfig) {
     let mut init_torquefluxlimit = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
     let mut init_velocitylimit = { SHARED_MEMORY.lock().await.get_velocity_limit() };
 
+    let mut init_torquefluxlimit_max = { SHARED_MEMORY.lock().await.get_torque_flux_limit_max() };
+    let mut init_velocitylimit_max = { SHARED_MEMORY.lock().await.get_velocity_limit_max() };
+
     let mut init_torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
     let mut init_target_position = { SHARED_MEMORY.lock().await.get_target_position() };
 
@@ -701,6 +704,7 @@ pub async fn control_loop(config: ActuatorConfig) {
         let target = { SHARED_MEMORY.lock().await.get_target_position() };
 
         //Filtered
+        #[cfg(feature = "cmd_filter")]
         let mut target = { SHARED_MEMORY.lock().await.get_target_position() };
         #[cfg(feature = "cmd_filter")]
         target.iter_mut().enumerate().for_each(|(i, t)| {
@@ -717,6 +721,54 @@ pub async fn control_loop(config: ActuatorConfig) {
             error!("Error setting target pos: {:?}", e);
             error_led = true;
         });
+
+        let torquefluxlimit = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
+        if torquefluxlimit != init_torquefluxlimit {
+            let max = { SHARED_MEMORY.lock().await.get_torque_flux_limit_max() };
+            let mut tl: [f32; config::N_AXIS] = [0.0; config::N_AXIS];
+            torquefluxlimit.iter().enumerate().for_each(|(i, t)| {
+                if *t * max[i] as f32 <= max[i] as f32 {
+                    tl[i] = *t * max[i] as f32;
+                } else {
+                    //Ensure we do not go beyond max
+                    tl[i] = max[i] as f32;
+                }
+            });
+            warn!(
+                "Setting torquefluxlimit: {:?} => {:?} (max={:?})",
+                torquefluxlimit, tl, max
+            );
+
+            actuator.set_torque_flux_limit(tl).unwrap_or_else(|e| {
+                error!("Error setting torque/flux limit: {:?}", e);
+                error_led = true;
+            });
+            init_torquefluxlimit = torquefluxlimit;
+        }
+
+        let velocitylimit = { SHARED_MEMORY.lock().await.get_velocity_limit() };
+        if velocitylimit != init_velocitylimit {
+            let max = { SHARED_MEMORY.lock().await.get_torque_flux_limit_max() };
+            let mut vl: [f32; config::N_AXIS] = [0.0; config::N_AXIS];
+            velocitylimit.iter().enumerate().for_each(|(i, v)| {
+                if *v * max[i] as f32 <= max[i] as f32 {
+                    vl[i] = *v * max[i] as f32;
+                } else {
+                    //Ensure we do not go beyond max
+                    vl[i] = max[i] as f32;
+                }
+            });
+            warn!(
+                "Setting velocitylimit: {:?} => {:?} (max={:?})",
+                velocitylimit, vl, max
+            );
+
+            actuator.set_velocity_limit(vl).unwrap_or_else(|e| {
+                error!("Error setting velocity limit: {:?}", e);
+                error_led = true;
+            });
+            init_velocitylimit = velocitylimit;
+        }
 
         // add the feedforward control to the velocity loop
         #[cfg(feature = "velocity_feedforward")]
@@ -864,29 +916,51 @@ pub async fn control_loop(config: ActuatorConfig) {
                 });
                 init_uqudlimit = uqudlimit;
             }
-
-            let torquefluxlimit = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
-            if torquefluxlimit != init_torquefluxlimit {
-                actuator
-                    .set_torque_flux_limit(torquefluxlimit)
-                    .unwrap_or_else(|e| {
-                        error!("Error setting torque/flux limit: {:?}", e);
-                        error_led = true;
+            /*
+                let torquefluxlimit = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
+                if torquefluxlimit != init_torquefluxlimit {
+                    let max = { SHARED_MEMORY.lock().await.get_torque_flux_limit_max() };
+                    let mut tl: [f32; config::N_AXIS] = [0.0; config::N_AXIS];
+                    torquefluxlimit.iter().enumerate().for_each(|(i, t)| {
+                        if *t * max[i] as f32 <= max[i] as f32 {
+                            tl[i] = *t * max[i] as f32;
+                        } else {
+                            //Ensure we do not go beyond max
+                            tl[i] = max[i] as f32;
+                        }
                     });
-                init_torquefluxlimit = torquefluxlimit;
-            }
 
-            let velocitylimit = { SHARED_MEMORY.lock().await.get_velocity_limit() };
-            if velocitylimit != init_velocitylimit {
-                actuator
-                    .set_velocity_limit(velocitylimit)
-                    .unwrap_or_else(|e| {
-                        error!("Error setting velocity limit: {:?}", e);
-                        error_led = true;
+                    actuator
+                        .set_torque_flux_limit(torquefluxlimit)
+                        .unwrap_or_else(|e| {
+                            error!("Error setting torque/flux limit: {:?}", e);
+                            error_led = true;
+                        });
+                    init_torquefluxlimit = torquefluxlimit;
+                }
+
+                let velocitylimit = { SHARED_MEMORY.lock().await.get_velocity_limit() };
+                if velocitylimit != init_velocitylimit {
+                    let max = { SHARED_MEMORY.lock().await.get_torque_flux_limit_max() };
+                    let mut vl: [f32; config::N_AXIS] = [0.0; config::N_AXIS];
+                    velocitylimit.iter().enumerate().for_each(|(i, v)| {
+                        if *v * max[i] as f32 <= max[i] as f32 {
+                            vl[i] = *v * max[i] as f32;
+                        } else {
+                            //Ensure we do not go beyond max
+                            vl[i] = max[i] as f32;
+                        }
                     });
-                init_velocitylimit = velocitylimit;
-            }
 
+                    actuator
+                        .set_velocity_limit(velocitylimit)
+                        .unwrap_or_else(|e| {
+                            error!("Error setting velocity limit: {:?}", e);
+                            error_led = true;
+                        });
+                    init_velocitylimit = velocitylimit;
+                }
+            */
             // //Less error at lower frequency...
             // let sensors=actuator.get_axis_sensors();
             // match sensors {

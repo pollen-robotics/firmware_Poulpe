@@ -63,7 +63,7 @@ impl CurrentSensing {
             * 1000.0 // amp_volt/adc_res -> counts to volts, 1/shunt*gain -> volts to amps
     }
     // transforming milliamps to raw adc counts
-    pub fn mAmps_tp_adc(&self, amps: f32, adc_resolution: f32) -> f32 {
+    pub fn mAmps_to_adc(&self, amps: f32, adc_resolution: f32) -> f32 {
         amps / 1000.0 * (self.amp_gain * self.resistance_shunt)
             / (self.amp_voltage / adc_resolution) // shunt*gain -> amps to volts, adc_res/amp_volt -> volts to adc counts
     }

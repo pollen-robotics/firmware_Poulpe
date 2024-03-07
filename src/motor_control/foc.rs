@@ -686,7 +686,7 @@ where
         //        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, 0x00007D00)?; // 32000
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8,
-            self.brushless_motor_config.pid_torque_flux_limit(),
+            self.brushless_motor_config.pid_torque_flux_limit_max(),
         )?;
 
         // PI settings
@@ -710,7 +710,7 @@ where
         //Limite the vel
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_VELOCITY_LIMIT as u8,
-            self.brushless_motor_config.pid_velocity_limit(),
+            self.brushless_motor_config.pid_velocity_limit_max(),
         )?;
 
         // calibrate the adc for temperature and dc bus voltage sensing

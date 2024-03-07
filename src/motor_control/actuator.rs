@@ -77,14 +77,18 @@ impl<'d, const N: usize> Actuator<'d, N> {
         Ok(())
     }
 
-    // pub fn get_ventouse(&mut self, v:char) ->Option<&mut dyn RawMotorsIO<1>>{
-    // 	match v {
-    // 	    'A' => self.axes[0].get_ventouse('A'),
-    // 	    'B' => self.axes[1].get_ventouse('B'),
-    // 	    'C' => self.axes[2].get_ventouse('C'),
-    // 	    _ => None,
-    // 	}
+    // pub fn get_ventouse(&mut self, v: char) -> Option<&mut dyn RawMotorsIO<1>> {
+    //     match v {
+    //         'A' => self.axes[0].get_ventouse('A'),
+    //         'B' => self.axes[1].get_ventouse('B'),
+    //         'C' => self.axes[2].get_ventouse('C'),
+    //         _ => None,
+    //     }
     // }
+
+    pub fn get_axis(&mut self, idx: usize) -> &mut dyn RawMotorsIO<1> {
+        &mut self.axes[idx]
+    }
 
     #[cfg(feature = "orbita3d")]
     pub fn get_index_sensor(&mut self) -> [u8; N] {
@@ -493,6 +497,65 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
 
         Ok(())
     }
+
+    ////////////////////
+
+    /// Get the absolute velocity limit of the motors (in radians per second)
+    fn get_velocity_limit_max(&mut self) -> Result<[f32; N]> {
+        let mut res = [0.0; N];
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            res[i] = axis.get_velocity_limit_max()?[0];
+        }
+
+        Ok(res)
+    }
+    /// Set the absolute velocity limit of the motors (in radians per second)
+    // fn set_velocity_limit_max(&mut self, velocity: [f32; N]) -> Result<()> {
+    //     for (i, axis) in self.axes.iter_mut().enumerate() {
+    //         axis.set_velocity_limit_max([velocity[i]])?;
+    //     }
+
+    //     Ok(())
+    // }
+
+    /// Get the absolute torque limit of the motors (in Nm)
+    fn get_torque_flux_limit_max(&mut self) -> Result<[f32; N]> {
+        let mut res = [0.0; N];
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            res[i] = axis.get_torque_flux_limit_max()?[0];
+        }
+
+        Ok(res)
+    }
+    /// Set the absolute torque limit of the motors (in Nm)
+    // fn set_torque_flux_limit_max(&mut self, torque: [f32; N]) -> Result<()> {
+    //     for (i, axis) in self.axes.iter_mut().enumerate() {
+    //         axis.set_torque_flux_limit_max([torque[i]])?;
+    //     }
+
+    //     Ok(())
+    // }
+
+    /*
+    /// Get the absolute torque limit of the motors (in Nm)
+    fn get_uq_ud_limit_max(&mut self) -> Result<[i16; N]> {
+        let mut res = [0; N];
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            res[i] = axis.get_uq_ud_limit_max()?[0];
+        }
+
+        Ok(res)
+    }
+    /// Set the absolute torque limit of the motors (in Nm)
+    fn set_uq_ud_limit_max(&mut self, torque: [i16; N]) -> Result<()> {
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            axis.set_uq_ud_limit_max([torque[i]])?;
+        }
+
+        Ok(())
+    }
+    */
+    /////////////////////
 
     // get temperature
     fn get_board_temperature(&mut self) -> Result<[f32; N]> {
