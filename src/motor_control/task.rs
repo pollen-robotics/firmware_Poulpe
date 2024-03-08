@@ -723,20 +723,20 @@ pub async fn control_loop(config: ActuatorConfig) {
         });
 
         let torquefluxlimit = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
-        if torquefluxlimit != init_torquefluxlimit {
-            let max = { SHARED_MEMORY.lock().await.get_torque_flux_limit_max() };
+        let torquefluxMax = { SHARED_MEMORY.lock().await.get_torque_flux_limit_max() };
+        if torquefluxlimit != init_torquefluxlimit || torquefluxMax != init_torquefluxlimit_max{
             let mut tl: [f32; config::N_AXIS] = [0.0; config::N_AXIS];
             torquefluxlimit.iter().enumerate().for_each(|(i, t)| {
-                if *t * max[i] as f32 <= max[i] as f32 {
-                    tl[i] = *t * max[i] as f32;
+                if *t  <= 1.0 {
+                    tl[i] = *t * torquefluxMax[i] as f32;
                 } else {
                     //Ensure we do not go beyond max
-                    tl[i] = max[i] as f32;
+                    tl[i] = torquefluxMax[i] as f32;
                 }
             });
             warn!(
                 "Setting torquefluxlimit: {:?} => {:?} (max={:?})",
-                torquefluxlimit, tl, max
+                torquefluxlimit, tl, torquefluxMax
             );
 
             actuator.set_torque_flux_limit(tl).unwrap_or_else(|e| {
@@ -744,23 +744,24 @@ pub async fn control_loop(config: ActuatorConfig) {
                 error_led = true;
             });
             init_torquefluxlimit = torquefluxlimit;
+            init_torquefluxlimit_max = torquefluxMax;
         }
 
         let velocitylimit = { SHARED_MEMORY.lock().await.get_velocity_limit() };
-        if velocitylimit != init_velocitylimit {
-            let max = { SHARED_MEMORY.lock().await.get_velocity_limit_max() };
+        let velocityMax = { SHARED_MEMORY.lock().await.get_velocity_limit_max() };
+        if velocitylimit != init_velocitylimit || velocityMax != init_velocitylimit_max {
             let mut vl: [f32; config::N_AXIS] = [0.0; config::N_AXIS];
             velocitylimit.iter().enumerate().for_each(|(i, v)| {
-                if *v * max[i] as f32 <= max[i] as f32 {
-                    vl[i] = *v * max[i] as f32;
+                if *v <= 1.0 {
+                    vl[i] = *v * velocityMax[i] as f32;
                 } else {
                     //Ensure we do not go beyond max
-                    vl[i] = max[i] as f32;
+                    vl[i] = velocityMax[i] as f32;
                 }
             });
             warn!(
                 "Setting velocitylimit: {:?} => {:?} (max={:?})",
-                velocitylimit, vl, max
+                velocitylimit, vl, velocityMax
             );
 
             actuator.set_velocity_limit(vl).unwrap_or_else(|e| {
@@ -768,6 +769,7 @@ pub async fn control_loop(config: ActuatorConfig) {
                 error_led = true;
             });
             init_velocitylimit = velocitylimit;
+            init_velocitylimit_max = velocityMax;
         }
 
         // add the feedforward control to the velocity loop
