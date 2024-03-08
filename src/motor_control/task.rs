@@ -748,7 +748,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 
         let velocitylimit = { SHARED_MEMORY.lock().await.get_velocity_limit() };
         if velocitylimit != init_velocitylimit {
-            let max = { SHARED_MEMORY.lock().await.get_torque_flux_limit_max() };
+            let max = { SHARED_MEMORY.lock().await.get_velocity_limit_max() };
             let mut vl: [f32; config::N_AXIS] = [0.0; config::N_AXIS];
             velocitylimit.iter().enumerate().for_each(|(i, v)| {
                 if *v * max[i] as f32 <= max[i] as f32 {
