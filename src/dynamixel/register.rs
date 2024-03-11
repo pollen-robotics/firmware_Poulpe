@@ -13,6 +13,8 @@ pub enum DynamixelRegister {
     UqUdLimit,
     TorqueFluxLimit,
     VelocityLimit,
+    TorqueFluxLimitMax,
+    VelocityLimitMax,
 
     TorqueEnable,
 
@@ -45,7 +47,9 @@ impl DynamixelRegister {
             7 => Some(DynamixelRegister::Id),
 
             10 => Some(DynamixelRegister::VelocityLimit),
+            12 => Some(DynamixelRegister::VelocityLimitMax),
             14 => Some(DynamixelRegister::TorqueFluxLimit),
+            16 => Some(DynamixelRegister::TorqueFluxLimitMax),
             18 => Some(DynamixelRegister::UqUdLimit),
 
             20 => Some(DynamixelRegister::FluxPID),

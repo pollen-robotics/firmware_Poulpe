@@ -210,8 +210,29 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                 }
                             }
 
+                            DynamixelRegister::TorqueFluxLimitMax => {
+                                let value =
+                                    { SHARED_MEMORY.lock().await.get_torque_flux_limit_max() };
+                                let value = conversion::float_to_bytes(value);
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
                             DynamixelRegister::VelocityLimit => {
                                 let value = { SHARED_MEMORY.lock().await.get_velocity_limit() };
+                                let value = conversion::float_to_bytes(value);
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
+                            DynamixelRegister::VelocityLimitMax => {
+                                let value = { SHARED_MEMORY.lock().await.get_velocity_limit_max() };
                                 let value = conversion::float_to_bytes(value);
                                 let sp = StatusPacket::with_value(id, dxl_error, value);
                                 trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
@@ -389,11 +410,39 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                 }
                             }
 
+                            DynamixelRegister::TorqueFluxLimitMax => {
+                                let limits: [f32; config::N_AXIS] =
+                                    conversion::bytes_to_float(write_data_packet.data);
+                                {
+                                    SHARED_MEMORY.lock().await.set_torque_flux_limit_max(limits);
+                                }
+
+                                let sp = StatusPacket::ack(id, dxl_error);
+                                debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
                             DynamixelRegister::VelocityLimit => {
                                 let limits: [f32; config::N_AXIS] =
                                     conversion::bytes_to_float(write_data_packet.data);
                                 {
                                     SHARED_MEMORY.lock().await.set_velocity_limit(limits);
+                                }
+
+                                let sp = StatusPacket::ack(id, dxl_error);
+                                debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
+
+                            DynamixelRegister::VelocityLimitMax => {
+                                let limits: [f32; config::N_AXIS] =
+                                    conversion::bytes_to_float(write_data_packet.data);
+                                {
+                                    SHARED_MEMORY.lock().await.set_velocity_limit_max(limits);
                                 }
 
                                 let sp = StatusPacket::ack(id, dxl_error);
