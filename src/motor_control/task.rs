@@ -321,7 +321,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     let mut init_error: BoardStatus = BoardStatus::Ok;
 
     // initialization of the actuator (try two times)
-    for try_i in 0..2 {
+    'init_loop: for try_i in 0..2 {
         info!("Initialization try no. {:?}", try_i + 1);
         // no error at the beginning
         init_error = BoardStatus::Ok;
@@ -339,13 +339,13 @@ pub async fn control_loop(config: ActuatorConfig) {
                 init_error = BoardStatus::InitError;
                 error!("Registers init error: {:?}", e);
                 #[cfg(not(feature = "ignore_errors"))]
-                continue; //  retry the init if there is an error
+                continue 'init_loop; //  retry the init if there is an error
             }
         }
 
         // read the axis sensors - but disable the torque to avoid the noise
         #[cfg(feature = "orbita2d")]
-        actuator.set_torque([false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
+        // actuator.set_torque([false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([false, false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
                                                              // #[cfg(feature = "orbita2d")]
@@ -355,7 +355,7 @@ pub async fn control_loop(config: ActuatorConfig) {
         // #[cfg(feature = "orbita2d")]
         Timer::after(Duration::from_micros(100000)).await;
         #[cfg(feature = "orbita2d")]
-        actuator.set_torque([true, true]).unwrap();
+        // actuator.set_torque([true, true]).unwrap();
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([true, true, true]).unwrap();
 
@@ -367,13 +367,13 @@ pub async fn control_loop(config: ActuatorConfig) {
                 init_error = BoardStatus::InitError;
                 error!("Motor check 1 error: {:?}", e);
                 #[cfg(not(feature = "ignore_errors"))]
-                continue; //  retry the init if there is an error
+                continue 'init_loop; //  retry the init if there is an error
             }
         }
 
         // read the sensors - but disable the torque to avoid the noise
         #[cfg(feature = "orbita2d")]
-        actuator.set_torque([false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
+        // actuator.set_torque([false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([false, false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
 
@@ -385,7 +385,7 @@ pub async fn control_loop(config: ActuatorConfig) {
         Timer::after(Duration::from_micros(100000)).await;
         // enable torques
         #[cfg(feature = "orbita2d")]
-        actuator.set_torque([true, true]).unwrap();
+        // actuator.set_torque([true, true]).unwrap();
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([true, true, true]).unwrap();
 
@@ -397,7 +397,7 @@ pub async fn control_loop(config: ActuatorConfig) {
                 init_error = BoardStatus::InitError;
                 error!("Motor check 2 error: {:?}", e);
                 #[cfg(not(feature = "ignore_errors"))]
-                continue; //  retry the init if there is an error
+                continue 'init_loop; //  retry the init if there is an error
             }
         }
 
@@ -419,7 +419,7 @@ pub async fn control_loop(config: ActuatorConfig) {
                     );
                     init_error = BoardStatus::SensorError;
                     #[cfg(not(feature = "ignore_errors"))]
-                    continue; //  retry the init if there is an error
+                    continue 'init_loop; //  retry the init if there is an error
                 }
             }
         }
@@ -446,7 +446,7 @@ pub async fn control_loop(config: ActuatorConfig) {
                         );
                         init_error = BoardStatus::SensorError;
                         #[cfg(not(feature = "ignore_errors"))]
-                        continue; //  retry the init if there is an error
+                        continue 'init_loop; //  retry the init if there is an error
                     }
                 }
                 if i == 1 {
@@ -457,7 +457,7 @@ pub async fn control_loop(config: ActuatorConfig) {
                         );
                         init_error = BoardStatus::SensorError;
                         #[cfg(not(feature = "ignore_errors"))]
-                        continue; //  retry the init if there is an error
+                        continue 'init_loop; //  retry the init if there is an error
                     }
                 }
             }
@@ -484,13 +484,13 @@ pub async fn control_loop(config: ActuatorConfig) {
             {
                 error!("Bad index!");
                 #[cfg(not(feature = "ignore_errors"))]
-                continue; //Retry
+                continue 'init_loop; //Retry
             }
             if (1..indices.len()).any(|i| indices[i..].contains(&indices[i - 1])) {
                 //thanks Stackoverflow
                 error!("Duplicate index!");
                 #[cfg(not(feature = "ignore_errors"))]
-                continue; //Retry
+                continue 'init_loop; //Retry
             }
             actuator.set_index_sensor(indices);
             actuator.set_torque([false, false, false]).unwrap(); //be sure to torque off to avoid noise in axis sensors?
@@ -540,13 +540,13 @@ pub async fn control_loop(config: ActuatorConfig) {
                     //It may be possible in certain case?? But better forbid this
                     error!("Incoherent number of turn found! {:?}", found_turn);
                     #[cfg(not(feature = "ignore_errors"))]
-                    continue;
+                    continue 'init_loop;
                 }
                 if offsets.iter().any(|&x| x.is_nan()) {
                     // Check for NaN
                     error!("Bad offsets! {:?}", offsets);
                     #[cfg(not(feature = "ignore_errors"))]
-                    continue;
+                    continue 'init_loop;
                 }
 
                 let curpos = actuator.get_axis_sensors().unwrap();
@@ -573,11 +573,11 @@ pub async fn control_loop(config: ActuatorConfig) {
             debug!("init sensors: {:?}", init_sensors);
             debug!("moved sensors: {:?}", moved_sensors);
             debug!("diff sensors: {:?}", diff);
-            break;
+            break 'init_loop;
         }
 
-        #[cfg(not(feature = "ignore_errors"))]
-        break; //  break the loop regardless of the error
+        #[cfg(feature = "ignore_errors")]
+        break 'init_loop; //  break the loop regardless of the error
     }
 
     // Print the error if there is one
