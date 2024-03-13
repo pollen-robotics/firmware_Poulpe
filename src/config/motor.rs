@@ -1,6 +1,4 @@
 use crate::motor_control::Pid;
-use crate::motor_control::ventouse::conversion::rads_to_rpm;
-use crate::config::current_sense::CurrentSensing;
 
 pub struct BrushlessMotor {
     // number of pole pairs
