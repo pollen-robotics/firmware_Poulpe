@@ -12,6 +12,8 @@ use crate::motor_control::motors_io::IOError;
 
 use crate::config;
 
+use super::ventouse::conversion;
+
 // PWM configuration
 const PWM_POLARITIES: u32 = 0x00000000;
 // const PWM_MAXCNT: u32 = 0x00000F9F; // PWM-freq 3999 = > 25KHz
@@ -59,6 +61,8 @@ const PID_VELOCITY_LIMIT: u32 = 0x0000_7D00; //32000 //tuned ok at 500Hz
 pub const OPENLOOP_ACCELERATION: u32 = 0x0000003c; // Wizard default
                                                    // pub const UQ_UD_EXT: u32 = 0x000007D0; // Openloop "torque_target" 2000
 pub const UQ_UD_EXT: u32 = 0x000001000; // Openloop "torque_target" 2000
+// max is 32000
+pub const UQ_UD_LIMIT: u32 = 31000;
 
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
@@ -682,11 +686,20 @@ where
             ABN_DECODER_PHI_E_PHI_M_OFFSET,
         )?;
 
+        // set uq and ud limits
+        self.tmc4671_checked_write(
+            Tmc4671Registers::PIDOUT_UQ_UD_LIMITS as u8,
+            UQ_UD_LIMIT,
+        )?;
+
         // Limits
         //        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, 0x00007D00)?; // 32000
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8,
-            self.brushless_motor_config.pid_torque_flux_limit_max(),
+            self.current_sensing_config.mAmps_to_adc(
+                self.brushless_motor_config.torque_flux_limit_max() as f32,
+                self.adc_resolution,
+            ) as u32,
         )?;
 
         // PI settings
@@ -710,7 +723,10 @@ where
         //Limite the vel
         self.tmc4671_checked_write(
             Tmc4671Registers::PID_VELOCITY_LIMIT as u8,
-            self.brushless_motor_config.pid_velocity_limit_max(),
+            self.brushless_motor_config
+                .angle_mech_to_elec(conversion::rads_to_rpm(
+                    self.brushless_motor_config.velocity_limit_max() as f32,
+                )) as u32,
         )?;
 
         // calibrate the adc for temperature and dc bus voltage sensing

@@ -622,19 +622,11 @@ where
 
     //////////////////////
     fn get_torque_flux_limit_max(&mut self) -> Result<[f32; 1], IOError> {
-        Ok([self.foc.current_sensing_config.adc_to_mAmps(
-            self.foc.brushless_motor_config.pid_torque_flux_limit_max() as f32,
-            self.foc.adc_resolution,
-        )])
+        Ok([self.foc.brushless_motor_config.torque_flux_limit_max() as f32])
     }
 
     fn get_velocity_limit_max(&mut self) -> Result<[f32; 1], IOError> {
-        Ok([self
-            .foc
-            .brushless_motor_config
-            .angle_elec_to_mech(conversion::rpm_to_rads(
-                self.foc.brushless_motor_config.pid_velocity_limit_max() as f32,
-            ))])
+        Ok([self.foc.brushless_motor_config.velocity_limit_max() as f32])
     }
     /*
     /// Get the absolute uq_ud limit of the motors
@@ -1500,7 +1492,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     }
 }
 
-mod conversion {
+pub mod conversion {
     // functions to convert encoder values to radians and vice versa
     pub fn encoder_to_rad(enc: i32, ppr: f32) -> f32 {
         enc as f32 / ppr * 6.28318530718 // 2*pi = 6.28

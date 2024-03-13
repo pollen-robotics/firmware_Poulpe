@@ -10,8 +10,8 @@ pub struct BrushlessMotor {
     pid_torque: Pid,
     pid_velocity: Pid,
     pid_position: Pid,
-    pid_torque_flux_limit_max: u32,
-    pid_velocity_limit_max: u32,
+    torque_flux_limit_max: u32,  // milliAmps
+    velocity_limit_max: u32,   // rad/s at the output of the gearbox/axis/motor - depends on the features enabled
     // The encoder PPR value - register ABN_DECODER_PPR
     abn_decoder_ppr: u32,
     // ratio of motor's gearbox
@@ -33,9 +33,9 @@ impl BrushlessMotor {
             pid_flux: Pid { p: 200, i: 500 },
             pid_torque: Pid { p: 200, i: 500 },
             pid_velocity: Pid { p: 500, i: 100 },
-            pid_position: Pid { p: 150, i: 0 },
-            pid_torque_flux_limit_max: 0x00000b82,
-            pid_velocity_limit_max: 0x0000_7D00,
+            pid_position: Pid { p: 100, i: 0 },
+            torque_flux_limit_max: 4000, // 4 amps
+            velocity_limit_max: 40, // 40 rad/s
             // gearing ratios
             gearbox_ratio: 1.0 / 35.0,
             axis_ratio: 12.0 / 64.0,
@@ -54,8 +54,8 @@ impl BrushlessMotor {
             pid_torque: Pid { p: 44, i: 120 },
             pid_velocity: Pid { p: 600, i: 400 },
             pid_position: Pid { p: 50, i: 0 },
-            pid_torque_flux_limit_max: 0x00000b82,
-            pid_velocity_limit_max: 0x0000_7D00,
+            torque_flux_limit_max: 4000, // 4 amps
+            velocity_limit_max: 10, // 10 rad/s
             // gearing ratios
             gearbox_ratio: 1.0 / 25.01,
             axis_ratio: 28.0 / 52.0,
@@ -76,8 +76,8 @@ impl BrushlessMotor {
             pid_velocity: Pid { p: 500, i: 600 },
             pid_position: Pid { p: 50, i: 0 },
 
-            pid_torque_flux_limit_max: 0x00000b82,
-            pid_velocity_limit_max: 0x0000_7D00,
+            torque_flux_limit_max: 4000, // 4 amps
+            velocity_limit_max: 10, // 410 rad/s
             // gearing ratios
             gearbox_ratio: 1.0 / 35.0,
             axis_ratio: 20.0 / 38.0,
@@ -104,11 +104,11 @@ impl BrushlessMotor {
         self.pid_to_reg(self.pid_velocity)
     }
 
-    pub fn pid_torque_flux_limit_max(&self) -> u32 {
-        self.pid_torque_flux_limit_max
+    pub fn torque_flux_limit_max(&self) -> u32 {
+        self.torque_flux_limit_max
     }
-    pub fn pid_velocity_limit_max(&self) -> u32 {
-        self.pid_velocity_limit_max
+    pub fn velocity_limit_max(&self) -> u32 {
+        self.velocity_limit_max 
     }
 
     pub fn gearbox_ratio(&self) -> f32 {
