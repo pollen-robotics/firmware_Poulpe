@@ -599,7 +599,8 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
 
                                         // get the timestamp of the last target set 
                                         // in order to calculate the velocity feedforward
-                                        match { SHARED_MEMORY.lock().await.get_target_set_timestamp() } {
+                                        let timestamp = { SHARED_MEMORY.lock().await.get_target_set_timestamp() } ;
+                                        match timestamp {
                                             Some(target_set_timestamp) => {
                                                 // calculate the time elapsed from the last target set
                                                 let dt = target_set_timestamp.elapsed().as_micros() as f32
