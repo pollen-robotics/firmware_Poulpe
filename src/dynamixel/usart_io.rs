@@ -1,9 +1,10 @@
-use defmt::{debug, trace, Format};
+use defmt::{debug, error, trace, Format};
 use embassy_stm32::{
     gpio::{AnyPin, Level, Output, Speed},
     usart::{BasicInstance, Uart},
 };
 use embassy_time::{Duration, Timer};
+use embedded_io_async::Write;
 
 use super::packet::{InstructionPacketKind, ParsingError, StatusPacket};
 
@@ -76,7 +77,10 @@ where
 
             total += n;
 
-            assert!(total <= MAX_BUFFER_LENGTH - MAX_READ_BUFFER_LENGTH);
+            if total > (MAX_BUFFER_LENGTH - MAX_READ_BUFFER_LENGTH) {
+                error!("Usart buffer overflow");
+                return Err(CommunicationError::UartError(embassy_stm32::usart::Error::BufferTooLong));
+            }
 
             if n == 0 {
                 continue;
