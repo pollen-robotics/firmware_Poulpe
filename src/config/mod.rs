@@ -9,6 +9,12 @@ pub const N_AXIS: usize = 2;
 #[cfg(feature = "orbita3d")]
 pub const N_AXIS: usize = 3;
 
+// maximal temperature limits for the motor and the boards
+// high temeperature state - only warning
+pub const HIGH_TEMP: f32 = 65.0;
+// maximal temperature limit - error state
+pub const MAX_TEMP: f32 = 75.0;
+
 // pub static DXL_ID: u8 = 42;
 
 pub type DynamixelUart = Uart<'static, p::USART1, p::DMA1_CH0, p::DMA1_CH1>;

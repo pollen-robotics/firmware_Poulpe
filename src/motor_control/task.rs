@@ -35,6 +35,7 @@ pub async fn set_error_led() {
     SHARED_MEMORY.lock().await.set_error_led(true);
 }
 
+
 #[embassy_executor::task]
 pub async fn control_loop(config: ActuatorConfig) {
     let mut spi_config = spi::Config::default();
@@ -351,19 +352,17 @@ pub async fn control_loop(config: ActuatorConfig) {
 
         // read the axis sensors
         let mut init_sensors = [0.0; config::N_AXIS];
-        match actuator.get_axis_sensors(){
+        match actuator.get_axis_sensors() {
             Ok(sensors) => {
                 init_sensors = sensors;
             }
             Err(e) => {
                 error!("Error reading axis sensors: {:?}", e);
                 init_error = BoardStatus::SensorError;
-                continue ; //  retry the init if there is an error
-
+                continue; //  retry the init if there is an error
             }
         }
         debug!("init sensors: {:?}", init_sensors);
-        
 
         // #[cfg(feature = "orbita2d")]
         Timer::after(Duration::from_micros(100000)).await;
@@ -388,23 +387,19 @@ pub async fn control_loop(config: ActuatorConfig) {
 
         Timer::after(Duration::from_micros(100000)).await;
 
-
-
         // read the axis sensors
         let mut moved_sensors = [0.0; config::N_AXIS];
-        match actuator.get_axis_sensors(){
+        match actuator.get_axis_sensors() {
             Ok(sensors) => {
                 moved_sensors = sensors;
             }
             Err(e) => {
                 error!("Error reading axis sensors: {:?}", e);
                 init_error = BoardStatus::SensorError;
-                continue ; //  retry the init if there is an error
-
+                continue; //  retry the init if there is an error
             }
         }
         debug!("moved sensors: {:?}", moved_sensors);
-        
 
         SHARED_MEMORY.lock().await.set_axis_sensor(moved_sensors);
 
@@ -436,7 +431,7 @@ pub async fn control_loop(config: ActuatorConfig) {
                 // if motor moved acors 0 the diff will be bigger around 2PI - diff
                 if diff[i] > 3.141592 {
                     diff[i] = diff[i] - 2.0 * 3.141592;
-                }else if diff[i] < -3.141592 {
+                } else if diff[i] < -3.141592 {
                     diff[i] = diff[i] + 2.0 * 3.141592;
                 }
 
@@ -460,14 +455,15 @@ pub async fn control_loop(config: ActuatorConfig) {
                 // if motor moved acors 0 the diff will be bigger around 2PI-diff
                 if diff[i] > 3.141592 {
                     diff[i] = diff[i] - 2.0 * 3.141592;
-                }else if diff[i] < -3.141592 {
+                } else if diff[i] < -3.141592 {
                     diff[i] = diff[i] + 2.0 * 3.141592;
                 }
 
                 debug!("diff: {:?}", diff[i]);
 
                 if i == 0 {
-                    if (diff[i] > -0.09) || (diff[i] < -0.2) || diff[i].is_nan() { // it should move ~0.15 rad
+                    if (diff[i] > -0.09) || (diff[i] < -0.2) || diff[i].is_nan() {
+                        // it should move ~0.15 rad
                         error!(
                             "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
                             i, diff[i]
@@ -478,7 +474,8 @@ pub async fn control_loop(config: ActuatorConfig) {
                     }
                 }
                 if i == 1 {
-                    if (diff[i] < 0.04) || (diff[i] > 0.07) || diff[i].is_nan() { // it should move ~0.05 rad
+                    if (diff[i] < 0.04) || (diff[i] > 0.07) || diff[i].is_nan() {
+                        // it should move ~0.05 rad
                         error!(
                             "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
                             i, diff[i]
@@ -715,13 +712,37 @@ pub async fn control_loop(config: ActuatorConfig) {
         let mut error_state = { SHARED_MEMORY.lock().await.get_error_state() };
 
         #[cfg(not(feature = "ignore_errors"))] // if errors are ignored the operation continues
-        if error_state != BoardStatus::Ok {
-            // if init error, we turn off the torque
-            torque_on = [false; config::N_AXIS];
-            {
-                SHARED_MEMORY.lock().await.set_torque_on(torque_on)
-            };
+        {
+            match error_state {
+                BoardStatus::InitError | BoardStatus::SensorError | BoardStatus::IndexError | BoardStatus::ZeroingError => {
+                    // if there was an init error the operation stops and cannot restart
+                    torque_on = [false; config::N_AXIS];
+                    {
+                        SHARED_MEMORY.lock().await.set_torque_on(torque_on)
+                    };
+                }
+                BoardStatus::BusVoltageError | BoardStatus::OverTemperatureError => {
+                    // if there was a catastrophic error, the operation stops but gently
+                    let home_position = [0.0; config::N_AXIS];
+                    {SHARED_MEMORY.lock().await.set_target_position(home_position)};
+                    // maybe also add the 
+                    let home_torque_limit = [0.3; config::N_AXIS];
+                    {SHARED_MEMORY.lock().await.set_torque_flux_limit(home_torque_limit)};
+                    let homing_velocity_limit = [0.1; config::N_AXIS];
+                    {SHARED_MEMORY.lock().await.set_velocity_limit(homing_velocity_limit)};
+                    // if at home position (close at 0.01 rad) turn off the all the torques
+                    if pos.iter().zip(home_position.iter()).all(|(a, b)| ((a - b) < 0.01) &&  ((a - b) > -0.01)) {
+                        torque_on = [false; config::N_AXIS];
+                        {
+                            SHARED_MEMORY.lock().await.set_torque_on(torque_on)
+                        };
+                    }
+                }
+                _ => {} // if everything is ok, the operation continues
+            }
         }
+
+
         actuator.set_torque(torque_on).unwrap_or_else(|e| {
             error!("Error setting torque: {:?}", e);
             error_led = true;
@@ -752,10 +773,10 @@ pub async fn control_loop(config: ActuatorConfig) {
 
         let torquefluxlimit = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
         let torquefluxMax = { SHARED_MEMORY.lock().await.get_torque_flux_limit_max() };
-        if torquefluxlimit != init_torquefluxlimit || torquefluxMax != init_torquefluxlimit_max{
+        if torquefluxlimit != init_torquefluxlimit || torquefluxMax != init_torquefluxlimit_max {
             let mut tl: [f32; config::N_AXIS] = [0.0; config::N_AXIS];
             torquefluxlimit.iter().enumerate().for_each(|(i, t)| {
-                if *t  <= 1.0 {
+                if *t <= 1.0 {
                     tl[i] = *t * torquefluxMax[i] as f32;
                 } else {
                     //Ensure we do not go beyond max
@@ -1007,35 +1028,46 @@ pub async fn control_loop(config: ActuatorConfig) {
 
             // perform checks on the actuator to determine the error state
             // get temperature
-            let mut temp_error = false;
             match actuator.get_board_temperature() {
                 Ok(t) => {
+                    // save the temperatures
                     {
                         SHARED_MEMORY.lock().await.set_board_temperature(t)
                     };
-                    t.iter().for_each(|t| {
-                        if *t > 100.0 {
-                            // if temperature is not a number or above 100 degrees
-                            temp_error = true;
-                        }
-                    });
+                    // find the max temperature
+                    let max_temp = t.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+                    if max_temp > config::MAX_TEMP {
+                        // if temperature is above maximal temperature stop everything 
+                        error_led = true;
+                        {
+                            SHARED_MEMORY
+                                .lock()
+                                .await
+                                .set_error_state(BoardStatus::OverTemperatureError)
+                        };
+                        error!(
+                            "Board max temperature too high (above {} degrees)!",
+                            config::MAX_TEMP
+                        );
+                    } else if max_temp > config::HIGH_TEMP {
+                        // if temperature is high but not too high
+                        {
+                            SHARED_MEMORY
+                                .lock()
+                                .await
+                                .set_error_state(BoardStatus::HighTemperatureState)
+                        };
+                        warn!(
+                            "Board temperature high (above {} degrees)!",
+                            config::HIGH_TEMP
+                        );
+                    }
                     debug!("Board temperature: {:?}", t);
                 }
                 Err(e) => {
                     error_led = true;
                     error!("Board temperature reading error {:?}", e);
                 }
-            }
-            if temp_error {
-                // stop everything if the temperature is too high
-                error_led = true;
-                {
-                    SHARED_MEMORY
-                        .lock()
-                        .await
-                        .set_error_state(BoardStatus::OverTemperatureError)
-                };
-                error!("Board temperature too high (above 100 degrees)!");
             }
 
             // get dc bus voltage
