@@ -722,13 +722,11 @@ pub async fn control_loop(config: ActuatorConfig) {
                     };
                 }
                 BoardStatus::BusVoltageError | BoardStatus::OverTemperatureError => {
-
                     // if torque is on
                     if torque_on.iter().any(|&x| x) {
                         // if there was a catastrophic error, the operation stops but gently
                         let home_position = [0.0; config::N_AXIS];
                         {SHARED_MEMORY.lock().await.set_target_position(home_position)};
-                        // maybe also add the 
                         let home_torque_limit = [0.3; config::N_AXIS];
                         {SHARED_MEMORY.lock().await.set_torque_flux_limit(home_torque_limit)};
                         let homing_velocity_limit = [0.1; config::N_AXIS];
