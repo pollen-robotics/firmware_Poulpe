@@ -26,6 +26,7 @@ pub enum BoardStatus {
     OverTemperatureError = 5,
     OverCurrentError = 6,
     BusVoltageError = 7,
+    HighTemperatureState = 100,
     Unknown = 255,
 }
 
@@ -40,6 +41,7 @@ impl BoardStatus {
             5 => BoardStatus::OverTemperatureError,
             6 => BoardStatus::OverCurrentError,
             7 => BoardStatus::BusVoltageError,
+            100 => BoardStatus::HighTemperatureState,
             255 => BoardStatus::Unknown,
             _ => BoardStatus::Unknown,
         }
