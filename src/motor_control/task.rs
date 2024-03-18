@@ -722,20 +722,24 @@ pub async fn control_loop(config: ActuatorConfig) {
                     };
                 }
                 BoardStatus::BusVoltageError | BoardStatus::OverTemperatureError => {
-                    // if there was a catastrophic error, the operation stops but gently
-                    let home_position = [0.0; config::N_AXIS];
-                    {SHARED_MEMORY.lock().await.set_target_position(home_position)};
-                    // maybe also add the 
-                    let home_torque_limit = [0.3; config::N_AXIS];
-                    {SHARED_MEMORY.lock().await.set_torque_flux_limit(home_torque_limit)};
-                    let homing_velocity_limit = [0.1; config::N_AXIS];
-                    {SHARED_MEMORY.lock().await.set_velocity_limit(homing_velocity_limit)};
-                    // if at home position (close at 0.01 rad) turn off the all the torques
-                    if pos.iter().zip(home_position.iter()).all(|(a, b)| ((a - b) < 0.01) &&  ((a - b) > -0.01)) {
-                        torque_on = [false; config::N_AXIS];
-                        {
-                            SHARED_MEMORY.lock().await.set_torque_on(torque_on)
-                        };
+
+                    // if torque is on
+                    if torque_on.iter().any(|&x| x) {
+                        // if there was a catastrophic error, the operation stops but gently
+                        let home_position = [0.0; config::N_AXIS];
+                        {SHARED_MEMORY.lock().await.set_target_position(home_position)};
+                        // maybe also add the 
+                        let home_torque_limit = [0.3; config::N_AXIS];
+                        {SHARED_MEMORY.lock().await.set_torque_flux_limit(home_torque_limit)};
+                        let homing_velocity_limit = [0.1; config::N_AXIS];
+                        {SHARED_MEMORY.lock().await.set_velocity_limit(homing_velocity_limit)};
+                        // if at home position (close at 0.01 rad) turn off the all the torques
+                        if pos.iter().zip(home_position.iter()).all(|(a, b)| ((a - b) < 0.01) &&  ((a - b) > -0.01)) {
+                            torque_on = [false; config::N_AXIS];
+                            {
+                                SHARED_MEMORY.lock().await.set_torque_on(torque_on)
+                            };
+                        }
                     }
                 }
                 _ => {} // if everything is ok, the operation continues
