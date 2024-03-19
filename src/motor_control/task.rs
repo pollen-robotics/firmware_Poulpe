@@ -1063,6 +1063,13 @@ pub async fn control_loop(config: ActuatorConfig) {
                             "Board temperature high (above {} degrees)!",
                             config::HIGH_TEMP
                         );
+                    }else{ // everything is fine
+                        {
+                            SHARED_MEMORY
+                                .lock()
+                                .await
+                                .set_error_state(BoardStatus::Ok)
+                        };
                     }
                     debug!("Board temperature: {:?}", t);
                 }
