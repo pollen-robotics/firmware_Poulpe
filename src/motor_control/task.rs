@@ -1029,6 +1029,7 @@ pub async fn control_loop(config: ActuatorConfig) {
             // }
 
             // perform checks on the actuator to determine the error state
+            let mut max_temp = 0.0;
             // get temperature
             match actuator.get_board_temperature() {
                 Ok(t) => {
@@ -1037,45 +1038,69 @@ pub async fn control_loop(config: ActuatorConfig) {
                         SHARED_MEMORY.lock().await.set_board_temperature(t)
                     };
                     // find the max temperature
-                    let max_temp = t.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-                    if max_temp > config::MAX_TEMP {
-                        // if temperature is above maximal temperature stop everything 
-                        error_led = true;
-                        {
-                            SHARED_MEMORY
-                                .lock()
-                                .await
-                                .set_error_state(BoardStatus::OverTemperatureError)
-                        };
-                        error!(
-                            "Board max temperature too high (above {} degrees)!",
-                            config::MAX_TEMP
-                        );
-                    } else if max_temp > config::HIGH_TEMP {
-                        // if temperature is high but not too high
-                        {
-                            SHARED_MEMORY
-                                .lock()
-                                .await
-                                .set_error_state(BoardStatus::HighTemperatureState)
-                        };
-                        warn!(
-                            "Board temperature high (above {} degrees)!",
-                            config::HIGH_TEMP
-                        );
-                    }else{ // everything is fine
-                        {
-                            SHARED_MEMORY
-                                .lock()
-                                .await
-                                .set_error_state(BoardStatus::Ok)
-                        };
-                    }
+                    max_temp = t.iter().copied().fold(f32::NEG_INFINITY, f32::max);
                     debug!("Board temperature: {:?}", t);
                 }
                 Err(e) => {
                     error_led = true;
                     error!("Board temperature reading error {:?}", e);
+                }
+            }
+
+            #[cfg(not(feature = "no_temperature_sensor"))]
+            {
+                // read the motor temperature
+                match motor_temperature_sensor.read_temperature() {
+                    Ok(t) => {
+                        {
+                            SHARED_MEMORY.lock().await.set_motor_temperature(t)
+                        };
+                        if max_temp < t { // check if the motor temperature is the highest
+                            max_temp = t;
+                        }
+                        debug!("Motor temperature: {:?}", t);
+                    }
+                    Err(e) => {
+                        error_led = true;
+                        error!("Motor temperature reading error {:?}", e);
+                    }
+                }
+            }
+
+            // verify the temperature
+            if max_temp > config::MAX_TEMP {
+                // if temperature is above maximal temperature stop everything 
+                error_led = true;
+                {
+                    SHARED_MEMORY
+                        .lock()
+                        .await
+                        .set_error_state(BoardStatus::OverTemperatureError)
+                };
+                error!(
+                    "Temperature {} is too high (above {} degrees)!",
+                    max_temp, config::MAX_TEMP
+                );
+            } else if max_temp > config::HIGH_TEMP {
+                // if temperature is high but not too high
+                {
+                    SHARED_MEMORY
+                        .lock()
+                        .await
+                        .set_error_state(BoardStatus::HighTemperatureState)
+                };
+                warn!(
+                    "Temperature {} is very high (above {} degrees)!",
+                    max_temp, config::HIGH_TEMP
+                );
+            } else { // the temperature is fine - reset the error state if it was only high temperature
+                if error_state == BoardStatus::HighTemperatureState {
+                    {
+                        SHARED_MEMORY
+                            .lock()
+                            .await
+                            .set_error_state(BoardStatus::Ok)
+                    };
                 }
             }
 
@@ -1109,31 +1134,17 @@ pub async fn control_loop(config: ActuatorConfig) {
                 };
                 error!("Bus voltage is too low (under 10V)!");
             }
-
-            #[cfg(not(feature = "no_temperature_sensor"))]
-            {
-                // read the motor temperature
-                match motor_temperature_sensor.read_temperature() {
-                    Ok(t) => {
-                        {
-                            SHARED_MEMORY.lock().await.set_motor_temperature(t)
-                        };
-                        if t > 100.0 {
-                            error_led = true;
-                            error!("Motor temperature too high (above 100 degrees)!");
-                            {
-                                SHARED_MEMORY
-                                    .lock()
-                                    .await
-                                    .set_error_state(BoardStatus::OverTemperatureError)
-                            };
-                        }
-                        debug!("Motor temperature: {:?}", t);
-                    }
-                    Err(e) => {
-                        error_led = true;
-                        error!("Motor temperature reading error {:?}", e);
-                    }
+            
+            // dispaly current state
+            match error_state {
+                BoardStatus::Ok => {
+                    info!("Board state: {:?}",error_state);
+                }
+                BoardStatus::HighTemperatureState => {
+                    warn!("Board state: {:?}",error_state);
+                }
+                _ => {
+                    error!("Board state: {:?}",error_state);
                 }
             }
 
