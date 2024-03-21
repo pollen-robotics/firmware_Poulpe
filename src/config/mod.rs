@@ -19,11 +19,16 @@ pub const MAX_TEMP: f32 = 75.0;
 
 pub type DynamixelUart = Uart<'static, p::USART1, p::DMA1_CH0, p::DMA1_CH1>;
 
-use crate::motor_control::{
-    sensors::{AD5047Sensor, AksimSensor, I2cHallSensor},
-    sensors::{I2cHallConfig, SensorConfig},
-    ventouse::{Ventouse, VentouseConfig},
-    analog::AnalogInputConfig,
+pub type LAN9252Config = EthercatConfig<p::SPI3, p::PC10, p::PB2, p::PC11, p::PD0>;
+
+use crate::{
+    ethercat::EthercatConfig,
+    motor_control::{
+        analog::AnalogInputConfig,
+        sensors::{AD5047Sensor, AksimSensor, I2cHallSensor},
+        sensors::{I2cHallConfig, SensorConfig},
+        ventouse::{Ventouse, VentouseConfig},
+    },
 };
 
 pub type VentouseA<'d> = Ventouse<'d, p::SPI1, p::PA3, p::PC0, p::PA2>;
@@ -52,9 +57,7 @@ pub type AD5047Top<'d> = AD5047Sensor<'d, p::SPI4, p::PA4>;
 pub type AD5047Mid<'d> = AD5047Sensor<'d, p::SPI4, p::PE4>;
 pub type AD5047Bot<'d> = AD5047Sensor<'d, p::SPI4, p::PA15>;
 
-
 pub type TemperatureSensorConfig = AnalogInputConfig<p::ADC1, p::PB1>;
-
 
 // pub type DonutHall<'d> = I2cHallSensor<'d, p::I2C1, p::PB6, p::PB7>;
 pub type DonutHall<'d> = I2cHallSensor<p::I2C1>;
@@ -82,7 +85,7 @@ pub struct ActuatorConfig {
     #[cfg(feature = "orbita3d")]
     pub donut_hall: DonutHallConfig,
     #[cfg(not(feature = "no_temperture_sensor"))]
-    pub temperature_sensor: TemperatureSensorConfig
+    pub temperature_sensor: TemperatureSensorConfig,
 }
 
 mod motor;

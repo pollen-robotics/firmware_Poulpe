@@ -35,7 +35,6 @@ pub async fn set_error_led() {
     SHARED_MEMORY.lock().await.set_error_led(true);
 }
 
-
 #[embassy_executor::task]
 pub async fn control_loop(config: ActuatorConfig) {
     let mut spi_config = spi::Config::default();
@@ -714,7 +713,10 @@ pub async fn control_loop(config: ActuatorConfig) {
         #[cfg(not(feature = "ignore_errors"))] // if errors are ignored the operation continues
         {
             match error_state {
-                BoardStatus::InitError | BoardStatus::SensorError | BoardStatus::IndexError | BoardStatus::ZeroingError => {
+                BoardStatus::InitError
+                | BoardStatus::SensorError
+                | BoardStatus::IndexError
+                | BoardStatus::ZeroingError => {
                     // if there was an init error the operation stops and cannot restart
                     torque_on = [false; config::N_AXIS];
                     {
@@ -726,13 +728,32 @@ pub async fn control_loop(config: ActuatorConfig) {
                     if torque_on.iter().any(|&x| x) {
                         // if there was a catastrophic error, the operation stops but gently
                         let home_position = [0.0; config::N_AXIS];
-                        {SHARED_MEMORY.lock().await.set_target_position(home_position)};
+                        {
+                            SHARED_MEMORY
+                                .lock()
+                                .await
+                                .set_target_position(home_position)
+                        };
                         let home_torque_limit = [0.3; config::N_AXIS];
-                        {SHARED_MEMORY.lock().await.set_torque_flux_limit(home_torque_limit)};
+                        {
+                            SHARED_MEMORY
+                                .lock()
+                                .await
+                                .set_torque_flux_limit(home_torque_limit)
+                        };
                         let homing_velocity_limit = [0.1; config::N_AXIS];
-                        {SHARED_MEMORY.lock().await.set_velocity_limit(homing_velocity_limit)};
+                        {
+                            SHARED_MEMORY
+                                .lock()
+                                .await
+                                .set_velocity_limit(homing_velocity_limit)
+                        };
                         // if at home position (close at 0.01 rad) turn off the all the torques
-                        if pos.iter().zip(home_position.iter()).all(|(a, b)| ((a - b) < 0.01) &&  ((a - b) > -0.01)) {
+                        if pos
+                            .iter()
+                            .zip(home_position.iter())
+                            .all(|(a, b)| ((a - b) < 0.01) && ((a - b) > -0.01))
+                        {
                             torque_on = [false; config::N_AXIS];
                             {
                                 SHARED_MEMORY.lock().await.set_torque_on(torque_on)
@@ -743,7 +764,6 @@ pub async fn control_loop(config: ActuatorConfig) {
                 _ => {} // if everything is ok, the operation continues
             }
         }
-
 
         actuator.set_torque(torque_on).unwrap_or_else(|e| {
             error!("Error setting torque: {:?}", e);
@@ -1055,7 +1075,8 @@ pub async fn control_loop(config: ActuatorConfig) {
                         {
                             SHARED_MEMORY.lock().await.set_motor_temperature(t)
                         };
-                        if max_temp < t { // check if the motor temperature is the highest
+                        if max_temp < t {
+                            // check if the motor temperature is the highest
                             max_temp = t;
                         }
                         debug!("Motor temperature: {:?}", t);
@@ -1069,7 +1090,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 
             // verify the temperature
             if max_temp > config::MAX_TEMP {
-                // if temperature is above maximal temperature stop everything 
+                // if temperature is above maximal temperature stop everything
                 error_led = true;
                 {
                     SHARED_MEMORY
@@ -1079,7 +1100,8 @@ pub async fn control_loop(config: ActuatorConfig) {
                 };
                 error!(
                     "Temperature {} is too high (above {} degrees)!",
-                    max_temp, config::MAX_TEMP
+                    max_temp,
+                    config::MAX_TEMP
                 );
             } else if max_temp > config::HIGH_TEMP {
                 // if temperature is high but not too high
@@ -1091,15 +1113,14 @@ pub async fn control_loop(config: ActuatorConfig) {
                 };
                 warn!(
                     "Temperature {} is very high (above {} degrees)!",
-                    max_temp, config::HIGH_TEMP
+                    max_temp,
+                    config::HIGH_TEMP
                 );
-            } else { // the temperature is fine - reset the error state if it was only high temperature
+            } else {
+                // the temperature is fine - reset the error state if it was only high temperature
                 if error_state == BoardStatus::HighTemperatureState {
                     {
-                        SHARED_MEMORY
-                            .lock()
-                            .await
-                            .set_error_state(BoardStatus::Ok)
+                        SHARED_MEMORY.lock().await.set_error_state(BoardStatus::Ok)
                     };
                 }
             }
@@ -1134,17 +1155,17 @@ pub async fn control_loop(config: ActuatorConfig) {
                 };
                 error!("Bus voltage is too low (under 10V)!");
             }
-            
+
             // dispaly current state
             match error_state {
                 BoardStatus::Ok => {
-                    info!("Board state: {:?}",error_state);
+                    info!("Board state: {:?}", error_state);
                 }
                 BoardStatus::HighTemperatureState => {
-                    warn!("Board state: {:?}",error_state);
+                    warn!("Board state: {:?}", error_state);
                 }
                 _ => {
-                    error!("Board state: {:?}",error_state);
+                    error!("Board state: {:?}", error_state);
                 }
             }
 
