@@ -96,12 +96,12 @@ The motor control crate uses the `BoardState` struct to keep track of the intern
 The motor control crate is designed to be as modular as possible. 
 
 The orbita actuators is implmented using the `Actuator` structure that has either 2 or 3 motors. The `Actuator` structure is as shown on the image below.
-<img src="../../docs/vars_task_control.png" alt="Motor control crate" height="500px"/>
+
+<img src="../../docs/vars_task_control.png" alt="Motor control crate" height="400px" />
 
 The `Actuator` structure maintains the array of 2 or 3 motor drivers, that are instances of the `Ventouse` structure and 2 or 3 sensors that implemnet `Sensor` trait. Addiitonally, the `Actuator` maintains an insatnce of `Analog` structure that is used to read the motor temperature. In case of the orbita3d, it contains the  `I2cHallSensor` structure called `DonutHall` that is used to read the hall sensor array. 
-
 The `Ventouse` structure is as shown on the image below.
-<img src="../../docs/ventouse.png" alt="Motor control crate" height="400px"/>
+<img src="../../docs/ventouse.png" alt="Motor control crate" align="right" height="300px"/>
 
 The `Driver` structure implment the necessary steps to read and write the registers to the TMC6200 and `Foc` structure implemnets the necessary steps to read and write the registers to the TMC4671. 
 Both of them use the `Spi` structure to communicate with the boards. 
