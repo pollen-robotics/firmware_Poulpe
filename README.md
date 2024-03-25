@@ -5,8 +5,8 @@ A complete firmware stack for the [Poulpe](https://github.com/pollen-robotics/el
 ## Table of contents
 
 - [Installation](#installation)
-- [Build](#build)
-- [Run/Flush](#runflush)
+    - [Build](#build)
+    - [Run/Flush](#runflush)
 - [Software architecture](#software-architecture)
     - [Firmware configuration](#firmware-configuration)
     - [Command line arguments](#command-line-arguments)
@@ -26,13 +26,13 @@ A complete firmware stack for the [Poulpe](https://github.com/pollen-robotics/el
 - `cargo install probe-rs --features cli`
 - Setup the st-link v2 device permisions: https://probe.rs/docs/getting-started/probe-setup/
 
-## Build
+### Build
 
 - `cargo build --release`
 
 Note: The first build will take a long time because it will download the dependencies and compile them.
 
-## Run/Flush
+### Run/Flush
 1) Make sure that the stlink is connected to the board and to the computer
 2) Make sure that you have properly configured the features for the board in the `Cargo.toml` file
 3) Run the command to flush the board:
