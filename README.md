@@ -1,6 +1,7 @@
 # Poulpe board firmware using Embassy-rs
 
-A complete firmware stack for the [Poulpe](https://github.com/pollen-robotics/elec_Poulpe) board using the Rust programming language and the Embassy-rs framework. The firmware is designed to work with the Orbita2d and Orbita3d actuator setups.
+<img align="right" src="docs/Poulpe_3d.png" width="120px">
+A complete firmware stack for the [Poulpe](https://github.com/pollen-robotics/elec_Poulpe) board using the Rust programming language and the Embassy-rs framework. The firmware is designed to work with the Orbita2d and Orbita3d actuator setups. 
 
 ## Table of contents
 
