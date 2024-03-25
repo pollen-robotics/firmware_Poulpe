@@ -1,37 +1,217 @@
 # Poulpe board firmware using Embassy-rs
 
+A complete firmware stack for the [Poulpe](https://github.com/pollen-robotics/elec_Poulpe) board using the Rust programming language and the Embassy-rs framework. The firmware is designed to work with the Orbita2d and Orbita3d actuator setups.
+
+## Table of contents
+
+- [Installation](#installation)
+- [Build](#build)
+- [Run/Flush](#runflush)
+- [Software architecture](#software-architecture)
+    - [Firmware configuration](#firmware-configuration)
+    - [Command line arguments](#command-line-arguments)
+    - [Orbita2d architecture](#orbita2d-architecture)
+    - [Orbita3d architecture](#orbita3d-architecture)
+- [Safety features](#safety-features)
+    - [Board state](#board-state)
+- [Future work and improvements](#future-work-and-improvements)
+
+
+
 ## Installation
 
 - `rustup default nightly`
 - `rustup update`
 - `rustup target add thumbv7em-none-eabihf`
 - `cargo install probe-rs --features cli`
-- https://probe.rs/docs/getting-started/probe-setup/
+- Setup the st-link v2 device permisions: https://probe.rs/docs/getting-started/probe-setup/
 
 ## Build
 
-- `cargo build`
+- `cargo build --release`
 
-## Run
-- `DEFMT_LOG=debug cargo run --release --features ecx22`
+Note: The first build will take a long time because it will download the dependencies and compile them.
+
+## Run/Flush
+1) Make sure that the stlink is connected to the board and to the computer
+2) Make sure that you have properly configured the features for the board in the `Cargo.toml` file
+3) Run the command to flush the board:
+`cargo run --release`
+This command will build the firmware and flash it to the board, and then it will start the firmware. The firmware will start the real-time tasks and will be ready to receive the dynamixel commands at the default dynamixel ID `42`.
+
+<details>
+<summary><b>Debugging output</b></summary>
+Optionally you can add the <code>DEFMT_LOG</code> environment variable to see the logs<br>
+<pre>
+<code>DEFMT_LOG=debug cargo run --release</code>
+</pre>
+It can also be set to <code>trace</code> or <code>info</code>. For the release version, the logs should be disbled, set the <code>DEFMT_LOG</code> to <code>off</code><br>
+<pre>
+<code>DEFMT_LOG=off cargo run --release</code>
+</pre>
+</details>
+
+<details>
+<summary><b>Changing the dynamixel ID</b></summary>
+The dynamixel ID can be changed by setting the <code>DXL_ID</code> environment variable<br>
+<pre>
+<code>DXL_ID=50 cargo run --release</code>
+</pre>
+</details>
 
 
-## Architecture
+## Software architecture
 
-### Tasks (TODO)
+The software is divided into four main rust modules:
+- `dynamixel` - Implementation of the dynamixel protocol and all 
+the necessary registers
+    - `registers` - Dynamixel registers used to communicate with the host computer
+    - `task` - Real-time task executing the dynamixel communication
+- `motor_control` - Implementation of the low-level motor control 
+   - `foc` - Communication/configuration of the TMC4671 controller
+   - `sensors` - Communication with the RLS and AS5047 sensors
+   - `analog` - ADC reading of the motor temperature
+   - `task` - Real-time task executing the motor control, sensor reading and communication
+- `config` - Configuration mofule for the motor control task
+    - `motor` - Motor configuration
+    - `current_sense` - Current sense configuration
+- `shared_memory` - Shared memory between the motor controla and dynamixel communication tasks
 
-- ComDynamixel: uart dynamixel compatible communication
-- TMC4671: spi communication with TMC4671
-- RLS: spi communication with RLS
-- AS5048A: spi communication with AS5048A
-- Control: control loop
-- Ethercat: ethercat communication
+#### Real-time tasks
+The firmware runs two real-time tasks:
+1) `message_handler` - responsible for the communication with the host computer using the serial communication and Dynamixel protocol
+2) `control_loop` - responsible for the motor control and sensor reading  
+    - inialization of the motor control and sensor reading
+    - communication with the low-level TMC4671 actuators using SPI
+    - reading the motor position sensors RLS and AS5047 using SPI
+    - reading the motor temperature using ADC
+    - ensuring the safety of the motor by monitoring the motor temperature, current and voltage
 
-### Shared data
+The tasks share data through the `SHARED_MEMORY` module.
 
-- DynamixelRegisters: Dynamixel registers
-- TMC4671Registers: TMC4671 registers
-- RLSRegisters: RLS registers
-- AS5048ARegisters: AS5048A registers
-- ControlRegisters: Control registers
-- EthercatRegisters: Ethercat communication registers
+
+### Firmware configuration
+The same firmware can be configured to work with two different actuator setups: orbita2d and orbita3d. The orbita2d setup is a 2dof actuator with two motors and the orbita3d setup is a 3dof actuator with three motors. 
+
+The firmware is configured using the `Cargo.toml` file. The configuration is done using the `features` field. In order for the feature to be used in the firmware its name has to be added to the `defualt` array. The following features are available:
+
+<b>Actuator configuration features</b>
+These features are used to configure the actuator setup 
+- `orbita2d` - Orbita2d actuator setup
+- `orbita3d` - Orbita3d actuator setup
+- `ec60` - EC60 motor used
+- `ec45` - EC45 motor used
+- `ecx22` - ECX22 motor used
+
+<b>Advanced control features</b>
+These features are used to configure the advanced control features in order to improve the motor control performance
+- `cmd_filter` - Filter received position commands to reduce the jerk of the motor
+- `velocity_feedforward` - Enable the use of the velocity feedforward to improve the velocity tracking performance 
+    - has to be used in conjunction with the appropriate dynamixel message
+    - using this feature will not change the default behavior of the firmware
+
+<b>Actuator output features</b>
+These features are used to decide which output angle of the motor to control
+- `gearbox_output` - Control the motor angle after the gearbox
+- `axis_output` - Control the motor angle after the gearbox and axis reduction
+
+<b>Safety features</b>
+Used to configure the safety features of the board
+- `no_temperature_sensor` - The board does not have a temperature sensor, avoid reading it and using it for safety
+
+
+### Command line arguments
+
+There are two command line arguments that can be used to configure the firmware:
+- `DXL_ID` - Dynamixel ID used by the firmware, default is `42`
+- `ZEROS` - default is `[0, 0, 0]`
+    - The motor positions associated with the actuator's zero absolute position
+    - This parameter is currently only used with the `orbita3d` 
+
+Once the configuration in `Cargo.toml` is done the firmware can be built and flashed to the board. Before flashing the firmware make sure that you set the dynamixel ID using the `DXL_ID` environment variable. The default dynamixel ID is `42`. For example for the dynamixel ID `50`:
+```
+DXL_ID=50 cargo run --release
+```
+
+And if using `orbita3d` and you want to set the zeros to some other value than `[0, 0, 0]`:
+```
+DXL_ID=50 ZEROS=0.12,0.34,0.56 cargo run --release
+```
+
+### Orbita2d architecture
+<img src="docs/orbita2d.png" alt="Orbita 2D" />
+
+Orbita2d is a robotic actuator with two motors that use differential drive to run two axis. The motors used are maxon flat motors of either `EC60` or `EC45` series. The motor control board used in the setup is the TMC4671 + TMC6100 BOB board. These boards implment the FOC control of the motor and the communication with the motor sensors (incremental encoders). The motor control board is connected to the Poulpe board using SPI. The motor control board is also connected to the motor temperature sensor and read's it using the internal ADC. The two output axis of the orbita2d are equiped with absolute encoders that are read using SPI. 
+
+
+
+### Orbita3d architecture
+<img src="docs/orbita3d.png" alt="Orbita 3D" />
+
+Orbita3d is a robotic actuator with three motors that use a parallel mechanical structure drive to run three axis. The motors used are maxon motors of the `EC22` series. As well as for orbita2s, the motor control board used in the setup is the TMC4671 + TMC6100 BOB board which are connected to the Poulpe board using SPI. The motor control board is also connected to the motor temperature sensor and read's it using the internal ADC. The three output axis of the motors (after the gearbox) are equiped with absolute encoders that are read using SPI. Additionally, the orbita3d setup has an absolute position sensor based on an array of hall sensors, that are read using the I2C communication protocol. Given the position sensors after the gearbox and the hall sensor array, the orbita3d is capable of detecting the absolute position of the end effector, if one is provided using the `ZEROS` parameter.
+
+
+## Safety features
+
+The firmware has implemented several safety features to ensure the safety of the motor and the user. The safety features are implemented in the `motor_control` module and are executed in the `control_loop` real-time task. The safety features are:
+<b>Safe startup and checks</b>
+- Motor enabled only if initialized properly
+- Motor enabled only if the BOB is configured properly
+
+<b>Real-time safety monitoring</b>
+- Motor temperature monitoring
+- BOB temperature monitoring
+- Over-current protection (not implemented yet)
+- Undervoltage protection 
+
+The poulpe will stop disable the motor if any of the safety features are triggered. 
+
+> Currently the motor can not be enabled again after the safety feature is triggered. The user has to reset the board in order to enable the motor again.
+
+### Board state
+The state of the poulpe board containg its safety features can be read using the dynamixel protocol, and is managed in firmware with the `BoardState` structure. Possible states are:
+
+<b>Normal operation states</b>
+- `Ok = 0` - Board is working properly
+- `HighTemperatureState = 100` - The motor/board temperature is high 
+    - but not too high - warning state
+    - it returns to `Ok` if the temperature is back to normal
+    - temperature threshold is set in the `config` module (`config::HIGH_TEMP` - default `65°C`)
+
+<b>Initialisation error states</b>
+The actuators can not be enabled if the board is in one of these states
+- `InitError = 1` - Board failed to initialise properly
+- `SensorError = 2` - The absolute position sensor failed to initialise properly
+- `IndexError = 3` - The absolute position sensor failed to find the index 
+    - orbita3d only
+- `ZeroingError = 4` - The zeroing of the absolute position sensor failed 
+    - orbita3d only
+> these errors are not recoverable
+
+<b>Real-time safety violation states</b>
+The actuators will stop their operation gracefully if the board is in one of these states
+- `OverTemperatureError = 5` - The motor/board temperature is too high
+    - temperature threshold is set in the `config` module (`config::MAX_TEMP` - default `75°C`)
+- `OverCurrentError = 6` - The motor current is too high (not implemented yet)
+- `BusVoltageError = 7` - The bus voltage is too low
+    - voltage threshold is set to `10V` 
+- `Unknown = 255` - Unknown error
+> these errors are not recoverable
+
+If any of thre real-time safety violation states are triggered the actuators will stop their operation gracefully. They will try to go to their home zero position with reduced speed and torque. Once they reach the home position the actuators will be disabled. The user has to reset the board in order to enable the actuators again.
+
+## Future work and improvements
+
+- Configuration
+    - Use the flash to store the configuration (ex. ZEROS, DXL_ID) - [initial developement](https://github.com/pollen-robotics/firmware_Poulpe/tree/feat_added_flash_support)
+    - Use ZEROS for the orbita2d setup
+- Communication
+    - Ethercat: ethercat communication
+- Safety 
+    - Make more accurate motor temperature reading
+    - Add over-current protection
+- Testing  - [initial developement](https://github.com/pollen-robotics/firmware_Poulpe/tree/feat_embedded_tests)
+    - Add unit tests
+    - Add integration tests
+    - Add hardware tests
+
