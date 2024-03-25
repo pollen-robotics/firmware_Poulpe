@@ -64,8 +64,7 @@ The dynamixel ID can be changed by setting the <code>DXL_ID</code> environment v
 ## Software architecture
 
 The software is divided into four main rust modules:
-- `dynamixel` - Implementation of the dynamixel protocol and all 
-the necessary registers - [Read more](src/dynamixel/README.md)
+- `dynamixel` - Implementation of the dynamixel protocol - [Read more](src/dynamixel/README.md)
     - `registers` - Dynamixel registers used to communicate with the host computer
     - `task` - Real-time task executing the dynamixel communication
 - `motor_control` - Implementation of the low-level motor control - [Read more](src/motor_control/README.md)
@@ -73,7 +72,7 @@ the necessary registers - [Read more](src/dynamixel/README.md)
    - `sensors` - Communication with the RLS and AS5047 sensors
    - `analog` - ADC reading of the motor temperature
    - `task` - Real-time task executing the motor control, sensor reading and communication
-- `config` - Configuration mofule for the motor control task
+- `config` - Configuration mofule for the motor control task - [Read more](src/config/README.md)
     - `motor` - Motor configuration
     - `current_sense` - Current sense configuration
 - `shared_memory` - Shared memory between the motor controla and dynamixel communication tasks
