@@ -1,6 +1,6 @@
 # Poulpe board firmware using Embassy-rs
 
-<a href="https://github.com/pollen-robotics/elec_Poulpe"><img align="right" src="docs/Poulpe_3d.png" width="120px"></a>
+<a href="https://github.com/pollen-robotics/elec_Poulpe"><img align="right" src="./docs/Poulpe_3d.png" width="120px"></a>
 A complete firmware stack for the [Poulpe](https://github.com/pollen-robotics/elec_Poulpe) board using the Rust programming language and the [Embassy-rs](https://github.com/embassy-rs/embassy) framework. The firmware is designed to work with the Orbita2d and Orbita3d actuator setups. 
 
 ## Table of contents
@@ -65,10 +65,10 @@ The dynamixel ID can be changed by setting the <code>DXL_ID</code> environment v
 
 The software is divided into four main rust modules:
 - `dynamixel` - Implementation of the dynamixel protocol and all 
-the necessary registers
+the necessary registers - [Read more](src/dynamixel/README.md)
     - `registers` - Dynamixel registers used to communicate with the host computer
     - `task` - Real-time task executing the dynamixel communication
-- `motor_control` - Implementation of the low-level motor control 
+- `motor_control` - Implementation of the low-level motor control - [Read more](src/motor_control/README.md)
    - `foc` - Communication/configuration of the TMC4671 controller
    - `sensors` - Communication with the RLS and AS5047 sensors
    - `analog` - ADC reading of the motor temperature
