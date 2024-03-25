@@ -1,7 +1,7 @@
 # Poulpe board firmware using Embassy-rs
 
-<img align="right" src="docs/Poulpe_3d.png" width="120px">
-A complete firmware stack for the [Poulpe](https://github.com/pollen-robotics/elec_Poulpe) board using the Rust programming language and the Embassy-rs framework. The firmware is designed to work with the Orbita2d and Orbita3d actuator setups. 
+<a href="https://github.com/pollen-robotics/elec_Poulpe"><img align="right" src="docs/Poulpe_3d.png" width="120px"></a>
+A complete firmware stack for the [Poulpe](https://github.com/pollen-robotics/elec_Poulpe) board using the Rust programming language and the [Embassy-rs](https://github.com/embassy-rs/embassy) framework. The firmware is designed to work with the Orbita2d and Orbita3d actuator setups. 
 
 ## Table of contents
 
@@ -25,13 +25,13 @@ A complete firmware stack for the [Poulpe](https://github.com/pollen-robotics/el
 - `rustup update`
 - `rustup target add thumbv7em-none-eabihf`
 - `cargo install probe-rs --features cli`
-- Setup the st-link v2 device permisions: https://probe.rs/docs/getting-started/probe-setup/
+- Setup the st-link v2 device permisions: [more info in probe docs](https://probe.rs/docs/getting-started/probe-setup/)
 
 ### Build
 
 - `cargo build --release`
 
-Note: The first build will take a long time because it will download the dependencies and compile them.
+<b>Note</b>: The first build will take a long time because it will download the dependencies and compile them.
 
 ### Run/Flush
 1) Make sure that the stlink is connected to the board and to the computer
@@ -98,11 +98,11 @@ The firmware is configured using the `Cargo.toml` file. The configuration is don
 
 <b>Actuator configuration features</b>
 These features are used to configure the actuator setup 
-- `orbita2d` - Orbita2d actuator setup
-- `orbita3d` - Orbita3d actuator setup
-- `ec60` - EC60 motor used
-- `ec45` - EC45 motor used
-- `ecx22` - ECX22 motor used
+- `orbita2d` - Orbita2d actuator setup - [github page](https://github.com/pollen-robotics/orbita2d_control)
+- `orbita3d` - Orbita3d actuator setup - [github page](https://github.com/pollen-robotics/orbita3d_control)
+- `ec60` - EC60 flat maxon motor used - [datasheet](https://www.maxongroup.net.au/maxon/view/product/motor/ecmotor/ecflat/ecflat60/645604)
+- `ec45` - EC45 flat maxon motor used - [datasheet](https://www.maxongroup.fr/medias/sys_master/root/8882563907614/EN-21-300.pdf)
+- `ecx22` - ECX22 maxon motor used - [datasheet](https://www.maxongroup.com/maxon/view/product/motor/ecmotor/ECX/ECX22/ECXI22M4ZF46C4IL1Y501A)
 
 <b>Advanced control features</b>
 These features are used to configure the advanced control features in order to improve the motor control performance
@@ -142,14 +142,14 @@ DXL_ID=50 ZEROS=0.12,0.34,0.56 cargo run --release
 ### Orbita2d architecture
 <img src="docs/orbita2d.png" alt="Orbita 2D" />
 
-Orbita2d is a robotic actuator with two motors that use differential drive to run two axis. The motors used are maxon flat motors of either `EC60` or `EC45` series. The motor control board used in the setup is the TMC4671 + TMC6100 BOB board. These boards implment the FOC control of the motor and the communication with the motor sensors (incremental encoders). The motor control board is connected to the Poulpe board using SPI. The motor control board is also connected to the motor temperature sensor and read's it using the internal ADC. The two output axis of the orbita2d are equiped with absolute encoders that are read using SPI. 
+Orbita2d is a robotic actuator with two motors that use differential drive to run two axis. The motors used are maxon flat motors of either `EC60` or `EC45` series. The motor control board used in the setup is the [TMC4671 + TMC6100 BOB](https://www.analog.com/en/resources/evaluation-hardware-and-software/evaluation-boards-kits/tmc4671-tmc6100-bob.html) board. These boards implment the FOC control of the motor and the communication with the motor sensors (incremental encoders). The motor control board is connected to the Poulpe board using SPI. The motor control board is also connected to the motor temperature sensor and read's it using the internal ADC. The two output axis of the orbita2d are equiped with absolute encoders that are read using SPI. 
 
 
 
 ### Orbita3d architecture
 <img src="docs/orbita3d.png" alt="Orbita 3D" />
 
-Orbita3d is a robotic actuator with three motors that use a parallel mechanical structure drive to run three axis. The motors used are maxon motors of the `EC22` series. As well as for orbita2s, the motor control board used in the setup is the TMC4671 + TMC6100 BOB board which are connected to the Poulpe board using SPI. The motor control board is also connected to the motor temperature sensor and read's it using the internal ADC. The three output axis of the motors (after the gearbox) are equiped with absolute encoders that are read using SPI. Additionally, the orbita3d setup has an absolute position sensor based on an array of hall sensors, that are read using the I2C communication protocol. Given the position sensors after the gearbox and the hall sensor array, the orbita3d is capable of detecting the absolute position of the end effector, if one is provided using the `ZEROS` parameter.
+Orbita3d is a robotic actuator with three motors that use a parallel mechanical structure drive to run three axis. The motors used are maxon motors of the `ECX22` series. As well as for orbita2s, the motor control board used in the setup is the [TMC4671 + TMC6100 BOB](https://www.analog.com/en/resources/evaluation-hardware-and-software/evaluation-boards-kits/tmc4671-tmc6100-bob.html) board which are connected to the Poulpe board using SPI. The motor control board is also connected to the motor temperature sensor and read's it using the internal ADC. The three output axis of the motors (after the gearbox) are equiped with absolute encoders that are read using SPI. Additionally, the orbita3d setup has an absolute position sensor based on an array of hall sensors, that are read using the I2C communication protocol. Given the position sensors after the gearbox and the hall sensor array, the orbita3d is capable of detecting the absolute position of the end effector, if one is provided using the `ZEROS` parameter.
 
 
 ## Safety features
