@@ -37,7 +37,7 @@ pub async fn set_error_led() {
 
 
 #[embassy_executor::task]
-pub async fn control_loop(config: ActuatorConfig, zeros : [f32;config::N_AXIS]) {
+pub async fn control_loop(config: ActuatorConfig, zeros : [f32; config::N_AXIS]) {
     let mut spi_config = spi::Config::default();
     spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
     spi_config.bit_order = spi::BitOrder::MsbFirst;
@@ -520,7 +520,7 @@ pub async fn control_loop(config: ActuatorConfig, zeros : [f32;config::N_AXIS]) 
             actuator.set_index_sensor(indices);
             actuator.set_torque([false, false, false]).unwrap(); //be sure to torque off to avoid noise in axis sensors?
             block_for(Duration::from_millis(10));
-            
+
             // let zeros = [1.0193205177783966, 0.7377220094203949, 0.4328247159719467]; //Orbita domain
             // let zeros = config::HARDWARE_ZEROS;
 
@@ -564,7 +564,7 @@ pub async fn control_loop(config: ActuatorConfig, zeros : [f32;config::N_AXIS]) 
 
                 if !(found_turn[0] == found_turn[1] && found_turn[1] == found_turn[2]) {
                     //It may be possible in certain case?? But better forbid this
-                    error!("Incoherent number of turn found! {:?}", found_turn);
+                    error!("Incoherent number of turns found! {:?}", found_turn);
                     #[cfg(not(feature = "ignore_errors"))]
                     continue 'init_loop;
                 }

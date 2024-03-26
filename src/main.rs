@@ -129,14 +129,18 @@ async fn main(spawner: Spawner) {
     match flash_manager.read(){
         Ok(b) => {
             info!("Read from flash: {:?}", b);
-            board_id = b.board_id;
+            // board_id = b.board_id; 
             zeros = b.sensor_offsets;
         }
         Err(e) => {
             error!("Error reading from flash: {:?}", e);
-            warn!("Using values from config.rs, board_id: {}, zeros: {:?}", board_id, zeros);
+            warn!("Using values from config.rs");
         }
     }
+
+    // use only the first N_AXIS zeros
+    zeros = zeros[..config::N_AXIS].try_into().unwrap();
+    info!("Using the board_id: {} and zeros: {:?}", board_id, zeros);
 
     // Spawn the control loop
     #[cfg(feature = "orbita3d")]
@@ -207,7 +211,7 @@ async fn main(spawner: Spawner) {
         #[cfg(not(feature = "no_temperture_sensor"))]
         temperature_sensor: TemperatureSensorConfig { adc: p.ADC1, pin: p.PB1 },
     };
-
+    
     unwrap!(spawner.spawn(motor_control::task::control_loop(actuator_config, zeros)));
 
     // Prepare and spawn the DXL communication task
