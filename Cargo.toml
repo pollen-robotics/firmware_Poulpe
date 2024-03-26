@@ -31,6 +31,9 @@ no_temperature_sensor = []
 # this is a debug feature and should not be used in production
 ignore_errors = []
 
+# update flash
+update_flash = []
+
 [dependencies]
 # rustypot = "0.4.2"
 # stm32h742vg

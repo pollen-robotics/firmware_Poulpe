@@ -6,7 +6,7 @@
 #![feature(async_fn_in_trait)]
 #![feature(array_methods)]
 
-use defmt::{info, unwrap};
+use defmt::{info, unwrap, error, warn};
 use embassy_executor::Spawner;
 use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{Level, Output, Speed};
@@ -16,6 +16,9 @@ use embassy_stm32::{i2c, Config as stm32_config};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{block_for, Duration, Timer};
+
+use embassy_stm32::flash::{Flash, get_flash_regions};
+use config::flash::{FlashManager, FlashData};
 
 mod config;
 mod dynamixel;
@@ -67,7 +70,8 @@ async fn main(spawner: Spawner) {
     info!("Poulpe: Orbita 2D");
 
     info!("Git commit: {:?}", config::GIT_HASH); //TODO: read access from a dxl msg?
-                                                 // info!("Hardware_zeros: {:?}", config::HARDWARE_ZEROS); // For Orbita3d firmware zero
+    info!("Hardware_zeros: {:?}", config::HARDWARE_ZEROS); // For Orbita3d firmware zero
+    info!("Dynamixel ID {:?}", config::DXL_ID); // For Orbita3d firmware zero
 
     // 440MHz (without HSE)
     let mut stm32_conf = stm32_config::default();
@@ -103,7 +107,36 @@ async fn main(spawner: Spawner) {
         stm32_conf.rcc.voltage_scale = VoltageScale::Scale0;
     }
 
-    let p = embassy_stm32::init(stm32_conf);
+    let mut p = embassy_stm32::init(stm32_conf);
+
+    let mut flash_manager = FlashManager::new(p.FLASH);
+    // a little delay to let the flash be ready
+    // need to wait for the flash to be ready
+    // should not be removed - I am not sure why
+    Timer::after(Duration::from_millis(400)).await;    
+    #[cfg(feature = "update_flash")]
+    {
+        let save_to_flash = FlashData{
+            board_id : config::DXL_ID,
+            sensor_offsets :  config::HARDWARE_ZEROS
+        };
+        unwrap!(flash_manager.write(save_to_flash));
+    }
+    let mut board_id = config::DXL_ID;
+    let mut zeros = config::HARDWARE_ZEROS;
+    // a little delay to let the flash be ready
+    Timer::after(Duration::from_millis(400)).await;
+    match flash_manager.read(){
+        Ok(b) => {
+            info!("Read from flash: {:?}", b);
+            board_id = b.board_id;
+            zeros = b.sensor_offsets;
+        }
+        Err(e) => {
+            error!("Error reading from flash: {:?}", e);
+            warn!("Using values from config.rs, board_id: {}, zeros: {:?}", board_id, zeros);
+        }
+    }
 
     // Spawn the control loop
     #[cfg(feature = "orbita3d")]
@@ -175,7 +208,7 @@ async fn main(spawner: Spawner) {
         temperature_sensor: TemperatureSensorConfig { adc: p.ADC1, pin: p.PB1 },
     };
 
-    unwrap!(spawner.spawn(motor_control::task::control_loop(actuator_config)));
+    unwrap!(spawner.spawn(motor_control::task::control_loop(actuator_config, zeros)));
 
     // Prepare and spawn the DXL communication task
     let mut usart_config = usart_config::default();
@@ -212,7 +245,7 @@ async fn main(spawner: Spawner) {
     )
     .unwrap();
 
-    unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
+    unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into(), board_id)));
 
     // Prepare and spawn the main task
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
