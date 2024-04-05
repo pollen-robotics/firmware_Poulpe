@@ -1037,12 +1037,21 @@ where
             self.kind, pos0, pos1, midpos, final_idx
         );
 
+        let vel_lim = self.get_velocity_limit()?;
+        self.set_velocity_limit([vel_lim[0] * 0.1])?;
         self.set_control_mode(MotionMode::Position)?;
         let _ = self.foc.tmc4671_set_target_position(midpos as i32);
-        block_for(Duration::from_millis(500));
+        block_for(Duration::from_millis(750));
+        self.set_velocity_limit([vel_lim[0]])?;
         let _ = self.foc.tmc4671_set_actual_position(0);
         let _ = self.foc.tmc4671_set_target_position(0);
         Ok([final_idx])
+        // self.set_control_mode(MotionMode::Position)?;
+        // let _ = self.foc.tmc4671_set_target_position(midpos as i32);
+        // block_for(Duration::from_millis(500));
+        // let _ = self.foc.tmc4671_set_actual_position(0);
+        // let _ = self.foc.tmc4671_set_target_position(0);
+        // Ok([final_idx])
     }
 }
 
