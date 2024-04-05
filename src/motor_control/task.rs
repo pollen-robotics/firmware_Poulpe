@@ -564,12 +564,14 @@ pub async fn control_loop(config: ActuatorConfig) {
                 if !(found_turn[0] == found_turn[1] && found_turn[1] == found_turn[2]) {
                     //It may be possible in certain case?? But better forbid this
                     error!("Incoherent number of turn found! {:?}", found_turn);
+                    init_error = BoardStatus::ZeroingError;
                     #[cfg(not(feature = "ignore_errors"))]
                     continue 'init_loop;
                 }
                 if offsets.iter().any(|&x| x.is_nan()) {
                     // Check for NaN
                     error!("Bad offsets! {:?}", offsets);
+                    init_error = BoardStatus::ZeroingError;
                     #[cfg(not(feature = "ignore_errors"))]
                     continue 'init_loop;
                 }
