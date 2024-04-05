@@ -34,7 +34,7 @@ impl BrushlessMotor {
             pid_torque: Pid { p: 200, i: 500 },
             pid_velocity: Pid { p: 500, i: 100 },
             pid_position: Pid { p: 100, i: 0 },
-            torque_flux_limit_max: 4000, // 4 amps
+            torque_flux_limit_max: 2500, // 2.5 amps
             velocity_limit_max: 40, // 40 rad/s
             // gearing ratios
             gearbox_ratio: 1.0 / 35.0,
