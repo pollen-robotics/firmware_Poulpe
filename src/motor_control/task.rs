@@ -308,7 +308,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     // error!("Donut sensor: {:#x}",val);
     /////////
-
+ 
     // initialise the adc for motor temperature reading
     #[cfg(not(feature = "no_temperture_sensor"))]
     let mut motor_temperature_sensor = AnalogInput::new(config.temperature_sensor);
