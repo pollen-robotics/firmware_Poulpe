@@ -35,6 +35,12 @@ pub async fn set_error_led() {
     SHARED_MEMORY.lock().await.set_error_led(true);
 }
 
+// function wrapping an angle in radians to
+// the range [-pi, pi]
+fn wrap_to_pi(angle: f32) -> f32 {
+    let PI = 3.14159265359;
+    (((angle + PI) % (2.0 * PI)) + (2.0 * PI)) % (2.0 * PI) - PI
+}
 
 #[embassy_executor::task]
 pub async fn control_loop(config: ActuatorConfig) {
@@ -348,9 +354,11 @@ pub async fn control_loop(config: ActuatorConfig) {
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([false, false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
                                                              // #[cfg(feature = "orbita2d")]
+        #[cfg(feature = "ec60")]
+        actuator.set_torque([false, false]).unwrap();
+
         Timer::after(Duration::from_micros(100000)).await;
 
-        // read the axis sensors
         let mut init_sensors = [0.0; config::N_AXIS];
         match actuator.get_axis_sensors() {
             Ok(sensors) => {
@@ -368,6 +376,9 @@ pub async fn control_loop(config: ActuatorConfig) {
         Timer::after(Duration::from_micros(100000)).await;
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([true, true, true]).unwrap();
+        // read the axis sensors
+        #[cfg(feature = "ec60")]
+        actuator.set_torque([true, true]).unwrap();
 
         // motor check - move the motors and check if the sensors are moving
         let res = actuator.check_motors_1().await;
@@ -384,9 +395,10 @@ pub async fn control_loop(config: ActuatorConfig) {
         // read the sensors - but disable the torque to avoid the noise
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([false, false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
+        #[cfg(feature = "ec60")]
+        actuator.set_torque([false, false]).unwrap();
 
         Timer::after(Duration::from_micros(100000)).await;
-
         // read the axis sensors
         let mut moved_sensors = [0.0; config::N_AXIS];
         match actuator.get_axis_sensors() {
@@ -408,6 +420,9 @@ pub async fn control_loop(config: ActuatorConfig) {
 
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([true, true, true]).unwrap();
+        // read the axis sensors
+        #[cfg(feature = "ec60")]
+        actuator.set_torque([true, true]).unwrap();
 
         // motor check - move the motors in the other direction
         let res = actuator.check_motors_2().await;
@@ -588,6 +603,56 @@ pub async fn control_loop(config: ActuatorConfig) {
 
                 debug!("indices: {:?} offsets: {:?}", indices, offsets);
                 actuator.set_current_position(offsets);
+            }
+        }
+
+
+        //Find zero for Orbita2D motors
+        #[cfg(feature = "orbita2d")]
+        {
+            actuator.set_torque([false, false]).unwrap(); //be sure to torque off to avoid noise in axis sensors?
+            block_for(Duration::from_millis(10));
+            // let zeros = [5.236674785614014, 1.6637036800384521]; //Orbita domain
+            let zeros = config::HARDWARE_ZEROS;
+
+            if zeros[0] == zeros[1] && zeros[0] == 0.0 {
+                //Forgot to pass the zeros as argument! FIXME switch to a different zeroing mode?
+                error!("No zero given in paramter! => Relative zero mode");
+                // do nothing
+            } else {
+                info!("Hardware zeros: {:?}", zeros);
+                let mut curaxis = [0.0; config::N_AXIS];
+                for _ in 0..10{
+                    curaxis = actuator.get_axis_sensors().unwrap();
+                    if !curaxis[0].is_nan() && !curaxis[1].is_nan(){
+                        break;
+                    }
+                }
+                if curaxis[0].is_nan() || curaxis[1].is_nan() {
+                    error!("Error reading axis sensors - 10 tries failed!");
+                    init_error = BoardStatus::ZeroingError;
+                    #[cfg(not(feature = "ignore_errors"))]
+                    continue 'init_loop;
+                }
+
+                #[cfg(feature = "ec45")]
+                let r = 1.0/config::BrushlessMotor::ec45().axis_ratio();
+                #[cfg(feature = "ec60")]
+                let r = 1.0/config::BrushlessMotor::ec60().axis_ratio();
+                
+                let axis_offset = [wrap_to_pi(curaxis[0]-zeros[0]), wrap_to_pi(curaxis[1]-zeros[1])]; 
+
+                let mut motor_offsets =  [0.0; config::N_AXIS];
+                // inverse kinematics
+                motor_offsets[0] = -(r * axis_offset[0] + r * axis_offset[1]);
+                motor_offsets[1] = -(r * axis_offset[0] - r * axis_offset[1]);
+
+                // read the current motor posiitons
+                let curpos = actuator.get_current_position().unwrap();
+                motor_offsets[0] += curpos[0];
+                motor_offsets[1] += curpos[1];
+                // set the offset 
+                actuator.set_current_position(motor_offsets);
             }
         }
 

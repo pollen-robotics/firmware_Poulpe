@@ -250,6 +250,15 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                     error!("Error: {:?}", e);
                                 }
                             }
+                            DynamixelRegister::AxisZeros => {
+                                let value = config::HARDWARE_ZEROS;
+                                let value = conversion::float_to_bytes(value);
+                                let sp = StatusPacket::with_value(id, dxl_error, value);
+                                trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                                if let Some(e) = dxl.write(&sp).await.err() {
+                                    error!("Error: {:?}", e);
+                                }
+                            }
 
                             DynamixelRegister::FullState => {
                                 // let target = { SHARED_MEMORY.lock().await.get_target_position() };

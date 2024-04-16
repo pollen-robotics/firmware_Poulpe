@@ -26,12 +26,24 @@ fn main() {
             .split(",")
             .filter_map(|s| s.parse::<f32>().ok())
             .collect();
-        writeln!(
-            &mut f,
-            "pub const HARDWARE_ZEROS: [f32;3] = [{:.32}, {:.32}, {:.32}];",
-            zeros[0], zeros[1], zeros[2]
-        )
-        .expect("Could not write file"); // {:.32} to be sure to print the full precision. It counts...
+        if zeros.len() == 3 {
+            writeln!(
+                &mut f,
+                "pub const HARDWARE_ZEROS: [f32;3] = [{:.32}, {:.32}, {:.32}];",
+                zeros[0], zeros[1], zeros[2]
+            )
+            .expect("Could not write file"); // {:.32} to be sure to print the full precision. It counts...
+        }else if zeros.len() == 2 {
+            writeln!(
+                &mut f,
+                "pub const HARDWARE_ZEROS: [f32;2] = [{:.32}, {:.32}];",
+                zeros[0], zeros[1]
+            )
+            .expect("Could not write file"); // {:.32} to be sure to print the full precision. It counts...
+        }else{
+            writeln!(&mut f, "pub const HARDWARE_ZEROS: [f32;3] = [0.0,0.0,0.0];")
+                .expect("Could not write file");
+        }
     } else {
         writeln!(&mut f, "pub const HARDWARE_ZEROS: [f32;3] = [0.0,0.0,0.0];")
             .expect("Could not write file");
