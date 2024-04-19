@@ -193,14 +193,14 @@ impl MotionMode {
 }
 
 
-/*pub struct Ventouse { // Now that is for J5 (middle FCC) - Motor "B"
+pub struct Ventouse { // Now that is for J5 (middle FCC) - Motor "B"
     spi: Spi<'static, p::SPI4, NoDma, NoDma>,
     cs_foc:       Output<'static, p::PE3>,
     cs_driver:    Output<'static, p::PC15>,
     foc_enable:   Output<'static, p::PE0>,
     foc_status:   Input<'static,  p::PC13>,
     driver_fault: Input<'static,  p::PC14>,
-}*/
+}
 
 /*pub struct Ventouse { // Now that is for J10 ('right' FCC) - Motor "C"
     spi: Spi<'static, p::SPI6, NoDma, NoDma>,
@@ -212,17 +212,17 @@ impl MotionMode {
 }*/
 
 
-pub struct Ventouse { // Poulpe + Eval Board J5/J10
+/*pub struct Ventouse { // Poulpe + Eval Board J5/J10
     spi: Spi<'static, p::SPI4, NoDma, NoDma>,
     cs_foc:       Output<'static, p::PE4>,
     cs_driver:    Output<'static, p::PA15>,
     foc_enable:   Output<'static, p::PE0>,
     foc_status:   Input<'static,  p::PC13>,
     driver_fault: Input<'static,  p::PC14>,
-}
+}*/
 
 impl Ventouse {
-    /*pub fn new( // Ventouse-B on J5
+    pub fn new( // Ventouse-B on J5
         cs_foc_p: p::PE3,
         cs_driver_p: p::PC15,
         sck_p: p::PE12,
@@ -248,7 +248,7 @@ impl Ventouse {
         let driver_fault = Input::new(driver_fault_p, Pull::None);
 
         Self { cs_foc, cs_driver, spi, foc_enable, foc_status, driver_fault }
-    }*/
+    }
     
     /*pub fn new( // Ventouse-C on J10
         cs_foc_p: p::PD7,
@@ -278,7 +278,7 @@ impl Ventouse {
         Self { cs_foc, cs_driver, spi, foc_enable, foc_status, driver_fault }
     }*/
 
-    pub fn new( // Poulpe + Eval Board J5/J10
+    /*pub fn new( // Poulpe + Eval Board J5/J10
         cs_foc_p: p::PE4,
         cs_driver_p: p::PA15,
         sck_p: p::PE12,
@@ -304,7 +304,7 @@ impl Ventouse {
         let driver_fault = Input::new(driver_fault_p, Pull::None);
 
         Self { cs_foc, cs_driver, spi, foc_enable, foc_status, driver_fault }
-    }
+    }*/
 
     pub fn tmc4671_enable(&mut self) {
         self.foc_enable.set_high();
@@ -576,9 +576,10 @@ impl Ventouse {
         self.tmc6200_write_register(reg, data_w)?;
         let data_r = self.tmc6200_read_register(reg)?;
         if data_r == data_w {
+            //info!("So fresh, so good: {:#x}_w / {:#x}_r", data_w, data_r);
             Ok(())
         } else {
-            info!("!!! Error INIT {:#x}_r / {:#x}_w !!!", data_r, data_w);
+            //info!("!!! Error INIT {:#x}_w / {:#x}_r !!!", data_w, data_r);
             Err(embassy_stm32::spi::Error::Framing)
         }
     }

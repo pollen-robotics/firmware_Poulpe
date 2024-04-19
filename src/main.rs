@@ -22,11 +22,11 @@ async fn main(_spawner: Spawner) {
 
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
     let mut led_error = Output::new(p.PC8, Level::High, Speed::Low);
-    led_error.set_low();
+    led_error.set_high();
     led_hello.set_low();
 
     // J5 - Ventouse-B
-    /*let mut ventouse = ventouse::Ventouse::new(
+    let mut ventouse = ventouse::Ventouse::new(
         p.PE3,
         p.PC15,
         p.PE12,
@@ -38,7 +38,7 @@ async fn main(_spawner: Spawner) {
         p.PE0,
         p.PC13,
         p.PC14
-    );*/
+    );
 
     // J10 - Ventouse-C
     /*let mut ventouse = ventouse::Ventouse::new(
@@ -56,7 +56,7 @@ async fn main(_spawner: Spawner) {
     );*/
 
     // Poulpe + Eval Board J5/J10
-    let mut ventouse = ventouse::Ventouse::new(
+    /*let mut ventouse = ventouse::Ventouse::new(
         p.PE4,
         p.PA15,
         p.PE12,
@@ -68,20 +68,39 @@ async fn main(_spawner: Spawner) {
         p.PE0,
         p.PC13,
         p.PC14
-    );
+    );*/
 
     // Tuning mode: uncomment to set Poulpe and Ventouse ready for tuning
-/*    info!("TMC6200 -> 6-PWM mode {:?}", ventouse.tmc6200_checked_write(0x00u8, 0x00000000u32));
-    ventouse.tmc4671_enable();
+    info!("TMC6200 -> 6-PWM mode {:?}", ventouse.tmc6200_checked_write(0x00u8, 0x00000000u32));
+    //info!("TMC6200 -> 6-PWM mode {:?}", ventouse.tmc6200_checked_write(0x00u8, 0x00000002u32));
+    //info!("TMC6200 -> 6-PWM mode {:?}", ventouse.tmc6200_checked_write(0x00u8, 0x00000000u32));
+    ventouse.tmc4671_enable(); // -> foc_en to high
+    info!("done");
+    led_error.set_low();
+
     loop {
         led_hello.set_high();
-        Timer::after(Duration::from_millis(500)).await;
-        led_hello.set_low();
-        Timer::after(Duration::from_millis(1500)).await;
-    }*/
+//info!("Actual position: {:?}", ventouse.tmc4671_get_actual_position());
+//info!("reg: {:#04x} - {:#018b}", ventouse.tmc6200_read_register(0x09u8), ventouse.tmc6200_read_register(0x09u8));
+let ret = match ventouse.tmc6200_checked_write(0x09u8, 0x13010606u32) {
+    Ok(v) => {
+        //info!("com' is fine ({:?})", v);
+        Ok(v)
+    },
+    Err(d) => {
+        info!("com' error! ({:?})", d);
+        Err(d)
+    }
+};
+//info!("com' {:?}", ventouse.tmc6200_checked_write(0x09u8, 0x13010606u32)); // default (3 shorts retries)
+//info!("com' {:?}", ventouse.tmc6200_checked_write(0x09u8, 0x10010606u32)); // test (no shorts retry)
+        //Timer::after(Duration::from_millis(500)).await;
+        //led_hello.set_low();
+        //Timer::after(Duration::from_millis(1500)).await;
+    }
 
     // TMC4671 init
-    ventouse.tmc4671_init_registers().await.unwrap();
+    /*ventouse.tmc4671_init_registers().await.unwrap();
     ventouse.tmc4671_align_motor().await.unwrap();
 
     ventouse.tmc4671_set_mode(ventouse::MotionMode::Velocity);
@@ -99,5 +118,5 @@ async fn main(_spawner: Spawner) {
         Timer::after(Duration::from_millis(500)).await;
         led_hello.set_low();
         Timer::after(Duration::from_millis(500)).await;
-    }
+    }*/
 }
