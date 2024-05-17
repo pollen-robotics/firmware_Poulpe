@@ -476,29 +476,21 @@ pub async fn control_loop(config: ActuatorConfig) {
 
                 debug!("diff: {:?}", diff[i]);
 
-                if i == 0 {
-                    if (diff[i] > -0.09) || (diff[i] < -0.2) || diff[i].is_nan() {
-                        // it should move ~0.15 rad
-                        error!(
-                            "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
-                            i, diff[i]
-                        );
-                        init_error = BoardStatus::SensorError;
-                        #[cfg(not(feature = "ignore_errors"))]
-                        continue 'init_loop; //  retry the init if there is an error
-                    }
-                }
-                if i == 1 {
-                    if (diff[i] < 0.04) || (diff[i] > 0.07) || diff[i].is_nan() {
-                        // it should move ~0.05 rad
-                        error!(
-                            "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
-                            i, diff[i]
-                        );
-                        init_error = BoardStatus::SensorError;
-                        #[cfg(not(feature = "ignore_errors"))]
-                        continue 'init_loop; //  retry the init if there is an error
-                    }
+                #[cfg(feature = "ec45")]
+                let should_move: [f32; 2] = [-0.15, 0.05];
+                #[cfg(feature = "ec60")]
+                let should_move: [f32; 2] = [-0.25, 0.09];
+
+                let delta = libm::fabs(should_move[i] as f64) as f32;
+                if (diff[i] > should_move[i] + delta ) || (diff[i] < should_move[i] - delta) || diff[i].is_nan() {
+                    // it should move ~0.15 rad
+                    error!(
+                        "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
+                        i, diff[i]
+                    );
+                    init_error = BoardStatus::SensorError;
+                    #[cfg(not(feature = "ignore_errors"))]
+                    continue 'init_loop; //  retry the init if there is an error
                 }
             }
         }
