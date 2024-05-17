@@ -535,33 +535,20 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
         }   
         Timer::after(Duration::from_micros(1)).await;
 
-        // let mut torque_on = [false; config::N_AXIS];
-        // let mut target_position = [0.0; config::N_AXIS];
-        // for n in 0..config::N_AXIS {
-        //     let ret = lan9252.read_bytes(5, OutMemory::get_motor(n)).await;
-        //     match ret {
-        //         Ok(data) => {
-        //             torque_on[n] = (data[0] != 0);
-        //             target_position[n] = f32::from_le_bytes(data[1..5].try_into().unwrap());
-        //             info!("Motor {}, Torque on: {:?}, Target: {:?}", n,  torque_on[n], target_position[n]);
-        //         }
-        //         Err(e) => {
-        //             error!("Read data error! {:?}", e)
-        //         }
-        //     }
-        //     Timer::after(Duration::from_millis(1)).await;
-        // }
-
         let mut torque_on = [false; config::N_AXIS];
         let mut target_position = [0.0; config::N_AXIS];
-        match lan9252.read_bytes(1+4*config::N_AXIS, OutMemory::motor1).await {
+        let mut velocity_limits = [0.0; config::N_AXIS];
+        let mut torque_limits = [0.0; config::N_AXIS];
+        match lan9252.read_bytes(1+12*config::N_AXIS, OutMemory::motor1).await {
             Ok(data) => {
                 info!("Read data: {:?}", data);
                 // torque on/off is in the first byte - one bit per axis
                 // target position is 4 bytes per axis after that 
                 for n in 0..config::N_AXIS{
                     torque_on[n] = (data[0] & (1 << n)) != 0;
-                    target_position[n] = f32::from_le_bytes(data[1+4*n..5+4*n].try_into().unwrap());
+                    target_position[n] = f32::from_le_bytes(data[12*n+1..12*n+5].try_into().unwrap());
+                    velocity_limits[n] = f32::from_le_bytes(data[12*n+5..12*n+9].try_into().unwrap());
+                    torque_limits[n] = f32::from_le_bytes(data[12*n+9..12*n+13].try_into().unwrap());
                     info!("Motor {}, Torque on: {:?}, Target: {:?}", n,  torque_on[n], target_position[n]);
                 }
             }
@@ -571,6 +558,8 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
         }
         { SHARED_MEMORY.lock().await.set_torque_on(torque_on)};
         { SHARED_MEMORY.lock().await.set_target_position(target_position)};
+        { SHARED_MEMORY.lock().await.set_velocity_limit(velocity_limits)};
+        { SHARED_MEMORY.lock().await.set_torque_flux_limit(torque_limits)};
         
 
         let mut data: [u8; 2] = [0; 2];
@@ -586,16 +575,18 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
 
         // write back the read data, just for testing, this is sec
         // concatenate the data with the counter
-        let mut data: [u8; 12*config::N_AXIS + 1] = [0; 12*config::N_AXIS + 1];
+        let mut data: [u8; 16*config::N_AXIS + 1] = [0; 16*config::N_AXIS + 1];
         let torque_on = { SHARED_MEMORY.lock().await.get_torque_on()};
         let current_position = { SHARED_MEMORY.lock().await.get_current_position()};
         let current_velocity = { SHARED_MEMORY.lock().await.get_current_velocity()};
         let current_torque = { SHARED_MEMORY.lock().await.get_current_torque()};
+        let axis_sensors = { SHARED_MEMORY.lock().await.get_axis_sensor()};
         for n in 0..config::N_AXIS {
             data[0] |= (torque_on[n] as u8) << n;
-            data[12*n+1..12*n+5].copy_from_slice(&current_position[n].to_le_bytes());
-            data[12*n+5..12*n+9].copy_from_slice(&current_velocity[n].to_le_bytes());
-            data[12*n+9..12*n+13].copy_from_slice(&current_torque[n].to_le_bytes());
+            data[16*n+1..16*n+5].copy_from_slice(&current_position[n].to_le_bytes());
+            data[16*n+5..16*n+9].copy_from_slice(&current_velocity[n].to_le_bytes());
+            data[16*n+9..16*n+13].copy_from_slice(&current_torque[n].to_le_bytes());
+            data[16*n+13..16*n+17].copy_from_slice(&axis_sensors[n].to_le_bytes());
         }
         debug!("Write data: {:?}", data);
         match lan9252.write_bytes(&data, InMemory::motor1).await {
@@ -604,6 +595,6 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                 error!("Write data error! {:?}", e)
             }
         }
-        Timer::after(Duration::from_millis(1)).await;
+        // Timer::after(Duration::from_millis(1)).await;
     }
 }
