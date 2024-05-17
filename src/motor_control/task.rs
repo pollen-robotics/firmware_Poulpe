@@ -483,7 +483,6 @@ pub async fn control_loop(config: ActuatorConfig) {
 
                 let delta = libm::fabs(should_move[i] as f64) as f32;
                 if (diff[i] > should_move[i] + delta ) || (diff[i] < should_move[i] - delta) || diff[i].is_nan() {
-                    // it should move ~0.15 rad
                     error!(
                         "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
                         i, diff[i]
