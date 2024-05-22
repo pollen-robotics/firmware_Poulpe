@@ -321,7 +321,7 @@ where
         let data_size: &[u8] = &(round_len as u16).to_le_bytes();
 
         let addres_bytes = (address as u16 ).to_be_bytes();
-        let tmp_data = [addres_bytes[0], addres_bytes[1], data_size[0], data_size[1]]; //Data address: 0x00001000 | data.len() <<16 TODO: check we are in the range
+        let tmp_data = [addres_bytes[1], addres_bytes[0], data_size[0], data_size[1]]; //Data address: 0x00001000 | data.len() <<16 TODO: check we are in the range
         self.write_register_direct(Lan9252Registers::ECAT_PRAM_RD_ADDR_LEN as u16, &tmp_data)
             .await?;
 
@@ -390,7 +390,7 @@ where
         // chapter 12.13.7 ETHERCAT PROCESS RAM WRITE ADDRESS AND LENGTH REGISTER (ECAT_PRAM_WR_ADDR_LEN)
         // writing the data length to the register as well as the starting address (rage 1000h to 1FFFh)
         let addres_bytes = (address as u16 ).to_be_bytes();
-        let tmp_data = [addres_bytes[0], addres_bytes[1], data_size[0], data_size[1]]; //Data address: 0x00001000 | data.len() <<16 TODO: check we are in the range
+        let tmp_data = [addres_bytes[1], addres_bytes[0], data_size[0], data_size[1]]; //Data address: 0x00001000 | data.len() <<16 TODO: check we are in the range
         self.write_register_direct(Lan9252Registers::ECAT_PRAM_WR_ADDR_LEN as u16, &tmp_data)
             .await?;
 
