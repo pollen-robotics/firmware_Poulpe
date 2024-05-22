@@ -22,44 +22,11 @@ use embedded_hal_1::spi::SpiDevice;
 
 // the addresses of the motors in the LAN9252 memory
 
-pub enum OutMemory{
-    motor1 = 0x10, // default write address 0x1000
-    motor2 = 0x11,
-    #[cfg(feature = "orbita3d")]
-    motor3 = 0x12, 
+pub enum Lan9252Memory{
+    OrbitaIn = 0x1000, // default write address 0x1000
+    OrbitaStatus = 0x1200,
+    OrbitaOut = 0x1300
 }   
-impl OutMemory{
-    fn get_motor(ind : usize) -> OutMemory{
-        match ind{
-            0 => OutMemory::motor1,
-            1 => OutMemory::motor2,
-            #[cfg(feature = "orbita3d")]
-            2 => OutMemory::motor3,
-            _ => OutMemory::motor1  // default write address 0x1000
-        }
-    }
-}
-
-// impl InMemory{
-//     fn get_motor(ind : usize) -> InMemory{
-//         match ind{
-//             0 => InMemory::motor1,
-//             1 => InMemory::motor2,
-//             #[cfg(feature = "orbita3d")]
-//             2 => InMemory::motor3,
-//             _ => InMemory::unknown // default read address 0x1200
-//         }
-//     }
-// }
-
-pub enum InMemory{
-    orbita = 0x12,
-    motor1 = 0x13,
-    motor2 = 0x16,
-    #[cfg(feature = "orbita3d")]
-    motor3 = 0x17,
-    // unknown = 0x12, // default read address  0x1200
-}
 
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
@@ -336,7 +303,7 @@ where
     }
 
     //FIXME! Only if <64Bytes
-    pub async fn read_bytes(&mut self, len: usize, address: OutMemory) -> Result<&[u8], embassy_stm32::spi::Error> {
+    pub async fn read_bytes(&mut self, len: usize, address: Lan9252Memory) -> Result<&[u8], embassy_stm32::spi::Error> {
         // Abort pending transfer
 
         let tmp_data = [0x00u8, 0x00u8, 0x00u8, 0x40u8]; //bit 30 (PRAM_READ_ABORT)
@@ -353,7 +320,8 @@ where
         // Configure starting address and data length
         let data_size: &[u8] = &(round_len as u16).to_le_bytes();
 
-        let tmp_data = [0x00u8, address as u8, data_size[0], data_size[1]]; //Data address: 0x00001000 | data.len() <<16 TODO: check we are in the range
+        let addres_bytes = (address as u16 ).to_be_bytes();
+        let tmp_data = [addres_bytes[0], addres_bytes[1], data_size[0], data_size[1]]; //Data address: 0x00001000 | data.len() <<16 TODO: check we are in the range
         self.write_register_direct(Lan9252Registers::ECAT_PRAM_RD_ADDR_LEN as u16, &tmp_data)
             .await?;
 
@@ -396,7 +364,7 @@ where
     }
 
     //TODO Only if data.len()<=64
-    pub async fn write_bytes(&mut self, data: &[u8], address: InMemory) -> Result<(), embassy_stm32::spi::Error> {
+    pub async fn write_bytes(&mut self, data: &[u8], address: Lan9252Memory) -> Result<(), embassy_stm32::spi::Error> {
         // Abort pending transfer
 
         let tmp_data = [0x00u8, 0x00u8, 0x00u8, 0x40u8]; //bit 30 (PRAM_READ_ABORT)
@@ -421,8 +389,8 @@ where
         // page 221
         // chapter 12.13.7 ETHERCAT PROCESS RAM WRITE ADDRESS AND LENGTH REGISTER (ECAT_PRAM_WR_ADDR_LEN)
         // writing the data length to the register as well as the starting address (rage 1000h to 1FFFh)
-        // here we write to 0x1200
-        let tmp_data = [0x00u8, address as u8, data_size[0], data_size[1]]; //Data address: 0x00001000 | data.len() <<16 TODO: check we are in the range
+        let addres_bytes = (address as u16 ).to_be_bytes();
+        let tmp_data = [addres_bytes[0], addres_bytes[1], data_size[0], data_size[1]]; //Data address: 0x00001000 | data.len() <<16 TODO: check we are in the range
         self.write_register_direct(Lan9252Registers::ECAT_PRAM_WR_ADDR_LEN as u16, &tmp_data)
             .await?;
 
@@ -473,7 +441,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
 
     let eth_spi = SpiDeviceWithConfig::new(
         &spi_bus,
-        Output::new(ethconf.cs, Level::High, Speed::Medium),
+        Output::new(ethconf.cs, Level::High, Speed::High),
         spi_config,
     );
 
@@ -539,7 +507,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
         let mut target_position = [0.0; config::N_AXIS];
         let mut velocity_limits = [0.0; config::N_AXIS];
         let mut torque_limits = [0.0; config::N_AXIS];
-        match lan9252.read_bytes(1+12*config::N_AXIS, OutMemory::motor1).await {
+        match lan9252.read_bytes(1+12*config::N_AXIS, Lan9252Memory::OrbitaIn).await {
             Ok(data) => {
                 info!("Read data: {:?}", data);
                 // torque on/off is in the first byte - one bit per axis
@@ -566,7 +534,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
         data[0] = { SHARED_MEMORY.lock().await.get_error_state() } as u8;
         data[1] = config::N_AXIS as u8;
         debug!("Write data: {:?}", data);
-        match lan9252.write_bytes(&data, InMemory::orbita).await {
+        match lan9252.write_bytes(&data, Lan9252Memory::OrbitaStatus).await {
             Ok(_) => {}
             Err(e) => {
                 error!("Write data error! {:?}", e)
@@ -589,12 +557,12 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
             data[16*n+13..16*n+17].copy_from_slice(&axis_sensors[n].to_le_bytes());
         }
         debug!("Write data: {:?}", data);
-        match lan9252.write_bytes(&data, InMemory::motor1).await {
+        match lan9252.write_bytes(&data, Lan9252Memory::OrbitaOut).await {
             Ok(_) => {}
             Err(e) => {
                 error!("Write data error! {:?}", e)
             }
         }
-        // Timer::after(Duration::from_millis(1)).await;
+        Timer::after(Duration::from_micros(1)).await;
     }
 }
