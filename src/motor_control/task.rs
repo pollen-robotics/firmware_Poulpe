@@ -535,8 +535,10 @@ pub async fn control_loop(config: ActuatorConfig) {
                 error!("No zero given in paramter! => HallZero mode");
                 // Set the initial position to the axis sensor values (used for pc-side "sofwtare" zeroring )
 
-                let init_sensors = actuator.get_axis_sensors().unwrap();
-                debug!("init axis sensors: {:?}", init_sensors);
+                let mut init_sensors = actuator.get_axis_sensors().unwrap();
+                init_sensors.iter_mut().for_each(|x| *x = wrap_to_pi(*x));
+                // check if 
+                info!("init axis sensors: {:?}", init_sensors);
                 let res = actuator.set_current_position(init_sensors);
 
                 match res {
@@ -754,6 +756,7 @@ pub async fn control_loop(config: ActuatorConfig) {
     let mut ticker = Ticker::every(Duration::from_micros(1000));
 
     loop {
+        let t0 = Instant::now();
         let pos = actuator.get_current_position().unwrap_or_else(|e| {
             error!("Error reading position: {:?}", e);
             error_led = true;
@@ -1234,7 +1237,7 @@ pub async fn control_loop(config: ActuatorConfig) {
         }
 
         // let elapsed=t0.elapsed().as_micros();
-        // warn!("ELAPSED: {:?}",elapsed);
+        // info!("Motor control loop elapsed: {} us",elapsed);
         // Timer::after(Duration::from_micros(1000-elapsed)).await;
         // Timer::after(Duration::from_millis(1)).await;
         ticker.next().await;
