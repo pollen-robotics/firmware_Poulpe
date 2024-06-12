@@ -226,7 +226,7 @@ async fn main(spawner: Spawner) {
 
     // SPI for Ethercat LAN9252
     let mut lan9252_spi_config = spi::Config::default();
-    lan9252_spi_config.frequency = mhz(5);
+    lan9252_spi_config.frequency = mhz(15);
     lan9252_spi_config.mode = spi::MODE_0;
 
     let ethconfig: LAN9252Config = EthercatConfig {
@@ -237,10 +237,10 @@ async fn main(spawner: Spawner) {
         cs: p.PD0,
     };
 
-    unwrap!(spawner.spawn(ethercat::task::messsage_handler(
-        ethconfig,
-        lan9252_spi_config
-    )));
+    // unwrap!(spawner.spawn(ethercat::task::messsage_handler(
+    //     ethconfig,
+    //     lan9252_spi_config
+    // )));
 
     // Prepare and spawn the main task
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);

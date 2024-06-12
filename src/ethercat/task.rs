@@ -305,7 +305,6 @@ where
     //FIXME! Only if <64Bytes
     pub async fn read_bytes(&mut self, len: usize, address: Lan9252Memory) -> Result<&[u8], embassy_stm32::spi::Error> {
         // Abort pending transfer
-
         let tmp_data = [0x00u8, 0x00u8, 0x00u8, 0x40u8]; //bit 30 (PRAM_READ_ABORT)
         self.write_register_direct(Lan9252Registers::ECAT_PRAM_RD_CMD as u16, &tmp_data)
             .await?;
@@ -461,7 +460,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
         .await
     {
         Ok(test) => {
-            info!("Byte test: {:#x}", test)
+            debug!("Byte test: {:#x}", test)
         }
         Err(e) => {
             error!("Read test error {:?}", e)
@@ -471,7 +470,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
 
     match lan9252.read_register_indirect(WDOG_STATUS, 1).await {
         Ok(wdg) => {
-            info!("Watchdog: {:#x}", wdg[0])
+            debug!("Watchdog: {:#x}", wdg[0])
         }
         Err(e) => {
             error!("Read watchdog error {:?}", e)
@@ -481,7 +480,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
 
     match lan9252.read_register_indirect(AL_STATUS, 1).await {
         Ok(al) => {
-            info!("Status: {:#x}", al[0] & 0x0F)
+            debug!("Status: {:#x}", al[0] & 0x0F)
         }
         Err(e) => {
             error!("Read status error {:?}", e)
@@ -489,80 +488,106 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
     }
     Timer::after(Duration::from_micros(1)).await;
 
-    // let mut read_data: &[u8] = &[0, 0, 0, 0];
+    // before we start the loop write zeros to the OrbitaIn memory
+    // to avoid old data being read
+    debug!("Reinitialise the OrbitaIn memory!");
+    let data = [0; 1+12*config::N_AXIS];
+    match lan9252.write_bytes(&data, Lan9252Memory::OrbitaIn).await {
+        Ok(_) => {}
+        Err(e) => {
+            error!("Write data error! {:?}", e)
+        }
+    }
 
-    let mut test_cnt: u32 = 0;
+    let mut state = {SHARED_MEMORY.lock().await.get_error_state()};
+    let mut downsample_state_cnt: u32 = 0;
     loop {
-        match lan9252.read_register_indirect(AL_STATUS, 1).await {
-            Ok(al) => {
-                info!("Status: {:#x}", al[0] & 0x0F)
-            }
-            Err(e) => {
-                error!("Read status error {:?}", e)
-            }
-        }   
-        Timer::after(Duration::from_micros(1)).await;
-
-        let mut torque_on = [false; config::N_AXIS];
-        let mut target_position = [0.0; config::N_AXIS];
-        let mut velocity_limits = [0.0; config::N_AXIS];
-        let mut torque_limits = [0.0; config::N_AXIS];
-        match lan9252.read_bytes(1+12*config::N_AXIS, Lan9252Memory::OrbitaIn).await {
-            Ok(data) => {
-                info!("Read data: {:?}", data);
-                // torque on/off is in the first byte - one bit per axis
-                // target position is 4 bytes per axis after that 
-                for n in 0..config::N_AXIS{
-                    torque_on[n] = (data[0] & (1 << n)) != 0;
-                    target_position[n] = f32::from_le_bytes(data[12*n+1..12*n+5].try_into().unwrap());
-                    velocity_limits[n] = f32::from_le_bytes(data[12*n+5..12*n+9].try_into().unwrap());
-                    torque_limits[n] = f32::from_le_bytes(data[12*n+9..12*n+13].try_into().unwrap());
-                    info!("Motor {}, Torque on: {:?}, Target: {:?}", n,  torque_on[n], target_position[n]);
+        let t0 = Instant::now();
+        if state == BoardStatus::Ok {
+        
+            let mut torque_on = [false; config::N_AXIS];
+            let mut target_position = [0.0; config::N_AXIS];
+            let mut velocity_limits = [0.0; config::N_AXIS];
+            let mut torque_limits = [0.0; config::N_AXIS];
+            match lan9252.read_bytes(1+12*config::N_AXIS, Lan9252Memory::OrbitaIn).await {
+                Ok(data) => {
+                    // torque on/off is in the first byte - one bit per axis
+                    // target position is 4 bytes per axis after that 
+                    for n in 0..config::N_AXIS{
+                        torque_on[n] = (data[0] & (1 << n)) != 0;
+                        target_position[n] = f32::from_le_bytes(data[12*n+1..12*n+5].try_into().unwrap());
+                        velocity_limits[n] = f32::from_le_bytes(data[12*n+5..12*n+9].try_into().unwrap());
+                        torque_limits[n] = f32::from_le_bytes(data[12*n+9..12*n+13].try_into().unwrap());
+                    }
+                }
+                Err(e) => {
+                    error!("Read data error! {:?}", e)
                 }
             }
-            Err(e) => {
-                error!("Read data error! {:?}", e)
+            info!("Motors - Torque on: {:?}, Target: {:?}",  torque_on, target_position);
+            {
+                let shared_memory = SHARED_MEMORY.lock().await;
+                shared_memory.set_torque_on(torque_on);
+                shared_memory.set_target_position(target_position);
+                shared_memory.set_velocity_limit(velocity_limits);
+                shared_memory.set_torque_flux_limit(torque_limits);
             }
-        }
-        { SHARED_MEMORY.lock().await.set_torque_on(torque_on)};
-        { SHARED_MEMORY.lock().await.set_target_position(target_position)};
-        { SHARED_MEMORY.lock().await.set_velocity_limit(velocity_limits)};
-        { SHARED_MEMORY.lock().await.set_torque_flux_limit(torque_limits)};
-        
+            
+            let shared_memory = SHARED_MEMORY.lock().await;
+            let torque_on = shared_memory.get_torque_on();
+            let current_position = shared_memory.get_current_position();
+            let current_velocity = shared_memory.get_current_velocity();
+            let current_torque = shared_memory.get_current_torque();
+            let axis_sensors = shared_memory.get_axis_sensor();
 
-        let mut data: [u8; 2] = [0; 2];
-        data[0] = { SHARED_MEMORY.lock().await.get_error_state() } as u8;
-        data[1] = config::N_AXIS as u8;
-        debug!("Write data: {:?}", data);
-        match lan9252.write_bytes(&data, Lan9252Memory::OrbitaStatus).await {
-            Ok(_) => {}
-            Err(e) => {
-                error!("Write data error! {:?}", e)
+            // write back the read data, just for testing, this is sec
+            // concatenate the data with the counter
+            const n_vars: usize = 4;
+            const nB: usize = 4;
+            const BYTE_AXIS : usize = n_vars * nB;
+            let mut data: [u8; BYTE_AXIS*config::N_AXIS + 1] = [0; BYTE_AXIS*config::N_AXIS + 1];
+            for n in 0..config::N_AXIS {
+                data[0] |= (torque_on[n] as u8) << n;
+                data[BYTE_AXIS*n+1..BYTE_AXIS*n+1+nB].copy_from_slice(&current_position[n].to_le_bytes());
+                data[BYTE_AXIS*n+1+nB..BYTE_AXIS*n+1+2*nB].copy_from_slice(&current_velocity[n].to_le_bytes());
+                data[BYTE_AXIS*n+1+2*nB..BYTE_AXIS*n+1+3*nB].copy_from_slice(&current_torque[n].to_le_bytes());
+                data[BYTE_AXIS*n+1+3*nB..BYTE_AXIS*n+1+4*nB].copy_from_slice(&axis_sensors[n].to_le_bytes());
             }
+            match lan9252.write_bytes(&data, Lan9252Memory::OrbitaOut).await {
+                Ok(_) => {}
+                Err(e) => {
+                    error!("Write data error! {:?}", e)
+                }
+            }
+            Timer::after(Duration::from_micros(1)).await;
         }
+        if downsample_state_cnt >= 100 {
+            match lan9252.read_register_indirect(AL_STATUS, 1).await {
+                Ok(al) => {
+                    // debug!("Status: {:#x}", al[0] & 0x0F)
+                }
+                Err(e) => {
+                    error!("Read status error {:?}", e)
+                }
+            }   
+            Timer::after(Duration::from_micros(1)).await;
 
-        // write back the read data, just for testing, this is sec
-        // concatenate the data with the counter
-        let mut data: [u8; 16*config::N_AXIS + 1] = [0; 16*config::N_AXIS + 1];
-        let torque_on = { SHARED_MEMORY.lock().await.get_torque_on()};
-        let current_position = { SHARED_MEMORY.lock().await.get_current_position()};
-        let current_velocity = { SHARED_MEMORY.lock().await.get_current_velocity()};
-        let current_torque = { SHARED_MEMORY.lock().await.get_current_torque()};
-        let axis_sensors = { SHARED_MEMORY.lock().await.get_axis_sensor()};
-        for n in 0..config::N_AXIS {
-            data[0] |= (torque_on[n] as u8) << n;
-            data[16*n+1..16*n+5].copy_from_slice(&current_position[n].to_le_bytes());
-            data[16*n+5..16*n+9].copy_from_slice(&current_velocity[n].to_le_bytes());
-            data[16*n+9..16*n+13].copy_from_slice(&current_torque[n].to_le_bytes());
-            data[16*n+13..16*n+17].copy_from_slice(&axis_sensors[n].to_le_bytes());
-        }
-        debug!("Write data: {:?}", data);
-        match lan9252.write_bytes(&data, Lan9252Memory::OrbitaOut).await {
-            Ok(_) => {}
-            Err(e) => {
-                error!("Write data error! {:?}", e)
+            // write the state to the OrbitaStatus memory 
+            // lower frequency than the rest of the data
+            // at 0.1Hz more or less
+            state = {SHARED_MEMORY.lock().await.get_error_state()};
+            let data: [u8; 2] = [state as u8, config::N_AXIS as u8];
+            match lan9252.write_bytes(&data, Lan9252Memory::OrbitaStatus).await {
+                Ok(_) => {}
+                Err(e) => {
+                    error!("Write data error! {:?}", e)
+                }
             }
+            Timer::after(Duration::from_micros(1)).await;
+            downsample_state_cnt = 0;
         }
-        Timer::after(Duration::from_micros(1)).await;
+        // Timer::after(Duration::from_millis(1)).await;
+        // info!("Ethercat loop time: {:?}us", t0.elapsed().as_micros());
+        downsample_state_cnt += 1;
     }
 }
