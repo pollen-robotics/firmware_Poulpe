@@ -18,6 +18,7 @@ use libm::ceil;
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex};
 use embassy_time::{Duration, Instant, Timer};
 use embedded_hal_1::spi::SpiDevice;
+use modular_bitfield::error;
 
 
 // the addresses of the motors in the LAN9252 memory
@@ -503,7 +504,11 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
     let mut downsample_state_cnt: u32 = 0;
     loop {
         let t0 = Instant::now();
-        if state == BoardStatus::Ok {
+        // #[cfg(feature = "ignore_errors")]
+        // let receive_commands = true;
+        // #[cfg(not(feature = "ignore_errors"))]
+        // let receive_commands = state == BoardStatus::Ok || state == BoardStatus::HighTemperatureState;
+        if state != BoardStatus::Init {
         
             let mut torque_on = [false; config::N_AXIS];
             let mut target_position = [0.0; config::N_AXIS];
@@ -524,7 +529,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                     error!("Read data error! {:?}", e)
                 }
             }
-            info!("Motors - Torque on: {:?}, Target: {:?}",  torque_on, target_position);
+            // info!("Motors - Torque on: {:?}, Target: {:?}",  torque_on, target_position);
             {
                 let shared_memory = SHARED_MEMORY.lock().await;
                 shared_memory.set_torque_on(torque_on);
@@ -564,7 +569,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
         if downsample_state_cnt >= 100 {
             match lan9252.read_register_indirect(AL_STATUS, 1).await {
                 Ok(al) => {
-                    // debug!("Status: {:#x}", al[0] & 0x0F)
+                    debug!("Status: {:#x}", al[0] & 0x0F)
                 }
                 Err(e) => {
                     error!("Read status error {:?}", e)
@@ -587,7 +592,8 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
             downsample_state_cnt = 0;
         }
         // Timer::after(Duration::from_millis(1)).await;
-        // info!("Ethercat loop time: {:?}us", t0.elapsed().as_micros());
+        info!("Ethercat loop time: {:?}us", t0.elapsed().as_micros());
         downsample_state_cnt += 1;
+
     }
 }
