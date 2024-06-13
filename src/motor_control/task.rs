@@ -325,13 +325,13 @@ pub async fn control_loop(config: ActuatorConfig) {
     );
 
     // trying to init the actuator
-    let mut init_error: BoardStatus = BoardStatus::Ok;
+    let mut init_error: BoardStatus = BoardStatus::Init;
 
     // initialization of the actuator (try two times)
     'init_loop: for try_i in 0..2 {
         info!("Initialization try no. {:?}", try_i + 1);
         // no error at the beginning
-        init_error = BoardStatus::Ok;
+        {SHARED_MEMORY.lock().await.set_error_state(init_error)};
 
         //wait for a random duration to avoid all the actuators to start at the same time
         block_for(Duration::from_millis(config::DXL_ID as u64 * 10));
@@ -656,6 +656,7 @@ pub async fn control_loop(config: ActuatorConfig) {
         // if no error during init, we can break the loop
         if init_error == BoardStatus::Ok {
             debug!("init sensors: {:?}", init_sensors);
+            init_error = BoardStatus::Ok;
             debug!("moved sensors: {:?}", moved_sensors);
             debug!("diff sensors: {:?}", diff);
             break 'init_loop;
