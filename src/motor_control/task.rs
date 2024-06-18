@@ -535,7 +535,8 @@ pub async fn control_loop(config: ActuatorConfig) {
                 error!("No zero given in paramter! => HallZero mode");
                 // Set the initial position to the axis sensor values (used for pc-side "sofwtare" zeroring )
 
-                let init_sensors = actuator.get_axis_sensors().unwrap();
+                let mut init_sensors = actuator.get_axis_sensors().unwrap();
+                init_sensors.iter_mut().for_each(|x| *x = wrap_to_pi(*x));
                 debug!("init axis sensors: {:?}", init_sensors);
                 let res = actuator.set_current_position(init_sensors);
 
