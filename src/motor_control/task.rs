@@ -652,7 +652,7 @@ pub async fn control_loop(config: ActuatorConfig) {
         actuator.set_torque([false, false]).unwrap();
 
         // if no error during init, we can break the loop
-        if init_error == BoardStatus::Ok {
+        if init_error == BoardStatus::Init {
             debug!("init sensors: {:?}", init_sensors);
             init_error = BoardStatus::Ok;
             debug!("moved sensors: {:?}", moved_sensors);
