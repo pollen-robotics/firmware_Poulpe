@@ -4,6 +4,7 @@ use defmt::Format;
 #[derive(Format)]
 pub enum ConversionError {
     InvalidDataLength,
+    NanReceived
 }
 
 use crate::motor_control::Pid;
@@ -39,6 +40,11 @@ pub fn bytes_to_float<const N: usize>(data: &[u8]) -> Result<[f32; N], Conversio
     let mut result = [0.0; N];
     for i in 0..N {
         result[i] = f32::from_le_bytes(data[i * 4..(i + 1) * 4].try_into().unwrap());
+    }
+    // check if nan
+    if result.iter().any(|&x| x.is_nan()) {
+        error!("InvalidData, received: {:?}", result);
+        return Err(ConversionError::NanReceived);
     }
     Ok(result)
 }
