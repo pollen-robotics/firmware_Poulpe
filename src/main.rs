@@ -211,18 +211,18 @@ async fn main(spawner: Spawner) {
     // unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
 
     // Poulpe B1
-    let usart = config::DynamixelUart::new(
-        p.USART1,
-        p.PB15, //RX
-        p.PA9,  //TX
-        Irqs,
-        p.DMA1_CH0,
-        p.DMA1_CH1,
-        usart_config,
-    )
-    .unwrap();
+    // let usart = config::DynamixelUart::new(
+    //     p.USART1,
+    //     p.PB15, //RX
+    //     p.PA9,  //TX
+    //     Irqs,
+    //     p.DMA1_CH0,
+    //     p.DMA1_CH1,
+    //     usart_config,
+    // )
+    // .unwrap();
 
-    unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
+    // unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
 
     // SPI for Ethercat LAN9252
     let mut lan9252_spi_config = spi::Config::default();
@@ -237,10 +237,10 @@ async fn main(spawner: Spawner) {
         cs: p.PD0,
     };
 
-    // unwrap!(spawner.spawn(ethercat::task::messsage_handler(
-    //     ethconfig,
-    //     lan9252_spi_config
-    // )));
+    unwrap!(spawner.spawn(ethercat::task::messsage_handler(
+        ethconfig,
+        lan9252_spi_config
+    )));
 
     // Prepare and spawn the main task
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
