@@ -1,10 +1,11 @@
-use defmt::{debug, error, info};
+use defmt::{debug, error, info, warn};
 use embassy_stm32::{gpio::Pin, spi};
 use embassy_time::{block_for, Duration, Instant, Timer};
 
 use crate::{
     config::{self, DonutHall},
     motor_control::foc::{MotionMode, Tmc4671Registers, OPENLOOP_ACCELERATION, UQ_UD_EXT},
+    SHARED_MEMORY,
 };
 
 use super::{
@@ -148,6 +149,7 @@ where
         if ret_err {
             return Err(err);
         }
+
         Ok(())
     }
 
@@ -156,35 +158,9 @@ where
         // disable potential motion/torque control
         self.foc.tmc4671_set_mode(MotionMode::Stopped)?;
 
-        // read the adc raw values for finding the current offset (1000 times)
-        let mut adc_offset: [u32; 2] = [0; 2];
-        for _ in 0..1000 {
-            self.foc.tmc4671_get_adc_raw().map(|adc| {
-                adc_offset[0] += adc.0 as u32;
-                adc_offset[1] += adc.1 as u32;
-            })?;
-        }
-        // divide by 1000 to get the average
-        adc_offset[0] /= 1000;
-        adc_offset[1] /= 1000;
+        let adc_offset = self.foc.tmc4671_calibrate_adc_offsets()?;
 
-        // set the new offset values
-        self.foc
-            .current_sensing_config
-            .set_adc_offsets(adc_offset[0], adc_offset[1]);
-        self.foc.tmc4671_checked_write(
-            Tmc4671Registers::ADC_I0_SCALE_OFFSET as u8,
-            self.foc.current_sensing_config.adc_i0_scale_offset(),
-        )?;
-        self.foc.tmc4671_checked_write(
-            Tmc4671Registers::ADC_I1_SCALE_OFFSET as u8,
-            self.foc.current_sensing_config.adc_i1_scale_offset(),
-        )?;
-
-        info!(
-            "[Ventouse{:?}] ADC offset calibration done: {:?}",
-            self.kind, adc_offset
-        );
+        debug!("[Ventouse{:?}] ADC offsets: {:?}", self.kind, adc_offset);
 
         Ok(())
     }
@@ -267,8 +243,11 @@ where
         //Assume that check_motors_1 has been called
         #[cfg(feature = "orbita2d")]
         {
-            if self.kind == 'B' { target = 1000; }
-            else { target = 500; }
+            if self.kind == 'B' {
+                target = 1000;
+            } else {
+                target = 500;
+            }
         }
         #[cfg(feature = "orbita3d")]
         let target = 500;
@@ -282,7 +261,7 @@ where
                 .foc
                 .tmc4671_get_actual_velocity()
                 .map_err(IOError::SpiError)?;
-            if velocity > 2*target || velocity < -200 {
+            if velocity > 2 * target || velocity < -200 {
                 // check if the motor is moving in the right direction and not too fast
                 self.foc.tmc4671_disable();
                 error!(
@@ -328,17 +307,19 @@ where
     }
 
     pub async fn check_motors_2(&mut self) -> Result<(), IOError> {
-
         let mut target: i32 = -1000;
         //Assume that check_motors_1 has been called
         #[cfg(feature = "orbita2d")]
         {
-            if self.kind == 'B' { target = -1000; }
-            else { target = -500; }
+            if self.kind == 'B' {
+                target = -1000;
+            } else {
+                target = -500;
+            }
         }
         #[cfg(feature = "orbita3d")]
         let target = -500;
-        
+
         self.foc
             .tmc4671_set_target_velocity(target)
             .map_err(IOError::SpiError)?;
@@ -349,7 +330,7 @@ where
                 .foc
                 .tmc4671_get_actual_velocity()
                 .map_err(IOError::SpiError)?;
-            if velocity < 2*target || velocity > 200 {
+            if velocity < 2 * target || velocity > 200 {
                 // check if the motor is moving in the right direction and not too fast
                 self.foc.tmc4671_disable();
                 error!(
@@ -391,6 +372,9 @@ where
     // 	let d=donut_sensor.read();
     // 	Ok(())
     // }
+    pub fn get_ratio(&mut self) -> f32 {
+        self.foc.brushless_motor_config.axis_ratio()
+    }
 }
 
 impl<'d, T, FocP, FocEnb, DrvP> RawMotorsIO<1> for Ventouse<'d, T, FocP, FocEnb, DrvP>
@@ -562,7 +546,7 @@ where
         let torque_adc = self
             .foc
             .current_sensing_config
-            .mAmps_tp_adc(torque[0], self.foc.adc_resolution);
+            .mAmps_to_adc(torque[0], self.foc.adc_resolution);
         self.foc
             .tmc4671_set_target_torque(torque_adc as i32) // TODO convert to mA
             .map(|_| ())
@@ -586,31 +570,33 @@ where
             .map_err(IOError::SpiError)
     }
 
-    /// Get the flux torque limits of the motors mAmps
+    /// Get the flux torque limits of the motors %
     fn get_torque_flux_limit(&mut self) -> Result<[f32; 1], IOError> {
         let limit = self
             .foc
             .tmc4671_get_torque_flux_limit()
             .map_err(IOError::SpiError)?;
+
         Ok([self
             .foc
             .current_sensing_config
             .adc_to_mAmps(limit as f32, self.foc.adc_resolution)])
     }
-    /// Set the torque_flux limit of the motors
+    /// Set the torque_flux limit of the motors %
     fn set_torque_flux_limit(&mut self, limit: [f32; 1]) -> Result<(), IOError> {
         // limit from mAmps to ADC counts
         let limit_adc = self
             .foc
             .current_sensing_config
-            .mAmps_tp_adc(limit[0], self.foc.adc_resolution);
+            .mAmps_to_adc(limit[0], self.foc.adc_resolution);
+
         self.foc
             .tmc4671_set_torque_flux_limit(limit_adc as u16)
             .map(|_| ())
             .map_err(IOError::SpiError)
     }
 
-    /// Get the velocity limit of the motors (in radians per second)
+    /// Get the velocity limit of the motors %
     fn get_velocity_limit(&mut self) -> Result<[f32; 1], IOError> {
         let limit = self
             .foc
@@ -622,7 +608,7 @@ where
             .brushless_motor_config
             .angle_elec_to_mech(conversion::rpm_to_rads(limit as f32))])
     }
-    /// Set the velocity limit of the motors (in radians per second)
+    /// Set the velocity limit of the motors %
     fn set_velocity_limit(&mut self, limit: [f32; 1]) -> Result<(), IOError> {
         let limit_rpm = self
             .foc
@@ -632,6 +618,102 @@ where
             .tmc4671_set_velocity_limit(limit_rpm as u32)
             .map(|_| ())
             .map_err(IOError::SpiError)
+    }
+
+    //////////////////////
+    fn get_torque_flux_limit_max(&mut self) -> Result<[f32; 1], IOError> {
+        Ok([self.foc.brushless_motor_config.torque_flux_limit_max() as f32])
+    }
+
+    fn get_velocity_limit_max(&mut self) -> Result<[f32; 1], IOError> {
+        Ok([self.foc.brushless_motor_config.velocity_limit_max() as f32])
+    }
+    /*
+    /// Get the absolute uq_ud limit of the motors
+    fn get_uq_ud_limit_max(&mut self) -> Result<[i16; 1], IOError> {
+        //TODO Conversion
+        let limit = self
+            .foc
+            .tmc4671_get_uq_ud_limit()
+            .map_err(IOError::SpiError)?;
+        Ok([limit as i16])
+    }
+    /// Set absolute the uq_ud limit of the motors
+    fn set_uq_ud_limit_max(&mut self, limit: [i16; 1]) -> Result<(), IOError> {
+        self.foc
+            .tmc4671_set_uq_ud_limit(limit[0] as i16)
+            .map(|_| ())
+            .map_err(IOError::SpiError)
+    }
+    */
+    /*
+    /// Get the absolute flux torque limits of the motors mAmps
+    fn get_torque_flux_limit_max(&mut self) -> Result<[f32; 1], IOError> {
+        let limit = self
+            .foc
+            .tmc4671_get_torque_flux_limit()
+            .map_err(IOError::SpiError)?;
+        Ok([self
+            .foc
+            .current_sensing_config
+            .adc_to_mAmps(limit as f32, self.foc.adc_resolution)])
+    }
+    /// Set the absolute torque_flux limit of the motors
+    fn set_torque_flux_limit_max(&mut self, limit: [f32; 1]) -> Result<(), IOError> {
+        // limit from mAmps to ADC counts
+        let limit_adc = self
+            .foc
+            .current_sensing_config
+            .mAmps_tp_adc(limit[0], self.foc.adc_resolution);
+
+        self.foc
+            .tmc4671_set_torque_flux_limit(limit_adc as u16)
+            .map(|_| ())
+            .map_err(IOError::SpiError)
+    }
+
+    /// Get the absolute velocity limit of the motors (in radians per second)
+    fn get_velocity_limit_max(&mut self) -> Result<[f32; 1], IOError> {
+        let limit = self
+            .foc
+            .tmc4671_get_velocity_limit()
+            .map_err(IOError::SpiError)?;
+        // limit in rad/s
+        Ok([self
+            .foc
+            .brushless_motor_config
+            .angle_elec_to_mech(conversion::rpm_to_rads(limit as f32))])
+    }
+    /// Set the absolute velocity limit of the motors (in radians per second)
+    fn set_velocity_limit_max(&mut self, limit: [f32; 1]) -> Result<(), IOError> {
+        let limit_rpm = self
+            .foc
+            .brushless_motor_config
+            .angle_mech_to_elec(conversion::rads_to_rpm(limit[0] as f32));
+        self.foc
+            .tmc4671_set_velocity_limit(limit_rpm as u32)
+            .map(|_| ())
+            .map_err(IOError::SpiError)
+    }
+    */
+    //////////////////////
+
+    // get temperature
+    fn get_board_temperature(&mut self) -> Result<[f32; 1], IOError> {
+        let temp = self
+            .foc
+            .tmc4671_get_board_temperature()
+            .map_err(IOError::SpiError)?;
+        Ok([temp as f32])
+    }
+
+    // get dc bus voltage
+    fn get_bus_voltage(&mut self) -> Result<[f32; 1], IOError> {
+        let voltage = self
+            .foc
+            .tmc4671_get_bus_voltage()
+            .map_err(IOError::SpiError)?;
+        Ok([voltage as f32])
     }
 
     // /// Get the torque limit of the motors (in Nm)
@@ -955,12 +1037,21 @@ where
             self.kind, pos0, pos1, midpos, final_idx
         );
 
+        let vel_lim = self.get_velocity_limit()?;
+        self.set_velocity_limit([vel_lim[0] * 0.1])?;
         self.set_control_mode(MotionMode::Position)?;
         let _ = self.foc.tmc4671_set_target_position(midpos as i32);
-        block_for(Duration::from_millis(500));
+        block_for(Duration::from_millis(750));
+        self.set_velocity_limit([vel_lim[0]])?;
         let _ = self.foc.tmc4671_set_actual_position(0);
         let _ = self.foc.tmc4671_set_target_position(0);
         Ok([final_idx])
+        // self.set_control_mode(MotionMode::Position)?;
+        // let _ = self.foc.tmc4671_set_target_position(midpos as i32);
+        // block_for(Duration::from_millis(500));
+        // let _ = self.foc.tmc4671_set_actual_position(0);
+        // let _ = self.foc.tmc4671_set_target_position(0);
+        // Ok([final_idx])
     }
 }
 
@@ -992,6 +1083,14 @@ impl<'d> VentouseKind<'d> {
             VentouseKind::A(va) => va.check_motors_2().await,
             VentouseKind::B(vb) => vb.check_motors_2().await,
             VentouseKind::C(vc) => vc.check_motors_2().await,
+        }
+    }
+
+    pub fn get_ratio(&mut self) -> f32 {
+        match self {
+            VentouseKind::A(va) => va.get_ratio(),
+            VentouseKind::B(vb) => vb.get_ratio(),
+            VentouseKind::C(vc) => vc.get_ratio(),
         }
     }
 
@@ -1200,6 +1299,78 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
 
+    //////////////////////
+
+    fn get_torque_flux_limit_max(&mut self) -> Result<[f32; 1], IOError> {
+        match self {
+            VentouseKind::A(va) => va.get_torque_flux_limit_max(),
+            VentouseKind::B(vb) => vb.get_torque_flux_limit_max(),
+            VentouseKind::C(vc) => vc.get_torque_flux_limit_max(),
+        }
+    }
+    fn get_velocity_limit_max(&mut self) -> Result<[f32; 1], IOError> {
+        match self {
+            VentouseKind::A(va) => va.get_velocity_limit_max(),
+            VentouseKind::B(vb) => vb.get_velocity_limit_max(),
+            VentouseKind::C(vc) => vc.get_velocity_limit_max(),
+        }
+    }
+
+    /*
+    /// Get the absolute velocity limit of the motors (in radians per second)
+    fn get_velocity_limit_max(&mut self) -> Result<[f32; 1], IOError> {
+        match self {
+            VentouseKind::A(va) => va.get_velocity_limit_max(),
+            VentouseKind::B(vb) => vb.get_velocity_limit_max(),
+            VentouseKind::C(vc) => vc.get_velocity_limit_max(),
+        }
+    }
+    /// Set the absolute velocity limit of the motors (in radians per second)
+    fn set_velocity_limit_max(&mut self, velocity: [f32; 1]) -> Result<(), IOError> {
+        match self {
+            VentouseKind::A(va) => va.set_velocity_limit_max(velocity),
+            VentouseKind::B(vb) => vb.set_velocity_limit_max(velocity),
+            VentouseKind::C(vc) => vc.set_velocity_limit_max(velocity),
+        }
+    }
+
+    /// Get the absolute torque_flux limit of the motors (in mAmps)
+    fn get_torque_flux_limit_max(&mut self) -> Result<[f32; 1], IOError> {
+        match self {
+            VentouseKind::A(va) => va.get_torque_flux_limit_max(),
+            VentouseKind::B(vb) => vb.get_torque_flux_limit_max(),
+            VentouseKind::C(vc) => vc.get_torque_flux_limit_max(),
+        }
+    }
+    /// Set the absolute torque_flux limit of the motors (in mAmps)
+    fn set_torque_flux_limit_max(&mut self, torque_flux: [f32; 1]) -> Result<(), IOError> {
+        match self {
+            VentouseKind::A(va) => va.set_torque_flux_limit_max(torque_flux),
+            VentouseKind::B(vb) => vb.set_torque_flux_limit_max(torque_flux),
+            VentouseKind::C(vc) => vc.set_torque_flux_limit_max(torque_flux),
+        }
+    }
+    */
+    /*
+    /// Get the absolute uq_ud limit of the motors
+    fn get_uq_ud_limit_max(&mut self) -> Result<[i16; 1], IOError> {
+        match self {
+            VentouseKind::A(va) => va.get_uq_ud_limit_max(),
+            VentouseKind::B(vb) => vb.get_uq_ud_limit_max(),
+            VentouseKind::C(vc) => vc.get_uq_ud_limit_max(),
+        }
+    }
+    /// Set the absolute uq_ud limit of the motors
+    fn set_uq_ud_limit_max(&mut self, uq_ud: [i16; 1]) -> Result<(), IOError> {
+        match self {
+            VentouseKind::A(va) => va.set_uq_ud_limit_max(uq_ud),
+            VentouseKind::B(vb) => vb.set_uq_ud_limit_max(uq_ud),
+            VentouseKind::C(vc) => vc.set_uq_ud_limit_max(uq_ud),
+        }
+    }
+    */
+    /////////////////////
+
     // /// Get the current PID gains of the motors
     // fn get_pid_gains(&mut self) -> Result<[Pid; 1], IOError> {
     //     match self {
@@ -1231,6 +1402,24 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
             VentouseKind::A(va) => va.set_flux_pid_gains(pid),
             VentouseKind::B(vb) => vb.set_flux_pid_gains(pid),
             VentouseKind::C(vc) => vc.set_flux_pid_gains(pid),
+        }
+    }
+
+    /// get the temperature of the motors
+    fn get_board_temperature(&mut self) -> super::Result<[f32; 1]> {
+        match self {
+            VentouseKind::A(va) => va.get_board_temperature(),
+            VentouseKind::B(vb) => vb.get_board_temperature(),
+            VentouseKind::C(vc) => vc.get_board_temperature(),
+        }
+    }
+
+    /// get the DC bus voltage
+    fn get_bus_voltage(&mut self) -> super::Result<[f32; 1]> {
+        match self {
+            VentouseKind::A(va) => va.get_bus_voltage(),
+            VentouseKind::B(vb) => vb.get_bus_voltage(),
+            VentouseKind::C(vc) => vc.get_bus_voltage(),
         }
     }
 
@@ -1312,7 +1501,7 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
     }
 }
 
-mod conversion {
+pub mod conversion {
     // functions to convert encoder values to radians and vice versa
     pub fn encoder_to_rad(enc: i32, ppr: f32) -> f32 {
         enc as f32 / ppr * 6.28318530718 // 2*pi = 6.28

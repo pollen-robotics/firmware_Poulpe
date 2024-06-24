@@ -18,9 +18,9 @@ const SPI_FREQ: u32 = 2_000_000;
 use crate::{
     config::{self, ActuatorConfig, DonutHall},
     motor_control::{
+        analog::AnalogInput,
         sensors::{AD5047Sensor, I2cHallSensor, SensorKind},
-        RawSensorsIO,
-        BoardStatus,
+        BoardStatus, RawSensorsIO,
     },
     IrqsI2c, SHARED_MEMORY,
 };
@@ -35,8 +35,15 @@ pub async fn set_error_led() {
     SHARED_MEMORY.lock().await.set_error_led(true);
 }
 
+// function wrapping an angle in radians to
+// the range [-pi, pi]
+fn wrap_to_pi(angle: f32) -> f32 {
+    let PI = 3.14159265359;
+    (((angle + PI) % (2.0 * PI)) + (2.0 * PI)) % (2.0 * PI) - PI
+}
+
 #[embassy_executor::task]
-pub async fn control_loop(config: ActuatorConfig) {
+pub async fn control_loop(config: ActuatorConfig, hardware_zeros : [f32; config::N_AXIS]) {
     let mut spi_config = spi::Config::default();
     spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
     spi_config.bit_order = spi::BitOrder::MsbFirst;
@@ -301,6 +308,10 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     // error!("Donut sensor: {:#x}",val);
     /////////
+ 
+    // initialise the adc for motor temperature reading
+    #[cfg(not(feature = "no_temperture_sensor"))]
+    let mut motor_temperature_sensor = AnalogInput::new(config.temperature_sensor);
 
     // Setup the actuator with the configured ventouses
     #[cfg(feature = "orbita2d")]
@@ -313,13 +324,17 @@ pub async fn control_loop(config: ActuatorConfig) {
         [ad5047top, ad5047mid, ad5047bot],
     );
 
-    // trying to init the actuator
-    let mut init_error : BoardStatus = BoardStatus::Ok;
-    
-    // initialization of the actuator (try two times)
-    for try_i in 0..2 {
 
-        info!("Initialization try no. {:?}", try_i+1);
+    // set the hardware zeros
+    actuator.set_hardware_zeros(hardware_zeros);
+
+
+    // trying to init the actuator
+    let mut init_error: BoardStatus = BoardStatus::Ok;
+
+    // initialization of the actuator (try two times)
+    'init_loop: for try_i in 0..2 {
+        info!("Initialization try no. {:?}", try_i + 1);
         // no error at the beginning
         init_error = BoardStatus::Ok;
 
@@ -335,25 +350,40 @@ pub async fn control_loop(config: ActuatorConfig) {
                 // error on init
                 init_error = BoardStatus::InitError;
                 error!("Registers init error: {:?}", e);
-                continue; //  retry the init if there is an error
+                #[cfg(not(feature = "ignore_errors"))]
+                continue 'init_loop; //  retry the init if there is an error
             }
         }
 
         // read the axis sensors - but disable the torque to avoid the noise
-        #[cfg(feature = "orbita2d")]
-        actuator.set_torque([false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([false, false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
-                                                            // #[cfg(feature = "orbita2d")]
+                                                             // #[cfg(feature = "orbita2d")]
+        #[cfg(feature = "ec60")]
+        actuator.set_torque([false, false]).unwrap();
+
         Timer::after(Duration::from_micros(100000)).await;
 
-        let init_sensors = actuator.get_axis_sensors().unwrap();
+        let mut init_sensors = [0.0; config::N_AXIS];
+        match actuator.get_axis_sensors() {
+            Ok(sensors) => {
+                init_sensors = sensors;
+            }
+            Err(e) => {
+                error!("Error reading axis sensors: {:?}", e);
+                init_error = BoardStatus::SensorError;
+                continue; //  retry the init if there is an error
+            }
+        }
+        debug!("init sensors: {:?}", init_sensors);
+
         // #[cfg(feature = "orbita2d")]
         Timer::after(Duration::from_micros(100000)).await;
-        #[cfg(feature = "orbita2d")]
-        actuator.set_torque([true, true]).unwrap();
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([true, true, true]).unwrap();
+        // read the axis sensors
+        #[cfg(feature = "ec60")]
+        actuator.set_torque([true, true]).unwrap();
 
         // motor check - move the motors and check if the sensors are moving
         let res = actuator.check_motors_1().await;
@@ -362,28 +392,42 @@ pub async fn control_loop(config: ActuatorConfig) {
             Err(e) => {
                 init_error = BoardStatus::InitError;
                 error!("Motor check 1 error: {:?}", e);
+                #[cfg(not(feature = "ignore_errors"))]
+                continue 'init_loop; //  retry the init if there is an error
+            }
+        }
+
+        // read the sensors - but disable the torque to avoid the noise
+        #[cfg(feature = "orbita3d")]
+        actuator.set_torque([false, false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
+        #[cfg(feature = "ec60")]
+        actuator.set_torque([false, false]).unwrap();
+
+        Timer::after(Duration::from_micros(100000)).await;
+        // read the axis sensors
+        let mut moved_sensors = [0.0; config::N_AXIS];
+        match actuator.get_axis_sensors() {
+            Ok(sensors) => {
+                moved_sensors = sensors;
+            }
+            Err(e) => {
+                error!("Error reading axis sensors: {:?}", e);
+                init_error = BoardStatus::SensorError;
                 continue; //  retry the init if there is an error
             }
         }
-        
+        debug!("moved sensors: {:?}", moved_sensors);
 
-        // read the sensors - but disable the torque to avoid the noise
-        #[cfg(feature = "orbita2d")]
-        actuator.set_torque([false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
-        #[cfg(feature = "orbita3d")]
-        actuator.set_torque([false, false, false]).unwrap(); //FIXME: axis sensors are too noisy when torque is on
-
-        Timer::after(Duration::from_micros(100000)).await;
-
-        let moved_sensors = actuator.get_axis_sensors().unwrap();
         SHARED_MEMORY.lock().await.set_axis_sensor(moved_sensors);
 
         Timer::after(Duration::from_micros(100000)).await;
         // enable torques
-        #[cfg(feature = "orbita2d")]
-        actuator.set_torque([true, true]).unwrap();
+
         #[cfg(feature = "orbita3d")]
         actuator.set_torque([true, true, true]).unwrap();
+        // read the axis sensors
+        #[cfg(feature = "ec60")]
+        actuator.set_torque([true, true]).unwrap();
 
         // motor check - move the motors in the other direction
         let res = actuator.check_motors_2().await;
@@ -392,7 +436,8 @@ pub async fn control_loop(config: ActuatorConfig) {
             Err(e) => {
                 init_error = BoardStatus::InitError;
                 error!("Motor check 2 error: {:?}", e);
-                continue; //  retry the init if there is an error
+                #[cfg(not(feature = "ignore_errors"))]
+                continue 'init_loop; //  retry the init if there is an error
             }
         }
 
@@ -403,9 +448,14 @@ pub async fn control_loop(config: ActuatorConfig) {
         {
             for (i, s) in moved_sensors.iter().enumerate() {
                 diff[i] = *s - init_sensors[i];
+                // if motor moved acors 0 the diff will be bigger around 2PI - diff
                 if diff[i] > 3.141592 {
                     diff[i] = diff[i] - 2.0 * 3.141592;
+                } else if diff[i] < -3.141592 {
+                    diff[i] = diff[i] + 2.0 * 3.141592;
                 }
+
+                debug!("diff: {:?}", diff[i]);
 
                 if (diff[i] <= 0.0 && diff[i] > -0.08) || (diff[i] > 0.0 || diff[i].is_nan()) {
                     error!(
@@ -413,6 +463,8 @@ pub async fn control_loop(config: ActuatorConfig) {
                         i, diff[i]
                     );
                     init_error = BoardStatus::SensorError;
+                    #[cfg(not(feature = "ignore_errors"))]
+                    continue 'init_loop; //  retry the init if there is an error
                 }
             }
         }
@@ -420,34 +472,29 @@ pub async fn control_loop(config: ActuatorConfig) {
         {
             for (i, s) in moved_sensors.iter().enumerate() {
                 diff[i] = *s - init_sensors[i];
+                // if motor moved acors 0 the diff will be bigger around 2PI-diff
                 if diff[i] > 3.141592 {
                     diff[i] = diff[i] - 2.0 * 3.141592;
+                } else if diff[i] < -3.141592 {
+                    diff[i] = diff[i] + 2.0 * 3.141592;
                 }
 
-                // //WTF? We cannot use abs() for f32?
-                // let absdiff: f32 = if diff[i].is_sign_positive() {
-                //     diff[i]
-                // } else {
-                //     -diff[i]
-                // };
+                debug!("diff: {:?}", diff[i]);
 
-                if i == 0 {
-                    if (diff[i] > -0.1) || diff[i].is_nan() {
-                        error!(
-                            "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
-                            i, diff[i]
-                        );
-                        init_error = BoardStatus::SensorError;
-                    }
-                }
-                if i == 1 {
-                    if (diff[i] < 0.05) || diff[i].is_nan() {
-                        error!(
-                            "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
-                            i, diff[i]
-                        );
-                        init_error = BoardStatus::SensorError;
-                    }
+                #[cfg(feature = "ec45")]
+                let should_move: [f32; 2] = [-0.15, 0.05];
+                #[cfg(feature = "ec60")]
+                let should_move: [f32; 2] = [-0.25, 0.09];
+
+                let delta = libm::fabs(should_move[i] as f64) as f32;
+                if (diff[i] > should_move[i] + delta ) || (diff[i] < should_move[i] - delta) || diff[i].is_nan() {
+                    error!(
+                        "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
+                        i, diff[i]
+                    );
+                    init_error = BoardStatus::SensorError;
+                    #[cfg(not(feature = "ignore_errors"))]
+                    continue 'init_loop; //  retry the init if there is an error
                 }
             }
         }
@@ -459,74 +506,175 @@ pub async fn control_loop(config: ActuatorConfig) {
             // - Maybe torque off is not so good, moving motor can induce motion in the torque off motor...
 
             // actuator.set_torque([false, false, false]).unwrap();
-            // #[cfg(feature = "orbita3d")]
+
             let indices = actuator.find_index(&mut donut_hall).unwrap_or_else(|e| {
                 error!("Error finding index: {:?}", e);
                 init_error = BoardStatus::IndexError;
                 [255; config::N_AXIS]
             });
-            // #[cfg(feature = "orbita3d")]
+            info!("Found indices: {:?}", indices);
+            //TODO retry if 255 or duplicate
+
+            if indices.contains(&255)
+            // errors in finding the Hall
+            {
+                error!("Bad index!");
+                #[cfg(not(feature = "ignore_errors"))]
+                continue 'init_loop; //Retry
+            }
+            if (1..indices.len()).any(|i| indices[i..].contains(&indices[i - 1])) {
+                //thanks Stackoverflow
+                error!("Duplicate index!");
+                #[cfg(not(feature = "ignore_errors"))]
+                continue 'init_loop; //Retry
+            }
             actuator.set_index_sensor(indices);
-            // #[cfg(feature = "orbita3d")]
-            debug!("indices: {:?}", indices);
+            actuator.set_torque([false, false, false]).unwrap(); //be sure to torque off to avoid noise in axis sensors?
+            block_for(Duration::from_millis(10));
+            // let zeros = [1.0193205177783966, 0.7377220094203949, 0.4328247159719467]; //Orbita domain
+            let zeros = hardware_zeros;
+
+            if zeros[0] == zeros[1] && zeros[1] == zeros[2] && zeros[0] == 0.0 {
+                //Forgot to pass the zeros as argument! FIXME switch to a different zeroing mode?
+                // => assuming HallZero mode
+                error!("No zero given in paramter! => HallZero mode");
+                // Set the initial position to the axis sensor values (used for pc-side "sofwtare" zeroring )
+
+                let mut init_sensors = actuator.get_axis_sensors().unwrap();
+                init_sensors.iter_mut().for_each(|x| *x = wrap_to_pi(*x));
+                debug!("init axis sensors: {:?}", init_sensors);
+                let res = actuator.set_current_position(init_sensors);
+
+                match res {
+                    Ok(_) => {
+                        SHARED_MEMORY
+                            .lock()
+                            .await
+                            .set_current_position(init_sensors);
+                    }
+                    Err(e) => {
+                        init_error = BoardStatus::ZeroingError;
+                        error!("Error setting current position: {:?}", e);
+                    }
+                }
+                // #[cfg(feature = "orbita3d")]
+                let res = actuator.set_target_position(init_sensors);
+                // #[cfg(feature = "orbita3d")]
+                match res {
+                    Ok(_) => {
+                        SHARED_MEMORY.lock().await.set_target_position(init_sensors);
+                    }
+                    Err(e) => {
+                        init_error = BoardStatus::ZeroingError;
+                        error!("Error setting target position: {:?}", e);
+                    }
+                }
+            } else {
+                info!("Hardware zeros: {:?}", zeros);
+                let (mut offsets, found_turn) = actuator.compute_offset(indices, zeros).unwrap();
+
+                if !(found_turn[0] == found_turn[1] && found_turn[1] == found_turn[2]) {
+                    //It may be possible in certain case?? But better forbid this
+                    error!("Incoherent number of turn found! {:?}", found_turn);
+                    init_error = BoardStatus::ZeroingError;
+                    #[cfg(not(feature = "ignore_errors"))]
+                    continue 'init_loop;
+                }
+                if offsets.iter().any(|&x| x.is_nan()) {
+                    // Check for NaN
+                    error!("Bad offsets! {:?}", offsets);
+                    init_error = BoardStatus::ZeroingError;
+                    #[cfg(not(feature = "ignore_errors"))]
+                    continue 'init_loop;
+                }
+
+                let curpos = actuator.get_axis_sensors().unwrap();
+
+                offsets[0] *= -1.0 / config::BrushlessMotor::ecx22().axis_ratio();
+                offsets[1] *= -1.0 / config::BrushlessMotor::ecx22().axis_ratio();
+                offsets[2] *= -1.0 / config::BrushlessMotor::ecx22().axis_ratio();
+
+                offsets[0] += curpos[0];
+                offsets[1] += curpos[1];
+                offsets[2] += curpos[2];
+
+                debug!("indices: {:?} offsets: {:?}", indices, offsets);
+                actuator.set_current_position(offsets);
+            }
         }
-        // - Get the "closest" Hall for each motor
-        // - Get the "absolute" position of each motor
-        // - Set the index of the detected Hall for each motor
-        // - Wait for the PC to read theses values...
+
+
+        //Find zero for Orbita2D motors
+        #[cfg(feature = "orbita2d")]
+        {
+            actuator.set_torque([false, false]).unwrap(); //be sure to torque off to avoid noise in axis sensors?
+            block_for(Duration::from_millis(10));
+            // let zeros = [5.236674785614014, 1.6637036800384521]; //Orbita domain
+            let zeros = hardware_zeros;
+
+            if zeros[0] == zeros[1] && zeros[0] == 0.0 {
+                //Forgot to pass the zeros as argument! FIXME switch to a different zeroing mode?
+                error!("No zero given in paramter! => Relative zero mode");
+                // do nothing
+            } else {
+                info!("Hardware zeros: {:?}", zeros);
+                let mut curaxis = [0.0; config::N_AXIS];
+                for _ in 0..10{
+                    curaxis = actuator.get_axis_sensors().unwrap();
+                    if !curaxis[0].is_nan() && !curaxis[1].is_nan(){
+                        break;
+                    }
+                }
+                if curaxis[0].is_nan() || curaxis[1].is_nan() {
+                    error!("Error reading axis sensors - 10 tries failed!");
+                    init_error = BoardStatus::ZeroingError;
+                    #[cfg(not(feature = "ignore_errors"))]
+                    continue 'init_loop;
+                }
+
+                #[cfg(feature = "ec45")]
+                let r = 1.0/config::BrushlessMotor::ec45().axis_ratio();
+                #[cfg(feature = "ec60")]
+                let r = 1.0/config::BrushlessMotor::ec60().axis_ratio();
+                
+                let axis_offset = [wrap_to_pi(curaxis[0]-zeros[0]), wrap_to_pi(curaxis[1]-zeros[1])]; 
+
+                let mut motor_offsets =  [0.0; config::N_AXIS];
+                // inverse kinematics
+                motor_offsets[0] = -(r * axis_offset[0] + r * axis_offset[1]);
+                motor_offsets[1] = -(r * axis_offset[0] - r * axis_offset[1]);
+
+                // read the current motor posiitons
+                let curpos = actuator.get_current_position().unwrap();
+                motor_offsets[0] += curpos[0];
+                motor_offsets[1] += curpos[1];
+                // set the offset 
+                actuator.set_current_position(motor_offsets);
+            }
+        }
 
         block_for(Duration::from_millis(100));
         #[cfg(feature = "orbita2d")]
         actuator.set_torque([false, false]).unwrap();
 
-        // For compatibility with Orbita3d Houston
-        #[cfg(feature = "orbita3d")]
-        {
-            actuator.set_torque([false, false, false]).unwrap();
-            // #[cfg(feature = "orbita3d")]
-            let init_sensors = actuator.get_axis_sensors().unwrap();
-            debug!("init axis sensors: {:?}", init_sensors);
-
-            // #[cfg(feature = "orbita3d")]
-            let res = actuator.set_current_position(init_sensors);
-            // #[cfg(feature = "orbita3d")]
-            match res {
-                Ok(_) => {
-                    SHARED_MEMORY
-                        .lock()
-                        .await
-                        .set_current_position(init_sensors);
-                }
-                Err(e) => {
-                    init_error = BoardStatus::ZeroingError;
-                    error!("Error setting current position: {:?}", e);
-                }
-            }
-            // #[cfg(feature = "orbita3d")]
-            let res = actuator.set_target_position(init_sensors);
-            // #[cfg(feature = "orbita3d")]
-            match res {
-                Ok(_) => {
-                    SHARED_MEMORY.lock().await.set_target_position(init_sensors);
-                }
-                Err(e) => {
-                    init_error = BoardStatus::ZeroingError;
-                    error!("Error setting target position: {:?}", e);
-                }
-            }
-        }
         // if no error during init, we can break the loop
         if init_error == BoardStatus::Ok {
             debug!("init sensors: {:?}", init_sensors);
             debug!("moved sensors: {:?}", moved_sensors);
             debug!("diff sensors: {:?}", diff);
-            break;
+            break 'init_loop;
         }
+
+        #[cfg(feature = "ignore_errors")]
+        break 'init_loop; //  break the loop regardless of the error
     }
 
     // Print the error if there is one
-    if init_error == BoardStatus::Ok { info!("Init successfull!"); }
-    else { error!("Error during init, stopping control loop!");}
+    if init_error == BoardStatus::Ok {
+        info!("Init successfull!");
+    } else {
+        error!("Error during init, stopping control loop!");
+    }
 
     let curpos = actuator.get_current_position().unwrap();
     let tarpos = actuator.get_target_position().unwrap();
@@ -556,11 +704,14 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     // Init SharedMemory with real values before actually running the control loop
     SHARED_MEMORY.lock().await.init(&mut actuator);
-    if init_error != BoardStatus::Ok{
+
+    if init_error != BoardStatus::Ok {
         SHARED_MEMORY.lock().await.set_error_led(true);
     }
     // set the error state of the system
-    {SHARED_MEMORY.lock().await.set_error_state(init_error)};
+    {
+        SHARED_MEMORY.lock().await.set_error_state(init_error)
+    };
 
     //"Slow" registers
     let mut init_fluxpid = { SHARED_MEMORY.lock().await.get_flux_pid_gains() };
@@ -570,6 +721,9 @@ pub async fn control_loop(config: ActuatorConfig) {
     let mut init_uqudlimit = { SHARED_MEMORY.lock().await.get_uq_ud_limit() };
     let mut init_torquefluxlimit = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
     let mut init_velocitylimit = { SHARED_MEMORY.lock().await.get_velocity_limit() };
+
+    let mut init_torquefluxlimit_max = { SHARED_MEMORY.lock().await.get_torque_flux_limit_max() };
+    let mut init_velocitylimit_max = { SHARED_MEMORY.lock().await.get_velocity_limit_max() };
 
     let mut init_torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
     let mut init_target_position = { SHARED_MEMORY.lock().await.get_target_position() };
@@ -607,8 +761,6 @@ pub async fn control_loop(config: ActuatorConfig) {
     let mut ticker = Ticker::every(Duration::from_micros(1000));
 
     loop {
-
-        
         let pos = actuator.get_current_position().unwrap_or_else(|e| {
             error!("Error reading position: {:?}", e);
             error_led = true;
@@ -623,10 +775,41 @@ pub async fn control_loop(config: ActuatorConfig) {
 
         let mut torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
         let mut error_state = { SHARED_MEMORY.lock().await.get_error_state() };
-        if error_state != BoardStatus::Ok { // if init error, we turn off the torque
-            torque_on = [false; config::N_AXIS]; 
-            {SHARED_MEMORY.lock().await.set_torque_on(torque_on)};
+
+        #[cfg(not(feature = "ignore_errors"))] // if errors are ignored the operation continues
+        {
+            match error_state {
+                BoardStatus::InitError | BoardStatus::SensorError | BoardStatus::IndexError | BoardStatus::ZeroingError => {
+                    // if there was an init error the operation stops and cannot restart
+                    torque_on = [false; config::N_AXIS];
+                    {
+                        SHARED_MEMORY.lock().await.set_torque_on(torque_on)
+                    };
+                }
+                BoardStatus::BusVoltageError | BoardStatus::OverTemperatureError => {
+                    // if torque is on
+                    if torque_on.iter().any(|&x| x) {
+                        // if there was a catastrophic error, the operation stops but gently
+                        let home_position = [0.0; config::N_AXIS];
+                        {SHARED_MEMORY.lock().await.set_target_position(home_position)};
+                        let home_torque_limit = [0.3; config::N_AXIS];
+                        {SHARED_MEMORY.lock().await.set_torque_flux_limit(home_torque_limit)};
+                        let homing_velocity_limit = [0.1; config::N_AXIS];
+                        {SHARED_MEMORY.lock().await.set_velocity_limit(homing_velocity_limit)};
+                        // if at home position (close at 0.01 rad) turn off the all the torques
+                        if pos.iter().zip(home_position.iter()).all(|(a, b)| ((a - b) < 0.01) &&  ((a - b) > -0.01)) {
+                            torque_on = [false; config::N_AXIS];
+                            {
+                                SHARED_MEMORY.lock().await.set_torque_on(torque_on)
+                            };
+                        }
+                    }
+                }
+                _ => {} // if everything is ok, the operation continues
+            }
         }
+
+
         actuator.set_torque(torque_on).unwrap_or_else(|e| {
             error!("Error setting torque: {:?}", e);
             error_led = true;
@@ -637,6 +820,7 @@ pub async fn control_loop(config: ActuatorConfig) {
         let target = { SHARED_MEMORY.lock().await.get_target_position() };
 
         //Filtered
+        #[cfg(feature = "cmd_filter")]
         let mut target = { SHARED_MEMORY.lock().await.get_target_position() };
         #[cfg(feature = "cmd_filter")]
         target.iter_mut().enumerate().for_each(|(i, t)| {
@@ -653,6 +837,56 @@ pub async fn control_loop(config: ActuatorConfig) {
             error!("Error setting target pos: {:?}", e);
             error_led = true;
         });
+
+        let torquefluxlimit = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
+        let torquefluxMax = { SHARED_MEMORY.lock().await.get_torque_flux_limit_max() };
+        if torquefluxlimit != init_torquefluxlimit || torquefluxMax != init_torquefluxlimit_max {
+            let mut tl: [f32; config::N_AXIS] = [0.0; config::N_AXIS];
+            torquefluxlimit.iter().enumerate().for_each(|(i, t)| {
+                if *t <= 1.0 {
+                    tl[i] = *t * torquefluxMax[i] as f32;
+                } else {
+                    //Ensure we do not go beyond max
+                    tl[i] = torquefluxMax[i] as f32;
+                }
+            });
+            warn!(
+                "Setting torquefluxlimit: {:?} => {:?} (max={:?})",
+                torquefluxlimit, tl, torquefluxMax
+            );
+
+            actuator.set_torque_flux_limit(tl).unwrap_or_else(|e| {
+                error!("Error setting torque/flux limit: {:?}", e);
+                error_led = true;
+            });
+            init_torquefluxlimit = torquefluxlimit;
+            init_torquefluxlimit_max = torquefluxMax;
+        }
+
+        let velocitylimit = { SHARED_MEMORY.lock().await.get_velocity_limit() };
+        let velocityMax = { SHARED_MEMORY.lock().await.get_velocity_limit_max() };
+        if velocitylimit != init_velocitylimit || velocityMax != init_velocitylimit_max {
+            let mut vl: [f32; config::N_AXIS] = [0.0; config::N_AXIS];
+            velocitylimit.iter().enumerate().for_each(|(i, v)| {
+                if *v <= 1.0 {
+                    vl[i] = *v * velocityMax[i] as f32;
+                } else {
+                    //Ensure we do not go beyond max
+                    vl[i] = velocityMax[i] as f32;
+                }
+            });
+            warn!(
+                "Setting velocitylimit: {:?} => {:?} (max={:?})",
+                velocitylimit, vl, velocityMax
+            );
+
+            actuator.set_velocity_limit(vl).unwrap_or_else(|e| {
+                error!("Error setting velocity limit: {:?}", e);
+                error_led = true;
+            });
+            init_velocitylimit = velocitylimit;
+            init_velocitylimit_max = velocityMax;
+        }
 
         // add the feedforward control to the velocity loop
         #[cfg(feature = "velocity_feedforward")]
@@ -800,29 +1034,51 @@ pub async fn control_loop(config: ActuatorConfig) {
                 });
                 init_uqudlimit = uqudlimit;
             }
-
-            let torquefluxlimit = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
-            if torquefluxlimit != init_torquefluxlimit {
-                actuator
-                    .set_torque_flux_limit(torquefluxlimit)
-                    .unwrap_or_else(|e| {
-                        error!("Error setting torque/flux limit: {:?}", e);
-                        error_led = true;
+            /*
+                let torquefluxlimit = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
+                if torquefluxlimit != init_torquefluxlimit {
+                    let max = { SHARED_MEMORY.lock().await.get_torque_flux_limit_max() };
+                    let mut tl: [f32; config::N_AXIS] = [0.0; config::N_AXIS];
+                    torquefluxlimit.iter().enumerate().for_each(|(i, t)| {
+                        if *t * max[i] as f32 <= max[i] as f32 {
+                            tl[i] = *t * max[i] as f32;
+                        } else {
+                            //Ensure we do not go beyond max
+                            tl[i] = max[i] as f32;
+                        }
                     });
-                init_torquefluxlimit = torquefluxlimit;
-            }
 
-            let velocitylimit = { SHARED_MEMORY.lock().await.get_velocity_limit() };
-            if velocitylimit != init_velocitylimit {
-                actuator
-                    .set_velocity_limit(velocitylimit)
-                    .unwrap_or_else(|e| {
-                        error!("Error setting velocity limit: {:?}", e);
-                        error_led = true;
+                    actuator
+                        .set_torque_flux_limit(torquefluxlimit)
+                        .unwrap_or_else(|e| {
+                            error!("Error setting torque/flux limit: {:?}", e);
+                            error_led = true;
+                        });
+                    init_torquefluxlimit = torquefluxlimit;
+                }
+
+                let velocitylimit = { SHARED_MEMORY.lock().await.get_velocity_limit() };
+                if velocitylimit != init_velocitylimit {
+                    let max = { SHARED_MEMORY.lock().await.get_torque_flux_limit_max() };
+                    let mut vl: [f32; config::N_AXIS] = [0.0; config::N_AXIS];
+                    velocitylimit.iter().enumerate().for_each(|(i, v)| {
+                        if *v * max[i] as f32 <= max[i] as f32 {
+                            vl[i] = *v * max[i] as f32;
+                        } else {
+                            //Ensure we do not go beyond max
+                            vl[i] = max[i] as f32;
+                        }
                     });
-                init_velocitylimit = velocitylimit;
-            }
 
+                    actuator
+                        .set_velocity_limit(velocitylimit)
+                        .unwrap_or_else(|e| {
+                            error!("Error setting velocity limit: {:?}", e);
+                            error_led = true;
+                        });
+                    init_velocitylimit = velocitylimit;
+                }
+            */
             // //Less error at lower frequency...
             // let sensors=actuator.get_axis_sensors();
             // match sensors {
@@ -836,6 +1092,126 @@ pub async fn control_loop(config: ActuatorConfig) {
             // 	    error!("Axis sensors error");
             // 	}
             // }
+
+            // perform checks on the actuator to determine the error state
+            let mut max_temp = 0.0;
+            // get temperature
+            match actuator.get_board_temperature() {
+                Ok(t) => {
+                    // save the temperatures
+                    {
+                        SHARED_MEMORY.lock().await.set_board_temperature(t)
+                    };
+                    // find the max temperature
+                    max_temp = t.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+                    debug!("Board temperature: {:?}", t);
+                }
+                Err(e) => {
+                    error_led = true;
+                    error!("Board temperature reading error {:?}", e);
+                }
+            }
+
+            #[cfg(not(feature = "no_temperature_sensor"))]
+            {
+                // read the motor temperature
+                match motor_temperature_sensor.read_temperature() {
+                    Ok(t) => {
+                        {
+                            SHARED_MEMORY.lock().await.set_motor_temperature(t)
+                        };
+                        if max_temp < t { // check if the motor temperature is the highest
+                            max_temp = t;
+                        }
+                        debug!("Motor temperature: {:?}", t);
+                    }
+                    Err(e) => {
+                        error_led = true;
+                        error!("Motor temperature reading error {:?}", e);
+                    }
+                }
+            }
+
+            // verify the temperature
+            if max_temp > config::MAX_TEMP {
+                // if temperature is above maximal temperature stop everything 
+                error_led = true;
+                {
+                    SHARED_MEMORY
+                        .lock()
+                        .await
+                        .set_error_state(BoardStatus::OverTemperatureError)
+                };
+                error!(
+                    "Temperature {} is too high (above {} degrees)!",
+                    max_temp, config::MAX_TEMP
+                );
+            } else if max_temp > config::HIGH_TEMP {
+                // if temperature is high but not too high
+                {
+                    SHARED_MEMORY
+                        .lock()
+                        .await
+                        .set_error_state(BoardStatus::HighTemperatureState)
+                };
+                warn!(
+                    "Temperature {} is very high (above {} degrees)!",
+                    max_temp, config::HIGH_TEMP
+                );
+            } else { // the temperature is fine - reset the error state if it was only high temperature
+                if error_state == BoardStatus::HighTemperatureState {
+                    {
+                        SHARED_MEMORY
+                            .lock()
+                            .await
+                            .set_error_state(BoardStatus::Ok)
+                    };
+                }
+            }
+
+            // get dc bus voltage
+            let mut bus_error = false;
+            match actuator.get_bus_voltage() {
+                Ok(v) => {
+                    {
+                        SHARED_MEMORY.lock().await.set_bus_voltage(v)
+                    };
+                    v.iter().for_each(|v| {
+                        if *v < 10.0 {
+                            bus_error = true;
+                        }
+                    });
+                    debug!("Bus voltage: {:?}", v);
+                }
+                Err(e) => {
+                    error_led = true;
+                    error!("Bus voltage reading error {:?}", e);
+                }
+            }
+            if bus_error {
+                // stop everything if the bus voltage is too low
+                error_led = true;
+                {
+                    SHARED_MEMORY
+                        .lock()
+                        .await
+                        .set_error_state(BoardStatus::BusVoltageError)
+                };
+                error!("Bus voltage is too low (under 10V)!");
+            }
+            
+            // dispaly current state
+            match error_state {
+                BoardStatus::Ok => {
+                    info!("Board state: {:?}",error_state);
+                }
+                BoardStatus::HighTemperatureState => {
+                    warn!("Board state: {:?}",error_state);
+                }
+                _ => {
+                    error!("Board state: {:?}",error_state);
+                }
+            }
 
             slow_timer = 1000;
         } else {

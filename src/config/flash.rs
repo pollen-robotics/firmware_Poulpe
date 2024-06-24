@@ -11,7 +11,7 @@ const ADDR: u32 = 5*128*1024; // This is the offset into bank 1
 // data structure to be stored in flash
 // this structure can be as big as necessary
 // for the moment it is just a board_id and 3 sensor offsets
-#[derive(Debug, Format)]
+#[derive(Debug, Format, Clone, Copy, PartialEq)]
 pub struct FlashData {
     pub board_id: u8,
     pub sensor_offsets: [f32; 3],
@@ -76,6 +76,37 @@ impl<'d> FlashManager<'d> {
             Err(e) => error!("Write error: {:?}", e),
         }
         Ok(())
+    }
+
+    pub fn lazy_checked_write(&mut self, data: FlashData) -> Result<(), embassy_stm32::flash::Error> {
+        // verify if data already in flash 
+        match self.read(){
+            Ok(read_data) => {
+                if read_data == data {
+                    info!("Data already in flash, skipping write");
+                    return Ok(());
+                }
+            },
+            Err(_) => {
+                // if error reading, continue with write
+            }
+        }
+        match self.write(data){
+            Ok(()) => {
+                let read_data = self.read().unwrap();
+                info!("Data read: {:?}", read_data);
+                if read_data == data {
+                    Ok(())
+                } else {
+                    error!("Data read does not match data written");
+                    Err(embassy_stm32::flash::Error::Prog)
+                }
+            },
+            Err(e) => {
+                error!("Error writing data: {:?}", e);
+                Err(e)
+            }
+        }
     }
 
     pub fn read(&mut self) -> Result<FlashData, embassy_stm32::flash::Error> {

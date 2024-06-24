@@ -9,7 +9,13 @@ pub const N_AXIS: usize = 2;
 #[cfg(feature = "orbita3d")]
 pub const N_AXIS: usize = 3;
 
-pub static DXL_ID: u8 = 52;
+// maximal temperature limits for the motor and the boards
+// high temeperature state - only warning
+pub const HIGH_TEMP: f32 = 65.0;
+// maximal temperature limit - error state
+pub const MAX_TEMP: f32 = 75.0;
+
+// pub static DXL_ID: u8 = 42;
 
 
 pub type DynamixelUart = Uart<'static, p::USART1, p::DMA1_CH0, p::DMA1_CH1>;
@@ -18,6 +24,7 @@ use crate::motor_control::{
     sensors::{AD5047Sensor, AksimSensor, I2cHallSensor},
     sensors::{I2cHallConfig, SensorConfig},
     ventouse::{Ventouse, VentouseConfig},
+    analog::AnalogInputConfig,
 };
 
 
@@ -47,8 +54,15 @@ pub type AD5047Top<'d> = AD5047Sensor<'d, p::SPI4, p::PA4>;
 pub type AD5047Mid<'d> = AD5047Sensor<'d, p::SPI4, p::PE4>;
 pub type AD5047Bot<'d> = AD5047Sensor<'d, p::SPI4, p::PA15>;
 
+
+pub type TemperatureSensorConfig = AnalogInputConfig<p::ADC1, p::PB1>;
+
+
 // pub type DonutHall<'d> = I2cHallSensor<'d, p::I2C1, p::PB6, p::PB7>;
 pub type DonutHall<'d> = I2cHallSensor<p::I2C1>;
+
+// from build.rs (should contain DXL_ID, HARDWARE_ZEROS and GIT_HASH)
+include!(concat!(env!("OUT_DIR"), "/constants.rs"));
 
 pub struct ActuatorConfig {
     #[cfg(feature = "orbita3d")]
@@ -69,6 +83,8 @@ pub struct ActuatorConfig {
     pub ad5047bot: AD5047ConfigBot,
     #[cfg(feature = "orbita3d")]
     pub donut_hall: DonutHallConfig,
+    #[cfg(not(feature = "no_temperture_sensor"))]
+    pub temperature_sensor: TemperatureSensorConfig
 }
 
 mod motor;

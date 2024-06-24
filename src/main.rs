@@ -16,7 +16,7 @@ use embassy_stm32::{i2c, Config as stm32_config};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{block_for, Duration, Timer};
-
+use crate::config::TemperatureSensorConfig;
 use embassy_stm32::flash::{Flash,get_flash_regions};
 
 mod config;
@@ -55,6 +55,9 @@ pub fn exit() -> ! {
     }
 }
 
+// from build.rs
+// include!(concat!(env!("OUT_DIR"), "/constants.rs"));
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     info!("==== Pollen Robotics ====");
@@ -62,6 +65,9 @@ async fn main(spawner: Spawner) {
     info!("Poulpe: Orbita 3D");
     #[cfg(feature = "orbita2d")]
     info!("Poulpe: Orbita 2D");
+
+    info!("Git commit: {:?}", config::GIT_HASH); //TODO: read access from a dxl msg?
+                                                 // info!("Hardware_zeros: {:?}", config::HARDWARE_ZEROS); // For Orbita3d firmware zero
 
     // 440MHz (without HSE)
     let mut stm32_conf = stm32_config::default();
@@ -80,6 +86,14 @@ async fn main(spawner: Spawner) {
             divq: Some(PllDiv::DIV5), //PLLQ = 5;
             divr: Some(PllDiv::DIV5), //PLLR = 5;
         });
+        stm32_conf.rcc.pll2 = Some(Pll {
+            source: PllSource::CSI,
+            prediv: PllPreDiv::DIV1,  //PLLM = 1;
+            mul: PllMul::MUL220,      //PLLN = 220
+            divp: Some(PllDiv::DIV2), //PLLP = 2;
+            divq: Some(PllDiv::DIV5), //PLLQ = 5;
+            divr: Some(PllDiv::DIV5), //PLLR = 5;
+        });
         stm32_conf.rcc.sys = Sysclk::PLL1_P; // 440 Mhz
         stm32_conf.rcc.ahb_pre = AHBPrescaler::DIV2; // 220 Mhz
         stm32_conf.rcc.apb1_pre = APBPrescaler::DIV2; // 110 Mhz
@@ -91,27 +105,56 @@ async fn main(spawner: Spawner) {
 
     let mut p = embassy_stm32::init(stm32_conf);
 
+
+    // set the default values into the memory
+    let mut board_id = config::DXL_ID;
+    let mut hardware_zeros = config::HARDWARE_ZEROS;
+    
+
+    #[cfg(feature = "use_flash")]
+    {
+    
     use config::flash::{FlashManager, FlashData};
     let mut flash_manager = FlashManager::new(p.FLASH);
-
-    #[cfg(feature = "update_flash")]
+    #[cfg(feature = "write_flash" )]
     {
-        let save_to_flash = FlashData{
+        let mut poulpe_config = FlashData{
             board_id : config::DXL_ID,
-            sensor_offsets : [0.0, 0.0, 0.0],
+            sensor_offsets : config::HARDWARE_ZEROS,
         };
-        unwrap!(flash_manager.write(save_to_flash));
+        // try to write to flash 3 times if it fails stop the loop
+        for try_i in 0..5 {
+            info!("Saving to flash {:?}, try number {:?}", poulpe_config, try_i);
+            match flash_manager.lazy_checked_write(poulpe_config){
+                Ok(()) => {
+                    info!("Write OK");
+                    break;
+                }
+                Err(e) => {
+                    error!("Write error: {:?}", e);
+                }
+            }
+            Timer::after(Duration::from_millis(300)).await;
+        }
     }
-    let mut board_id = config::DXL_ID;
     match flash_manager.read(){
         Ok(b) => {
             info!("Read from flash: {:?}", b);
-            board_id = b.board_id;
+            // check if empty data
+            if b.board_id == 255 || b.sensor_offsets.iter().any(|&x| x.is_nan()){
+                error!("Data in flash empty or corrupted, using default values! {}, {:?}", board_id, hardware_zeros);
+            }else{
+                info!("Data in flash valid, using values from flash");
+                board_id = b.board_id;
+                hardware_zeros = b.sensor_offsets;
+            }
         }
         Err(e) => {
-            error!("Error reading from flash: {:?}", e);
+            error!("Error reading from flash: {:?}, Using default values! {}, {:?}", e, board_id, hardware_zeros);
         }
     }
+    }
+    
 
     // Spawn the control loop
     #[cfg(feature = "orbita3d")]
@@ -147,6 +190,8 @@ async fn main(spawner: Spawner) {
         ad5047top: AD5047ConfigTop { cs: p.PA4 },
         ad5047mid: AD5047ConfigMid { cs: p.PE4 },
         ad5047bot: AD5047ConfigBot { cs: p.PA15 },
+        #[cfg(not(feature = "no_temperture_sensor"))]
+        temperature_sensor: TemperatureSensorConfig { adc: p.ADC1, pin: p.PB1 },
 
         donut_hall: I2cHallConfig {
             peri: p.I2C1,
@@ -177,9 +222,13 @@ async fn main(spawner: Spawner) {
 
         aksim: AksimConfig { cs: p.PA15 },
         ad5047: AD5047Config { cs: p.PE4 },
+        #[cfg(not(feature = "no_temperture_sensor"))]
+        temperature_sensor: TemperatureSensorConfig { adc: p.ADC1, pin: p.PB1 },
+        aksim: AksimConfig { cs: p.PA15 },
+        ad5047: AD5047Config { cs: p.PE4 },
     };
 
-    unwrap!(spawner.spawn(motor_control::task::control_loop(actuator_config)));
+    unwrap!(spawner.spawn(motor_control::task::control_loop(actuator_config, hardware_zeros)));
 
     // Prepare and spawn the DXL communication task
     let mut usart_config = usart_config::default();
@@ -226,7 +275,13 @@ async fn main(spawner: Spawner) {
 
     loop {
         let errorled = { SHARED_MEMORY.lock().await.get_error_led() };
+        let errorled = { SHARED_MEMORY.lock().await.get_error_led() };
 
+        if errorled {
+            led_error.set_high();
+        } else {
+            led_error.set_low();
+        }
         if errorled {
             led_error.set_high();
         } else {
