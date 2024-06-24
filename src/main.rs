@@ -118,9 +118,15 @@ async fn main(spawner: Spawner) {
     let mut flash_manager = FlashManager::new(p.FLASH);
     #[cfg(feature = "write_flash" )]
     {
+        info!("Writing to flash");
+        // user want to use these values
+        // and write them to flash
+        board_id = config::DXL_ID;
+        hardware_zeros = config::HARDWARE_ZEROS;
+
         let mut poulpe_config = FlashData{
-            board_id : config::DXL_ID,
-            sensor_offsets : config::HARDWARE_ZEROS,
+            board_id : board_id,
+            sensor_offsets : hardware_zeros,
         };
         // try to write to flash 3 times if it fails stop the loop
         for try_i in 0..5 {
@@ -137,22 +143,27 @@ async fn main(spawner: Spawner) {
             Timer::after(Duration::from_millis(300)).await;
         }
     }
-    match flash_manager.read(){
-        Ok(b) => {
-            info!("Read from flash: {:?}", b);
-            // check if empty data
-            if b.board_id == 255 || b.sensor_offsets.iter().any(|&x| x.is_nan()){
-                error!("Data in flash empty or corrupted, using default values! {}, {:?}", board_id, hardware_zeros);
-            }else{
-                info!("Data in flash valid, using values from flash");
-                board_id = b.board_id;
-                hardware_zeros = b.sensor_offsets;
+    #[cfg(not(feature = "write_flash"))]
+    {
+        info!("Reading from flash");
+        match flash_manager.read(){
+            Ok(b) => {
+                info!("Read from flash: {:?}", b);
+                // check if empty data
+                if b.board_id == 255 || b.sensor_offsets.iter().any(|&x| x.is_nan()){
+                    error!("Data in flash empty or corrupted, using default values! {}, {:?}", board_id, hardware_zeros);
+                }else{
+                    info!("Data in flash valid, using values from flash");
+                    board_id = b.board_id;
+                    hardware_zeros = b.sensor_offsets;
+                }
+            }
+            Err(e) => {
+                error!("Error reading from flash: {:?}, Using default values! {}, {:?}", e, board_id, hardware_zeros);
             }
         }
-        Err(e) => {
-            error!("Error reading from flash: {:?}, Using default values! {}, {:?}", e, board_id, hardware_zeros);
-        }
     }
+
     }
     
 
