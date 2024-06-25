@@ -6,6 +6,7 @@
 #![feature(async_fn_in_trait)]
 #![feature(array_methods)]
 
+use config::flash;
 use defmt::{info, unwrap, error};
 use embassy_executor::Spawner;
 use embassy_stm32::dma::NoDma;
@@ -111,38 +112,25 @@ async fn main(spawner: Spawner) {
 
     // set the default values into the memory
     let mut board_id = config::DXL_ID;
-    let mut hardware_zeros = config::HARDWARE_ZEROS;
+    let mut hardware_zeros: [f32; config::N_AXIS] = config::HARDWARE_ZEROS;
     
 
     #[cfg(feature = "use_flash")]
     {
     
-    let mut flash_manager = FlashManager::new(p.FLASH);
+    let mut flash_manager = FlashManager::new(p.FLASH).await;
     #[cfg(feature = "write_flash" )]
     {
         info!("Writing to flash");
         // user want to use these values
         // and write them to flash
-        board_id = config::DXL_ID;
-        hardware_zeros = config::HARDWARE_ZEROS;
-
         let mut poulpe_config = FlashData{
             board_id : board_id,
             sensor_offsets : hardware_zeros,
         };
-        // try to write to flash 3 times if it fails stop the loop
-        for try_i in 0..5 {
-            info!("Saving to flash {:?}, try number {:?}", poulpe_config, try_i);
-            match flash_manager.lazy_checked_write(poulpe_config){
-                Ok(()) => {
-                    info!("Write OK");
-                    break;
-                }
-                Err(e) => {
-                    error!("Write error: {:?}", e);
-                }
-            }
-            Timer::after(Duration::from_millis(300)).await;
+        match flash_manager.lazy_checked_write(poulpe_config, 5).await{
+            Ok(()) => info!("Write to flash OK"),
+            Err(e) => error!("Error writing to flash: {:?}", e),
         }
     }
     #[cfg(not(feature = "write_flash"))]
@@ -152,8 +140,8 @@ async fn main(spawner: Spawner) {
             Ok(b) => {
                 info!("Read from flash: {:?}", b);
                 // check if empty data
-                if b.board_id == 255 || b.sensor_offsets.iter().any(|&x| x.is_nan()){
-                    error!("Data in flash empty or corrupted, using default values! {}, {:?}", board_id, hardware_zeros);
+                if b.is_valid(){
+                    error!("Data in flash is empty or corrupted, using default values! {}, {:?}", board_id, hardware_zeros);
                 }else{
                     info!("Data in flash valid, using values from flash");
                     board_id = b.board_id;
@@ -237,8 +225,6 @@ async fn main(spawner: Spawner) {
         ad5047: AD5047Config { cs: p.PE4 },
         #[cfg(not(feature = "no_temperture_sensor"))]
         temperature_sensor: TemperatureSensorConfig { adc: p.ADC1, pin: p.PB1 },
-        aksim: AksimConfig { cs: p.PA15 },
-        ad5047: AD5047Config { cs: p.PE4 },
     };
 
     unwrap!(spawner.spawn(motor_control::task::control_loop(actuator_config, hardware_zeros)));

@@ -31,7 +31,6 @@ impl<'d, const N: usize> Actuator<'d, N> {
             sensors,
             index_sensor: [0xff; N],
             inverted: -1.0,
-            hardware_zeros: [0.0; N],
         }
     }
     #[cfg(feature = "orbita2d")]
@@ -40,6 +39,7 @@ impl<'d, const N: usize> Actuator<'d, N> {
             axes,
             sensors,
             inverted: 1.0,
+            hardware_zeros: [0.0; N],
         }
     }
 

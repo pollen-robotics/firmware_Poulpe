@@ -4,6 +4,8 @@ use embassy_stm32::peripherals as p;
 use defmt::{info, unwrap, error, Format};
 use embassy_time::{block_for, Duration, Timer};
 
+use crate::config::N_AXIS;
+
 // the address of the 5th sector of the flash memory
 // it can be any other sector that is not used by the program
 const ADDR: u32 = 5*128*1024; // This is the offset into bank 1
@@ -14,10 +16,20 @@ const ADDR: u32 = 5*128*1024; // This is the offset into bank 1
 #[derive(Debug, Format, Clone, Copy, PartialEq)]
 pub struct FlashData {
     pub board_id: u8,
-    pub sensor_offsets: [f32; 3],
+    pub sensor_offsets: [f32; N_AXIS],
 }
 
+
+/**
+ * Implementation of the FlashData structure
+ * It has methods to convert the data structure to a byte array and vice versa
+ * It also implements a method to check if the data structure is valid
+ */
 impl FlashData {
+    /**
+     * Convert the data structure to a byte array
+     * @return [u8; 32]
+     */
     pub fn to_bytes(&self) -> [u8; 32] {
         let mut bytes = [0u8; 32];
         bytes[0] = self.board_id;
@@ -28,19 +40,35 @@ impl FlashData {
         bytes
     }
 
+    /**
+     * Convert a byte array to the data structure
+     * @param bytes: [u8; 32]
+     * @return FlashData
+     */
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
         let board_id = bytes[0];
-        let mut sensor_offsets_bytes = [0u8; 12];
-        sensor_offsets_bytes.copy_from_slice(&bytes[1..13]);
-        let sensor_offsets = [
-            f32::from_le_bytes([sensor_offsets_bytes[0], sensor_offsets_bytes[1], sensor_offsets_bytes[2], sensor_offsets_bytes[3]]),
-            f32::from_le_bytes([sensor_offsets_bytes[4], sensor_offsets_bytes[5], sensor_offsets_bytes[6], sensor_offsets_bytes[7]]),
-            f32::from_le_bytes([sensor_offsets_bytes[8], sensor_offsets_bytes[9], sensor_offsets_bytes[10], sensor_offsets_bytes[11]]),
-        ];
+        let mut sensor_offsets_bytes = [0u8; N_AXIS*4];
+        sensor_offsets_bytes.copy_from_slice(&bytes[1..N_AXIS*4+1]);
+
+        // convert bytes to f32 using a for loop
+        let mut sensor_offsets = [0.0; N_AXIS];
+        for i in 0..N_AXIS {
+            sensor_offsets[i] = f32::from_le_bytes([sensor_offsets_bytes[i*4], sensor_offsets_bytes[i*4+1], sensor_offsets_bytes[i*4+2], sensor_offsets_bytes[i*4+3]]);
+        }
         Self {
             board_id,
             sensor_offsets,
         }
+    }
+
+    /**
+     * Check if the data structure is valid
+     * The data structure is valid if the board_id is 255 or if any of the sensor offsets is NaN
+     * 
+     * @return bool
+     */
+    pub fn is_valid(&self) -> bool {
+        self.board_id == 255 || self.sensor_offsets.iter().any(|&x| x.is_nan())
     }
 
 }
@@ -51,10 +79,10 @@ pub struct FlashManager<'d>{
 }
 
 impl<'d> FlashManager<'d> {
-    pub fn new(flash_config: p::FLASH) -> Self {  
+    pub async fn new(flash_config: p::FLASH) -> Self {  
         let flash = Flash::new_blocking(flash_config).into_blocking_regions().bank1_region;
         // wait for the flash to be ready
-        Timer::after(Duration::from_millis(400));
+        Timer::after(Duration::from_millis(400)).await;
         // return the flash
         Self {
             flash_region: flash,
@@ -62,11 +90,22 @@ impl<'d> FlashManager<'d> {
         
     }
 
-    pub fn write(&mut self, data: FlashData) -> Result<(), embassy_stm32::flash::Error> {
+    /**
+     * Write data to flash, optionally erase the sector before writing
+     * @param data: data to write to flash
+     * @param erase: if true erase the sector before writing
+     * @return Result<(), Error>
+     */
+    pub async fn write(&mut self, data: FlashData, erase: bool) -> Result<(), embassy_stm32::flash::Error> {
         let bytes = data.to_bytes();
-        info!("Erasing...");
-        unwrap!(self.flash_region.blocking_erase(ADDR, ADDR + 128 * 1024));
-        Timer::after(Duration::from_millis(100));
+        if erase {
+            info!("Erasing...");
+            match (self.flash_region.blocking_erase(ADDR, ADDR + 128 * 1024)){
+                Ok(()) => info!("Erase OK"),
+                Err(e) => error!("Erase error: {:?}", e),
+            }
+        }
+        Timer::after(Duration::from_millis(100)).await;
         info!("Writing...");
         match self.flash_region.blocking_write(
             ADDR,
@@ -78,7 +117,15 @@ impl<'d> FlashManager<'d> {
         Ok(())
     }
 
-    pub fn lazy_checked_write(&mut self, data: FlashData) -> Result<(), embassy_stm32::flash::Error> {
+    /**
+     * Write data to flash only if it is different from the data already in flash
+     * Tried to write to flash multiple times if it fails
+     * 
+     * @param data: data to write to flash
+     * @param no_tries: number of tries to write to flash
+     * @return Result<(), Error>
+     */
+    pub async fn lazy_checked_write(&mut self, data: FlashData, no_tries: i32) -> Result<(), embassy_stm32::flash::Error> {
         // verify if data already in flash 
         match self.read(){
             Ok(read_data) => {
@@ -91,27 +138,49 @@ impl<'d> FlashManager<'d> {
                 // if error reading, continue with write
             }
         }
-        match self.write(data){
-            Ok(()) => {
-                let read_data = self.read().unwrap();
-                info!("Data read: {:?}", read_data);
-                if read_data == data {
-                    Ok(())
-                } else {
-                    error!("Data read does not match data written");
-                    Err(embassy_stm32::flash::Error::Prog)
+        // try to write to flash 3 times if it fails stop the loop
+        for try_i in 0..no_tries {
+            info!("Saving to flash {:?}, try number {:?}", data, try_i);
+            Timer::after(Duration::from_millis(100)).await;
+            match self.write(data, true).await{
+                Ok(()) => {
+                    let read_data = match self.read(){
+                        Ok(data) => data,
+                        Err(e) => {
+                            error!("Error reading data after write: {:?}", e);
+                            continue;
+                        }
+                    };
+                    info!("Data read: {:?}", read_data);
+                    if read_data == data {
+                        return Ok(());
+                    } else {
+                        error!("Data read does not match data written");
+                    }
+                },
+                Err(e) => {
+                    error!("Error writing data: {:?}", e);
                 }
-            },
-            Err(e) => {
-                error!("Error writing data: {:?}", e);
-                Err(e)
             }
         }
+        error!("Failed to write to flash after {:?} tries", no_tries);
+        Err(embassy_stm32::flash::Error::Prog)
+        
     }
 
+    /**
+     * Read data from flash
+     * @return Result<FlashData, Error>
+     */
     pub fn read(&mut self) -> Result<FlashData, embassy_stm32::flash::Error> {
         let mut buf = [0u8; 32];
-        unwrap!(self.flash_region.blocking_read(ADDR, &mut buf));
+        match self.flash_region.blocking_read(ADDR, &mut buf){
+            Ok(()) => info!("Read OK"),
+            Err(e) => {
+                error!("Read error: {:?}", e);
+                return Err(e);
+            }
+        }
         Ok(FlashData::from_bytes(buf))
     }
 
