@@ -2,10 +2,10 @@
 
 This crate contains the configuration of the poule project. It is used to store the configuration of the different crates and to provide a common interface to access the configuration parameters.
 
-It has two main modules:
+It has three main modules:
 - `BrushlessMotor`: Contains the configuration of the BLDC motor control crate
 - `CurrentSense` : Contains the configuration of the current sense crate
-
+- `Flash` : Contains the configuration of the flash memory crate
 
 ## BrushlessMotor
 Brushless motor control configuration module. It contains the following configuration parameters:
@@ -57,6 +57,25 @@ adc_i1_scale_offset: u32,
 ```
 
 The `CurrentSense` struct is used to configure the current sense module. It is used to calculate the actual current value from the ADC readings. 
+
+
+## Flash memory configuration
+
+Flash memory is configured, writen and read using the `Flashmanager` struct.
+While the `FlashData` contains the data that is stored in the flash memory. The `FlashData` struct has the following fields:
+```rust
+board_id: u32, // dynamixel id of the board
+sensor_offset: [f32; N_AXIS], // sensor offset values (2 values for orbit2d and 3 for orbit3d)
+```
+This structure can be easiliy extended in the future to store more data in the flash memory.
+
+For the moment all the data is stored to a fixed location:
+```rust
+// the address of the 5th sector of the flash memory
+// it can be any other sector that is not used by the program
+const ADDR: u32 = 5*128*1024; // This is the offset into bank 1
+```
+
 
 ## Global configuration
 

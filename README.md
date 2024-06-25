@@ -10,12 +10,13 @@ A complete firmware stack for the [Poulpe](https://github.com/pollen-robotics/el
     - [Run/Flush](#runflush)
 - [Software architecture](#software-architecture)
     - [Firmware configuration](#firmware-configuration)
-    - [Command line arguments](#command-line-arguments)
-    - [Orbita2d architecture](#orbita2d-architecture)
-    - [Orbita3d architecture](#orbita3d-architecture)
+    - [Dynamixel ID and sensor zeros configuration](#dynamixel-id-and-sensor-zeros-configuration)
+- [Orbita2d architecture](#orbita2d-architecture)
+- [Orbita3d architecture](#orbita3d-architecture)
 - [Safety features](#safety-features)
     - [Board state](#board-state)
 - [Future work and improvements](#future-work-and-improvements)
+
 
 
 
@@ -75,6 +76,7 @@ The software is divided into four main rust modules:
 - `config` - Configuration mofule for the motor control task - [Read more](src/config/README.md)
     - `motor` - Motor configuration
     - `current_sense` - Current sense configuration
+    - `flash` - Flash memory management and configuration
 - `shared_memory` - Shared memory between the motor controla and dynamixel communication tasks
 
 #### Real-time tasks
@@ -118,25 +120,55 @@ These features are used to decide which output angle of the motor to control
 <b>Safety features</b>
 Used to configure the safety features of the board
 - `no_temperature_sensor` - The board does not have a temperature sensor, avoid reading it and using it for safety
+- `ignore_errors` - Ignore the safety errors and continue the operation
 
+<b>Flash memory features</b>
+Used to enable/disable the usage of the flash memory
+- `use_flash` - Enable the usage of the flash memory
+- `write_flash` - Write the configuration to the flash memory (if not used the configuration will be read from flash - if available)
 
-### Command line arguments
+### Dynamixel ID and sensor zeros configuration
 
-There are two command line arguments that can be used to configure the firmware:
+There are two ways to configure the firmware:
+- By writing and reading the configuration to/from the flash memory **(default)**
+- By using the command line arguments
+
+#### Flash memory configuration
+To enable using flash memory make sure to include the `use_flash` feature in the `Cargo.toml` (it is included by default).
+
+- If the `use_flash` feature is enabled the configuration will be read from the flash memory on the boot. If the configuration is not found in the flash memory the default configuration  will be used. (`DXL_ID=42` and `HARDWARE_ZEROS=[0, 0, 0]` for orbita3d and `HARDWARE_ZEROS=[0, 0]` for orbita2d)
+
+- To write the configuration to the flash memory use the `write_flash` feature and set the command line arguments `DXL_ID` and `ZEROS` to the desired values. The configuration will be written to the flash memory and will be read from it on the next boot. 
+
+```bash
+DXL_ID=50 ZEROS=0.12,0.34,0.56 cargo run --release --features write_flash
+```
+
+- Once the configuration is written to the flash memory the `write_flash` feature can be removed as well as the command line arguments. The firmaware will automatically read the configuration from the flash memory on the next boot. 
+
+```bash
+cargo run --release # the configuration will be read from the flash memory
+```
+
+- To reset the configuration in the flash memory use the `write_flash` feature and dont set any command line arguemnts. The configuration will be reset to the default values.
+
+```bash
+cargo run --release --features write_flash
+```
+
+#### Configuration using command line arguments
+
+The same two command line arguments `ZEROS` and `DXL_ID` can be used to configure the firmware without using the flash memory (no `use_flash` speciifed). 
 - `DXL_ID` - Dynamixel ID used by the firmware, default is `42`
-- `ZEROS` - default is `[0, 0, 0]`
+- `ZEROS` - default is `[0, 0, 0]` (orbita3d) and `[0, 0]` (orbita2d)
     - The motor positions associated with the actuator's zero absolute position
-    - This parameter is currently only used with the `orbita3d` 
 
-Once the configuration in `Cargo.toml` is done the firmware can be built and flashed to the board. Before flashing the firmware make sure that you set the dynamixel ID using the `DXL_ID` environment variable. The default dynamixel ID is `42`. For example for the dynamixel ID `50`:
-```
-DXL_ID=50 cargo run --release
-```
+This way the configuration can be set without using the flash memory, however it will only be valid for this upload of the firmware. If you want to keep the configuration for the next version of the firmware you need to provide the same command line arguments.
 
-And if using `orbita3d` and you want to set the zeros to some other value than `[0, 0, 0]`:
-```
+```bash
 DXL_ID=50 ZEROS=0.12,0.34,0.56 cargo run --release
 ```
+
 
 ### Orbita2d architecture
 <img src="docs/orbita2d.png" alt="Orbita 2D" />
@@ -202,9 +234,6 @@ If any of thre real-time safety violation states are triggered the actuators wil
 
 ## Future work and improvements
 
-- Configuration
-    - Use the flash to store the configuration (ex. ZEROS, DXL_ID) - [initial developement](https://github.com/pollen-robotics/firmware_Poulpe/tree/feat_added_flash_support)
-    - Use ZEROS for the orbita2d setup
 - Communication
     - Ethercat: ethercat communication
 - Safety 
