@@ -16,9 +16,6 @@ use embassy_stm32::{i2c, Config as stm32_config};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{block_for, Duration, Timer};
-use crate::config::TemperatureSensorConfig;
-use embassy_stm32::flash::{Flash,get_flash_regions};
-
 mod config;
 mod dynamixel;
 mod motor_control;
@@ -30,6 +27,12 @@ use crate::config::{
 use crate::motor_control::sensors::I2cHallConfig;
 use crate::motor_control::ventouse::VentouseConfig;
 use crate::shared_memory::SharedMemory;
+
+#[cfg(feature = "use_flash")]
+use crate::config::flash::{FlashData, FlashManager};
+#[cfg(not(feature = "no_temperture_sensor"))]
+use crate::config::TemperatureSensorConfig;
+
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -103,7 +106,7 @@ async fn main(spawner: Spawner) {
         stm32_conf.rcc.voltage_scale = VoltageScale::Scale0;
     }
 
-    let mut p = embassy_stm32::init(stm32_conf);
+    let p = embassy_stm32::init(stm32_conf);
 
 
     // set the default values into the memory
@@ -114,7 +117,6 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "use_flash")]
     {
     
-    use config::flash::{FlashManager, FlashData};
     let mut flash_manager = FlashManager::new(p.FLASH);
     #[cfg(feature = "write_flash" )]
     {
