@@ -25,10 +25,12 @@ velocity_feedforward = []
 gearbox_output = []  # control the motor angle after the gearbox
 axis_output = []  # control the motor angle after the gearbox and axis reduction
 
-# update flash
-write_flash = []
-# ignore flash
+# use flash memory (if not included in `defaults` the flash memory is not used)
 use_flash = []
+# write the new config to the flash (has to be used with `use_flash`)
+# if not used the config is read from the flash
+write_flash = []
+
 # feature signaling that the board does not have a temperature sensor
 no_temperature_sensor = []
 # feature allowing to ignore the errors and continue the operation 
