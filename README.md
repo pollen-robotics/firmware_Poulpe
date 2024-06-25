@@ -133,7 +133,7 @@ There are two ways to configure the firmware:
 - By writing and reading the configuration to/from the flash memory **(default)**
 - By using the command line arguments
 
-#### Flash memory configuration
+#### Flash memory configuration (default)
 To enable using flash memory make sure to include the `use_flash` feature in the `Cargo.toml` (it is included by default).
 
 - If the `use_flash` feature is enabled the configuration will be read from the flash memory on the boot. If the configuration is not found in the flash memory the default configuration  will be used. (`DXL_ID=42` and `HARDWARE_ZEROS=[0, 0, 0]` for orbita3d and `HARDWARE_ZEROS=[0, 0]` for orbita2d)
@@ -155,6 +155,18 @@ cargo run --release # the configuration will be read from the flash memory
 ```bash
 cargo run --release --features write_flash
 ```
+
+So here is an example suggested workflow:
+1) Set the desired configuration using the command line arguments and the `write_flash` feature
+```bash
+DXL_ID=50 ZEROS=0.12,0.34,0.56 cargo run --release --features write_flash
+```
+2) Remove the `write_flash` feature and the command line arguments for any other upload of the firmware in the future
+```bash
+cargo run --release
+```
+
+
 
 #### Configuration using command line arguments
 
