@@ -6,7 +6,8 @@
 #![feature(async_fn_in_trait)]
 #![feature(array_methods)]
 
-use defmt::{info, unwrap};
+use config::flash;
+use defmt::{info, unwrap, error};
 use embassy_executor::Spawner;
 use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{Level, Output, Speed};
@@ -16,7 +17,6 @@ use embassy_stm32::{i2c, Config as stm32_config};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{block_for, Duration, Timer};
-
 mod config;
 mod dynamixel;
 mod motor_control;
@@ -29,7 +29,11 @@ use crate::motor_control::sensors::I2cHallConfig;
 use crate::motor_control::ventouse::VentouseConfig;
 use crate::shared_memory::SharedMemory;
 
-use crate::config::{TemperatureSensorConfig};
+#[cfg(feature = "use_flash")]
+use crate::config::flash::{FlashData, FlashManager};
+#[cfg(not(feature = "no_temperture_sensor"))]
+use crate::config::TemperatureSensorConfig;
+
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -105,6 +109,54 @@ async fn main(spawner: Spawner) {
 
     let p = embassy_stm32::init(stm32_conf);
 
+
+    // set the default values into the memory
+    let mut board_id = config::DXL_ID;
+    let mut hardware_zeros: [f32; config::N_AXIS] = config::HARDWARE_ZEROS;
+    
+
+    #[cfg(feature = "use_flash")]
+    {
+    
+    let mut flash_manager = FlashManager::new(p.FLASH).await;
+    #[cfg(feature = "write_flash" )]
+    {
+        info!("Writing to flash");
+        // user want to use these values
+        // and write them to flash
+        let mut poulpe_config = FlashData{
+            board_id : board_id,
+            sensor_offsets : hardware_zeros,
+        };
+        match flash_manager.lazy_checked_write(poulpe_config, 5).await{
+            Ok(()) => info!("Write to flash OK"),
+            Err(e) => error!("Error writing to flash: {:?}", e),
+        }
+    }
+    #[cfg(not(feature = "write_flash"))]
+    {
+        info!("Reading from flash");
+        match flash_manager.read(){
+            Ok(b) => {
+                info!("Read from flash: {:?}", b);
+                // check if empty data
+                if b.is_valid(){
+                    error!("Data in flash is empty or corrupted, using default values! {}, {:?}", board_id, hardware_zeros);
+                }else{
+                    info!("Data in flash valid, using values from flash");
+                    board_id = b.board_id;
+                    hardware_zeros = b.sensor_offsets;
+                }
+            }
+            Err(e) => {
+                error!("Error reading from flash: {:?}, Using default values! {}, {:?}", e, board_id, hardware_zeros);
+            }
+        }
+    }
+
+    }
+    
+
     // Spawn the control loop
     #[cfg(feature = "orbita3d")]
     let actuator_config = ActuatorConfig {
@@ -175,7 +227,7 @@ async fn main(spawner: Spawner) {
         temperature_sensor: TemperatureSensorConfig { adc: p.ADC1, pin: p.PB1 },
     };
 
-    unwrap!(spawner.spawn(motor_control::task::control_loop(actuator_config)));
+    unwrap!(spawner.spawn(motor_control::task::control_loop(actuator_config, hardware_zeros)));
 
     // Prepare and spawn the DXL communication task
     let mut usart_config = usart_config::default();
@@ -198,7 +250,7 @@ async fn main(spawner: Spawner) {
     //     usart_config,
     // )
     // .unwrap();
-    // unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
+    // unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into(), board_id)));
 
     // Poulpe B1
     let usart = config::DynamixelUart::new(
@@ -212,7 +264,7 @@ async fn main(spawner: Spawner) {
     )
     .unwrap();
 
-    unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
+    unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into(), board_id)));
 
     // Prepare and spawn the main task
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
@@ -222,7 +274,13 @@ async fn main(spawner: Spawner) {
 
     loop {
         let errorled = { SHARED_MEMORY.lock().await.get_error_led() };
+        let errorled = { SHARED_MEMORY.lock().await.get_error_led() };
 
+        if errorled {
+            led_error.set_high();
+        } else {
+            led_error.set_low();
+        }
         if errorled {
             led_error.set_high();
         } else {

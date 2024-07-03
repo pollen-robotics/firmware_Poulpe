@@ -13,8 +13,8 @@ use crate::{
 };
 
 #[embassy_executor::task]
-pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
-    let id = config::DXL_ID;
+pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin, id: u8) {
+    let id = id;
     let mut dxl = super::DynamixelUsartIO::new(usart, dir_pin, id);
 
     let mut dxl_error = 0;
@@ -251,7 +251,8 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin) {
                                 }
                             }
                             DynamixelRegister::AxisZeros => {
-                                let value = config::HARDWARE_ZEROS;
+                                let value = { SHARED_MEMORY.lock().await.get_hardware_zeros() };
+                                error!("Axis zeros: {:?}", value);
                                 let value = conversion::float_to_bytes(value);
                                 let sp = StatusPacket::with_value(id, dxl_error, value);
                                 trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());

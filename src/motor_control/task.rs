@@ -43,7 +43,7 @@ fn wrap_to_pi(angle: f32) -> f32 {
 }
 
 #[embassy_executor::task]
-pub async fn control_loop(config: ActuatorConfig) {
+pub async fn control_loop(config: ActuatorConfig, hardware_zeros : [f32; config::N_AXIS]) {
     let mut spi_config = spi::Config::default();
     spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
     spi_config.bit_order = spi::BitOrder::MsbFirst;
@@ -324,6 +324,11 @@ pub async fn control_loop(config: ActuatorConfig) {
         [ad5047top, ad5047mid, ad5047bot],
     );
 
+
+    // set the hardware zeros
+    actuator.set_hardware_zeros(hardware_zeros);
+
+
     // trying to init the actuator
     let mut init_error: BoardStatus = BoardStatus::Ok;
 
@@ -527,7 +532,7 @@ pub async fn control_loop(config: ActuatorConfig) {
             actuator.set_torque([false, false, false]).unwrap(); //be sure to torque off to avoid noise in axis sensors?
             block_for(Duration::from_millis(10));
             // let zeros = [1.0193205177783966, 0.7377220094203949, 0.4328247159719467]; //Orbita domain
-            let zeros = config::HARDWARE_ZEROS;
+            let zeros = hardware_zeros;
 
             if zeros[0] == zeros[1] && zeros[1] == zeros[2] && zeros[0] == 0.0 {
                 //Forgot to pass the zeros as argument! FIXME switch to a different zeroing mode?
@@ -605,7 +610,7 @@ pub async fn control_loop(config: ActuatorConfig) {
             actuator.set_torque([false, false]).unwrap(); //be sure to torque off to avoid noise in axis sensors?
             block_for(Duration::from_millis(10));
             // let zeros = [5.236674785614014, 1.6637036800384521]; //Orbita domain
-            let zeros = config::HARDWARE_ZEROS;
+            let zeros = hardware_zeros;
 
             if zeros[0] == zeros[1] && zeros[0] == 0.0 {
                 //Forgot to pass the zeros as argument! FIXME switch to a different zeroing mode?
@@ -699,6 +704,7 @@ pub async fn control_loop(config: ActuatorConfig) {
 
     // Init SharedMemory with real values before actually running the control loop
     SHARED_MEMORY.lock().await.init(&mut actuator);
+
     if init_error != BoardStatus::Ok {
         SHARED_MEMORY.lock().await.set_error_led(true);
     }

@@ -6,9 +6,9 @@ license = "MIT OR Apache-2.0"
 
 [features]
 #motor specifig config
-# default = ["orbita2d", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" ]
-# default = ["orbita2d", "ec60", "velocity_feedforward","cmd_filter", "axis_output"] #"gearbox_output" ]
-default = ["orbita3d", "ecx22", "velocity_feedforward","cmd_filter","gearbox_output"]
+# default = ["orbita2d", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" , "use_flash"]
+# default = ["orbita2d", "ec60", "velocity_feedforward","cmd_filter", "axis_output", "use_flash"] #"gearbox_output" ]
+default = ["orbita3d", "ecx22", "velocity_feedforward","cmd_filter","gearbox_output", "use_flash"]
 # default = ["orbita3d"]
 orbita2d = []
 orbita3d = []
@@ -24,6 +24,12 @@ velocity_feedforward = []
 # after gearbox, after axis reduction, or directly the motor angle (by not specifying any of the following features in `defaults`)
 gearbox_output = []  # control the motor angle after the gearbox
 axis_output = []  # control the motor angle after the gearbox and axis reduction
+
+# use flash memory (if not included in `defaults` the flash memory is not used)
+use_flash = []
+# write the new config to the flash (has to be used with `use_flash`)
+# if not used the config is read from the flash
+write_flash = []
 
 # feature signaling that the board does not have a temperature sensor
 no_temperature_sensor = []

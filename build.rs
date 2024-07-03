@@ -45,7 +45,9 @@ fn main() {
                 .expect("Could not write file");
         }
     } else {
-        writeln!(&mut f, "pub const HARDWARE_ZEROS: [f32;3] = [0.0,0.0,0.0];")
+        writeln!(&mut f, "#[cfg(feature = \"orbita2d\")]\npub const HARDWARE_ZEROS: [f32;2] = [0.0,0.0];")
+            .expect("Could not write file");
+        writeln!(&mut f, "#[cfg(feature = \"orbita3d\")]\npub const HARDWARE_ZEROS: [f32;3] = [0.0,0.0,0.0];")
             .expect("Could not write file");
     }
 

@@ -20,6 +20,7 @@ pub struct Actuator<'d, const N: usize> {
     #[cfg(feature = "orbita3d")]
     index_sensor: [u8; N],
     inverted: f32, //FIXME: horrible...
+    hardware_zeros: [f32; N],
 }
 
 impl<'d, const N: usize> Actuator<'d, N> {
@@ -30,6 +31,7 @@ impl<'d, const N: usize> Actuator<'d, N> {
             sensors,
             index_sensor: [0xff; N],
             inverted: -1.0,
+            hardware_zeros: [0.0; N],
         }
     }
     #[cfg(feature = "orbita2d")]
@@ -38,6 +40,7 @@ impl<'d, const N: usize> Actuator<'d, N> {
             axes,
             sensors,
             inverted: 1.0,
+            hardware_zeros: [0.0; N],
         }
     }
 
@@ -175,6 +178,16 @@ impl<'d, const N: usize> Actuator<'d, N> {
 
         Ok((offsets, found_turn))
     }
+
+
+    pub fn get_hardware_zeros(&mut self) -> Result<[f32; N]> {
+        Ok(self.hardware_zeros)
+    }
+    pub fn set_hardware_zeros(&mut self, zeros: [f32; N]) -> Result<()>{
+        self.hardware_zeros = zeros;
+        Ok(())
+    }
+
 }
 
 pub fn angle_diff(angle_a: f32, angle_b: f32) -> f32 {
