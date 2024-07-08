@@ -28,8 +28,13 @@ use crate::{
 use super::{
     sensors::AksimSensor,
     ventouse::{Ventouse, VentouseKind},
-    Actuator, Driver, Foc, RawMotorsIO,
+    Actuator, Foc, RawMotorsIO,
 };
+
+#[cfg(feature = "drv8316")]
+use super::driver::DriverDRV8316;
+#[cfg(feature = "tmc6200")]
+use super::driver::DriverTMC6200;
 
 pub async fn set_error_led() {
     SHARED_MEMORY.lock().await.set_error_led(true);
@@ -56,6 +61,8 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros : [f32; config:
     foc_spi_config.bit_order = spi::BitOrder::MsbFirst;
     let mut driver_spi_config = spi::Config::default();
     driver_spi_config.mode = spi::MODE_3;
+    #[cfg(feature = "drv8316")]
+    { driver_spi_config.mode = spi::MODE_1; }
     driver_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
     driver_spi_config.bit_order = spi::BitOrder::MsbFirst;
 
@@ -92,8 +99,10 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros : [f32; config:
         Output::new(config.a.driver_cs, Level::High, Speed::Medium),
         driver_spi_config,
     );
-    #[cfg(feature = "orbita3d")]
-    let driver = Driver::new(driver_spi);
+    #[cfg(all(feature = "orbita3d", feature = "drv8316"))]
+    let driver = DriverDRV8316::new(driver_spi);
+    #[cfg(all(feature = "orbita3d",feature = "tmc6200"))]
+    let driver = DriverTMC6200::new(driver_spi);
     #[cfg(feature = "orbita3d")]
     let ventouse_a = Ventouse::new(foc, driver);
     #[cfg(feature = "orbita3d")]
@@ -212,7 +221,11 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros : [f32; config:
         Output::new(config.b.driver_cs, Level::High, Speed::Medium),
         driver_spi_config,
     );
-    let driver = Driver::new(driver_spi);
+    
+    #[cfg(feature = "drv8316")]
+    let driver = DriverDRV8316::new(driver_spi);
+    #[cfg(feature = "tmc6200")]
+    let driver =  DriverTMC6200::new(driver_spi);
 
     let ventouse_b = Ventouse::new(foc, driver);
     let ventouse_b = VentouseKind::B(ventouse_b);
@@ -253,7 +266,11 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros : [f32; config:
         Output::new(config.c.driver_cs, Level::High, Speed::Medium),
         driver_spi_config,
     );
-    let driver = Driver::new(driver_spi);
+
+    #[cfg(feature = "drv8316")]
+    let driver = DriverDRV8316::new(driver_spi);
+    #[cfg(feature = "tmc6200")]
+    let driver =  DriverTMC6200::new(driver_spi);
 
     let ventouse_c = Ventouse::new(foc, driver);
     let ventouse_c = VentouseKind::C(ventouse_c);

@@ -8,9 +8,13 @@ use crate::{
     SHARED_MEMORY,
 };
 
+
+#[cfg(feature = "tmc6200")]
+use super::driver::DriverTMC6200;
+#[cfg(feature = "drv8316")]
+use super::driver::DriverDRV8316;
+
 use super::{
-    // axis_sensor::AxisSensor,
-    driver::Driver,
     foc::Foc,
     motors_io::{IOError, Pid, RawMotorsIO},
 };
@@ -23,7 +27,10 @@ where
     DrvP: Pin,
 {
     foc: Foc<'d, T, FocP, FocEnb>,
-    driver: Driver<'d, T, DrvP>,
+    #[cfg(feature = "tmc6200")]
+    driver: DriverTMC6200<'d, T, DrvP>,
+    #[cfg(feature = "drv8316")]
+    driver: DriverDRV8316<'d, T, DrvP>,
     pub kind: char,
 }
 
@@ -55,7 +62,16 @@ where
     FocEnb: Pin,
     DrvP: Pin,
 {
-    pub fn new(foc: Foc<'d, T, FocP, FocEnb>, driver: Driver<'d, T, DrvP>) -> Self {
+    #[cfg(feature = "tmc6200")]
+    pub fn new(foc: Foc<'d, T, FocP, FocEnb>, driver: DriverTMC6200<'d, T, DrvP>) -> Self {
+        Self {
+            foc,
+            driver,
+            kind: '?',
+        }
+    }
+    #[cfg(feature = "drv8316")]
+    pub fn new(foc: Foc<'d, T, FocP, FocEnb>, driver: DriverDRV8316<'d, T, DrvP>) -> Self {
         Self {
             foc,
             driver,
@@ -70,28 +86,15 @@ where
         let mut err = IOError::InitError;
         info!("[Ventouse{:?}] Initializing register...", self.kind);
 
-        match self.driver.tmc6200_checked_write(0x00u8, 0x00000000u32) {
-            Ok(_) => info!("[Ventouse{:?}] TMC6200 init done", self.kind),
+
+        match self.driver.configure(){
+            Ok(_) => info!("[Ventouse{:?}] Driver init done", self.kind),
             Err(e) => {
                 ret_err = true;
-                error!(
-                    "[Ventouse{:?}] TMC6200 init failed: {:?} => check SPI and power connection",
-                    self.kind, e
-                );
-                err = IOError::SpiError(e);
+                error!("[Ventouse{:?}] Driver init failed: {:?} => check SPI and power connection", self.kind, e);
+                err = IOError::InitError;
             }
         }
-        match self.driver.tmc6200_checked_write(0x0au8, 0x00000000u32) // DRVSRENGTH=0 for BOB
-	{
-	    Ok(_) => info!("[Ventouse{:?}] TMC6200 init done",self.kind),
-	    Err(e) => {
-		ret_err=true;
-		error!("[Ventouse{:?}] TMC6200 init failed: {:?}  => check SPI and power connection", self.kind,e);
-		err=IOError::SpiError(e);
-
-	    }
-
-	}
 
         match self.foc.tmc4671_init_registers().await {
             Ok(_) => info!("[Ventouse{:?}] TMC4671 init done", self.kind),
@@ -160,14 +163,12 @@ where
 
         let adc_offset = self.foc.tmc4671_calibrate_adc_offsets()?;
 
-        debug!("[Ventouse{:?}] ADC offsets: {:?}", self.kind, adc_offset);
+        info!("[Ventouse{:?}] ADC offsets: {:?}", self.kind, adc_offset);
 
         Ok(())
     }
 
     pub async fn align_motor(&mut self) -> Result<(), embassy_stm32::spi::Error> {
-        // /!\ Please note that the TMC6200 must be in Single-line mode (aka 6-PMW)
-        self.driver.tmc6200_checked_write(0x00u8, 0x00000000u32)?;
 
         // Set openloop mode
         self.foc

@@ -3,7 +3,7 @@ pub mod sensors;
 pub use actuator::Actuator;
 mod axis_sensor;
 mod driver;
-pub use driver::Driver;
+pub use driver::{DriverTMC6200, DriverDRV8316};
 pub(crate) mod foc;
 pub use foc::Foc;
 mod motors_io;

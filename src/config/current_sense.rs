@@ -16,7 +16,7 @@ impl CurrentSensing {
     pub fn wailer_B2() -> Self {
         let mut return_struct = Self {
             // current sensing parameters
-            resistance_shunt: 0.003, // [Ohms]
+            resistance_shunt: 0.003, // 0.003 [Ohms]
             amp_gain: 20.0,          // [V/V]gain of the amplifier
             amp_voltage: 5.0,        // [V]
             // middle of the range  and scale 1

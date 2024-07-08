@@ -25,8 +25,11 @@ const PWM_BBM_H_BBM_L: u32 = 0x00001919; // Break-Before-Make
 const PWM_SV_CHOP: u32 = 0x00000007; //Space vector On + PWM centered
 
 // ADC configuration
-// const ADC_I_SELECT: u32 = 0x24000100;
-const ADC_I_SELECT: u32 = 0x18000100;
+// #[cfg(feature = "sponge")]
+// const ADC_I_SELECT: u32 = 0x18000100;
+// #[cfg(any(feature = "ventouse_3d", features="ventouse_2d"))]
+const ADC_I_SELECT: u32 = 0x24000100;
+
 const DS_ADC_MCFG_B_MCFG_A: u32 = 0x00100010;
 const DS_ADC_MCLK_A: u32 = 0x20000000;
 const DS_ADC_MCLK_B: u32 = 0x20000000;
@@ -637,8 +640,6 @@ where
     }
 
     pub async fn tmc4671_init_registers(&mut self) -> Result<(), embassy_stm32::spi::Error> {
-        // // /!\ Please note that the TMC6200 must be in Single-line mode (aka 6-PMW)
-        // self.tmc6200_checked_write(0x00u8, 0x00000000u32);
 
         // Motor type & PWM configuration
         self.tmc4671_checked_write(
