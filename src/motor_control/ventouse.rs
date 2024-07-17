@@ -8,29 +8,22 @@ use crate::{
     SHARED_MEMORY,
 };
 
-
-#[cfg(feature = "tmc6200")]
-use super::driver::DriverTMC6200;
-#[cfg(feature = "drv8316")]
-use super::driver::DriverDRV8316;
+use super::driver::Driver;
 
 use super::{
     foc::Foc,
     motors_io::{IOError, Pid, RawMotorsIO},
 };
 
-pub struct Ventouse<'d, T, FocP, FocEnb, DrvP>
+pub struct Ventouse<'d, T, FocP, FocEnb, Drv>
 where
     T: spi::Instance,
     FocP: Pin,
     FocEnb: Pin,
-    DrvP: Pin,
+    Drv: Driver
 {
     foc: Foc<'d, T, FocP, FocEnb>,
-    #[cfg(feature = "tmc6200")]
-    driver: DriverTMC6200<'d, T, DrvP>,
-    #[cfg(feature = "drv8316")]
-    driver: DriverDRV8316<'d, T, DrvP>,
+    driver: Drv,
     pub kind: char,
 }
 
@@ -55,23 +48,14 @@ where
     pub driver_cs: DrvCs,
 }
 
-impl<'d, T, FocP, FocEnb, DrvP> Ventouse<'d, T, FocP, FocEnb, DrvP>
+impl<'d, T, FocP, FocEnb, Drv> Ventouse<'d, T, FocP, FocEnb, Drv>
 where
     T: spi::Instance,
     FocP: Pin,
     FocEnb: Pin,
-    DrvP: Pin,
+    Drv: Driver
 {
-    #[cfg(feature = "tmc6200")]
-    pub fn new(foc: Foc<'d, T, FocP, FocEnb>, driver: DriverTMC6200<'d, T, DrvP>) -> Self {
-        Self {
-            foc,
-            driver,
-            kind: '?',
-        }
-    }
-    #[cfg(feature = "drv8316")]
-    pub fn new(foc: Foc<'d, T, FocP, FocEnb>, driver: DriverDRV8316<'d, T, DrvP>) -> Self {
+    pub fn new(foc: Foc<'d, T, FocP, FocEnb>, driver: Drv) -> Self {
         Self {
             foc,
             driver,
@@ -262,7 +246,7 @@ where
                 .foc
                 .tmc4671_get_actual_velocity()
                 .map_err(IOError::SpiError)?;
-            if velocity > 2 * target || velocity < -200 {
+            if velocity > 3 * target || velocity < -200 {
                 // check if the motor is moving in the right direction and not too fast
                 self.foc.tmc4671_disable();
                 error!(
@@ -331,7 +315,7 @@ where
                 .foc
                 .tmc4671_get_actual_velocity()
                 .map_err(IOError::SpiError)?;
-            if velocity < 2 * target || velocity > 200 {
+            if velocity < 3 * target || velocity > 200 {
                 // check if the motor is moving in the right direction and not too fast
                 self.foc.tmc4671_disable();
                 error!(
@@ -378,12 +362,12 @@ where
     }
 }
 
-impl<'d, T, FocP, FocEnb, DrvP> RawMotorsIO<1> for Ventouse<'d, T, FocP, FocEnb, DrvP>
+impl<'d, T, FocP, FocEnb, Drv> RawMotorsIO<1> for Ventouse<'d, T, FocP, FocEnb, Drv>
 where
     T: spi::Instance,
     FocP: Pin,
     FocEnb: Pin,
-    DrvP: Pin,
+    Drv:Driver
 {
     /// Check if the motors are ON or OFF
     fn is_torque_on(&mut self) -> Result<[bool; 1], IOError> {

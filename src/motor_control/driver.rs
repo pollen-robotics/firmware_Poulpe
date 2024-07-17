@@ -15,6 +15,10 @@ pub enum DriverError {
     ConfigError
 }
 
+pub trait Driver {
+    fn configure(&mut self) -> Result<(), DriverError>;
+}
+
 
 pub struct DriverTMC6200<'d, T, P>
 where
@@ -40,7 +44,7 @@ where
         Self { spi }
     }
 
-    pub(crate) fn checked_write(
+    pub fn checked_write(
         &mut self,
         reg: u8,
         data_w: u32,
@@ -107,8 +111,14 @@ where
 
         Ok(read_data)
     }
+}
 
-    pub fn configure(&mut self) -> Result<(), DriverError>{
+impl <'d, T, P> Driver for DriverTMC6200<'d, T, P>
+where
+    T: Instance,
+    P: Pin,
+{
+    fn configure(&mut self) -> Result<(), DriverError>{
         let mut ret_err = false;
 
         // /!\ Please note that the TMC6200 must be in Single-line mode (aka 6-PMW)
@@ -158,7 +168,7 @@ where
         Self { spi }
     }
 
-    pub(crate) fn checked_write(
+    pub fn checked_write(
         &mut self,
         reg: u8,
         data_w: u8,
@@ -199,7 +209,7 @@ where
         // Building array
         let mut msb_data: u8 = addr << 1;
         let mut data = data;
-        if write_bit == false {
+        if write_bit == false { //if read
             msb_data |= 0b10000000;
             data = 0x00;
         }
@@ -209,7 +219,6 @@ where
         if transfer_data.count_ones() % 2 != 0 {
             transfer_data |= 0x0100;
         }
-        debug!("DRV8316: Transfer data: {:b}", transfer_data);
         let mut transfer_data = transfer_data.to_be_bytes();
 
         // Sending data 
@@ -226,34 +235,42 @@ where
     
         Ok(read_data)
     }
+}
 
-    pub fn configure(&mut self) -> Result<(), DriverError>{
+impl <'d, T, P> Driver for DriverDRV8316<'d, T, P>
+where
+    T: Instance,
+    P: Pin,
+{
+    fn configure(&mut self) -> Result<(), DriverError>{
        
         let mut ret_err = false;
+        debug!("DRV8316: Configuring the driver");
         // unlock the registers in order to be able to write to them
         // write 0x3 (position 0-2) to register 0x3 (control register 1 pp. 62)
         let mut data: u8 = 0b011 ; 
-        self.transmit_raw_data(true, 0x3, data).map_err(|e| {
-            ret_err = true;
-            error!("DRV8316: Could not unlock the registers: {:?}", e);
-        });
+        match self.checked_write( 0x3, data) {
+            Ok(_) => { debug!("DRV8316: Registers unlocked"); },
+            Err(e) => {ret_err = true; error!("DRV8316: Could not unlock the registers: {:?}", e);}
+        };
+        
         // set the slew rate to the faster setting
         // setting it to 200V/us
         // write 0x3 (position 3-4) to register 0x4 (control register 2 pp. 63)
-        data = 0x60 as u8  | 0x3 << 3;
-        self.transmit_raw_data(true, 0x4, data).map_err(|e| {
-            ret_err = true;
-            error!("DRV8316: Could not set the slew rate: {:?}", e);
-        });
+        data = 0x60 as u8  | 0b11 << 3;
+        match self.checked_write( 0x4, data){
+            Ok(_) => { debug!("DRV8316: Slew rate set!"); },
+            Err(e) => {ret_err = true; error!("DRV8316: Could not set the slew rate: {:?}", e);}
+        };
         
         // set the gain
-        // set gain to 0.6V/A
-        // write 0x2 (position 0-1) to register 0x7 (control register 5 pp. 66)
-        data = 0x00 as u8  | 0x2 ;
-        self.transmit_raw_data(true, 0x7, data).map_err(|e| {
-            ret_err = true;
-            error!("DRV8316: Could not set the gain rate: {:?}", e);
-        });
+        // set gain to 0.3V/A
+        // write 0x1 (position 0-1) to register 0x7 (control register 5 pp. 66)
+        data = 0x00 as u8  | 0x1;
+        match self.checked_write( 0x7, data) {
+            Ok(_) => { debug!("DRV8316: Gain set"); },
+            Err(e) => {ret_err = true; error!("DRV8316: Could not set the gain rate: {:?}", e);}
+        };
         
         if ret_err {
             return Err(DriverError::ConfigError);

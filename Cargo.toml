@@ -8,20 +8,20 @@ license = "MIT OR Apache-2.0"
 ### orbita specifig config
 
 ###### old 
-## ec60 based orbita 2d
-# default = ["orbita2d", "tmc6200", "ec60", "velocity_feedforward","cmd_filter", "axis_output", "use_flash"] 
+## ec60 based orbita 2d + beta hardware
+# default = ["orbita2d", "beta", "ec60", "velocity_feedforward","cmd_filter", "axis_output", "use_flash"] 
 
 ###### beta 
 ## orbita 2d (genric boards with poulpe + 2x BOB)
-# default = ["orbita2d", "tmc6200", "sponge", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" , "use_flash"]
+# default = ["orbita2d", "beta", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" , "use_flash"]
 ## orbita 3d (genric boards with poulpe + 3x BOB)
-# default = ["orbita3d", "tmc6200", "sponge", "ecx22", "velocity_feedforward","cmd_filter","gearbox_output", "use_flash"]
+# default = ["orbita3d", "beta", "ecx22", "velocity_feedforward","cmd_filter","gearbox_output", "use_flash"]
 
 ####### gamma
 ## orbita 2d (gamma elec)
-default = ["orbita2d", "tmc6200", "ventouse_2d", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" , "use_flash"]
+# default = ["orbita2d", "gamma", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" , "use_flash"]
 ## orbita 3d (gamma elec)
-# default = ["orbita3d", "drv8316", "ventouse_3d", "ecx22", "velocity_feedforward","cmd_filter","gearbox_output", "use_flash"]
+default = ["orbita3d", "gamma", "ecx22", "velocity_feedforward", "cmd_filter", "gearbox_output", "use_flash"]
 
 # default = ["orbita3d"]
 orbita2d = []
@@ -32,14 +32,9 @@ ec60 = []
 ec45=[]
 ecx22=[]
 
-# driver type
-tmc6200 = []
-drv8316 = []
-
 # driver board type
-sponge = [] # old board with BOB
-ventouse_2d = [] # new gamma elec
-ventouse_3d = [] # new gamma elec
+beta = [] # beta elec with poulpe + 2/3 X sponge+BOB
+gamma = [] # new gamma elec with poulpe + ventouse 2d/3d
 
 # use command filter to reduce the jerk of the motor
 cmd_filter = []

@@ -18,10 +18,13 @@ pub struct BrushlessMotor {
     gearbox_ratio: f32,
     // additional reduction ration of the axis
     axis_ratio: f32,
+
 }
 
 impl BrushlessMotor {
+    
     #[allow(dead_code)]
+    #[cfg(not(any(feature = "gamma", feature = "orbita3d")))]
     pub fn ecx22() -> Self {
         Self {
             // 4 pole pairs for the ecx22
@@ -29,9 +32,30 @@ impl BrushlessMotor {
 
             // the encoder with 4096 ppr
             abn_decoder_ppr: 0x00001000,
-            // PI controller params
+            // PI controller params            
             pid_flux: Pid { p: 200, i: 500 },
             pid_torque: Pid { p: 200, i: 500 },
+            pid_velocity: Pid { p: 500, i: 100 },
+            pid_position: Pid { p: 100, i: 0 },
+            torque_flux_limit_max: 2500, // 2.5 amps
+            velocity_limit_max: 40, // 40 rad/s
+            // gearing ratios
+            gearbox_ratio: 1.0 / 35.0,
+            axis_ratio: 12.0 / 64.0,
+        }
+    }
+    #[allow(dead_code)]
+    #[cfg(all(feature = "gamma", feature = "orbita3d"))]
+    pub fn ecx22() -> Self {
+        Self {
+            // 4 pole pairs for the ecx22
+            n_pole_pairs: 4,
+
+            // the encoder with 4096 ppr
+            abn_decoder_ppr: 0x00001000,
+            // PI controller params          
+            pid_flux: Pid { p: 300, i: 500 },
+            pid_torque: Pid { p: 300, i: 500 },
             pid_velocity: Pid { p: 500, i: 100 },
             pid_position: Pid { p: 100, i: 0 },
             torque_flux_limit_max: 2500, // 2.5 amps

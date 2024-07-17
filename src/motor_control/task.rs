@@ -31,10 +31,7 @@ use super::{
     Actuator, Foc, RawMotorsIO,
 };
 
-#[cfg(feature = "drv8316")]
-use super::driver::DriverDRV8316;
-#[cfg(feature = "tmc6200")]
-use super::driver::DriverTMC6200;
+use super::driver::{DriverDRV8316, DriverTMC6200};
 
 pub async fn set_error_led() {
     SHARED_MEMORY.lock().await.set_error_led(true);
@@ -61,7 +58,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros : [f32; config:
     foc_spi_config.bit_order = spi::BitOrder::MsbFirst;
     let mut driver_spi_config = spi::Config::default();
     driver_spi_config.mode = spi::MODE_3;
-    #[cfg(feature = "drv8316")]
+    #[cfg(all(feature = "gamma", feature="orbita3d"))]
     { driver_spi_config.mode = spi::MODE_1; }
     driver_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
     driver_spi_config.bit_order = spi::BitOrder::MsbFirst;
@@ -80,33 +77,33 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros : [f32; config:
     #[cfg(feature = "orbita3d")]
     let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi));
     #[cfg(feature = "orbita3d")]
-    let foc_spi = SpiDeviceWithConfig::new(
-        &spi_bus,
-        Output::new(config.a.foc_cs, Level::High, Speed::Medium),
-        foc_spi_config,
-    );
-    #[cfg(feature = "orbita3d")]
-    let foc = Foc::new(
-        foc_spi,
-        config.a.foc_enable,
-        config::BrushlessMotor::ecx22(),
-        // current sense for wailer B2 board
-        config::CurrentSensing::wailer_B2(),
-    );
-    #[cfg(feature = "orbita3d")]
-    let driver_spi = SpiDeviceWithConfig::new(
-        &spi_bus,
-        Output::new(config.a.driver_cs, Level::High, Speed::Medium),
-        driver_spi_config,
-    );
-    #[cfg(all(feature = "orbita3d", feature = "drv8316"))]
-    let driver = DriverDRV8316::new(driver_spi);
-    #[cfg(all(feature = "orbita3d",feature = "tmc6200"))]
-    let driver = DriverTMC6200::new(driver_spi);
-    #[cfg(feature = "orbita3d")]
-    let ventouse_a = Ventouse::new(foc, driver);
-    #[cfg(feature = "orbita3d")]
-    let ventouse_a = VentouseKind::A(ventouse_a);
+    let ventouse_a = {
+        let foc_spi = SpiDeviceWithConfig::new(
+            &spi_bus,
+            Output::new(config.a.foc_cs, Level::High, Speed::Medium),
+            foc_spi_config,
+        );
+        let foc = Foc::new(
+            foc_spi,
+            config.a.foc_enable,
+            config::BrushlessMotor::ecx22(),
+            #[cfg(feature = "beta")]
+            config::CurrentSensing::ventouse_bob(), // current sense for the TMC BOB board
+            #[cfg(feature = "gamma")]
+            config::CurrentSensing::ventouse_3d(), // current sense for gamma elec ventouse 2d
+        );
+        let driver_spi = SpiDeviceWithConfig::new(
+            &spi_bus,
+            Output::new(config.a.driver_cs, Level::High, Speed::Medium),
+            driver_spi_config,
+        );
+        #[cfg(feature = "gamma")]
+        let driver = DriverDRV8316::new(driver_spi);
+        #[cfg(feature = "beta")]
+        let driver = DriverTMC6200::new(driver_spi);
+        let ventouse_a = Ventouse::new(foc, driver);
+        VentouseKind::A(ventouse_a)
+    };
 
     // Ventouse B
     let spi = spi::Spi::new(
@@ -198,37 +195,43 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros : [f32; config:
     let ad5047bot = SensorKind::DonutBot(ad5047bot);
     ///////////////
 
-    let foc_spi = SpiDeviceWithConfig::new(
-        &spi_bus,
-        Output::new(config.b.foc_cs, Level::High, Speed::Medium),
-        foc_spi_config,
-    );
-    let foc = Foc::new(
-        foc_spi,
-        config.b.foc_enable,
-        #[cfg(all(feature = "orbita2d", feature = "ec45"))]
-        config::BrushlessMotor::ec45(),
-        #[cfg(all(feature = "orbita2d", feature = "ec60"))]
-        config::BrushlessMotor::ec60(),
-        #[cfg(feature = "orbita3d")]
-        config::BrushlessMotor::ecx22(),
-        // current sense for wailer B2 board
-        config::CurrentSensing::wailer_B2(),
-    );
+    let ventouse_b = {
+        let foc_spi = SpiDeviceWithConfig::new(
+            &spi_bus,
+            Output::new(config.b.foc_cs, Level::High, Speed::Medium),
+            foc_spi_config,
+        );
+        let foc = Foc::new(
+            foc_spi,
+            config.b.foc_enable,
+            #[cfg(all(feature = "orbita2d", feature = "ec45"))]
+            config::BrushlessMotor::ec45(),
+            #[cfg(all(feature = "orbita2d", feature = "ec60"))]
+            config::BrushlessMotor::ec60(),
+            #[cfg(feature = "orbita3d")]
+            config::BrushlessMotor::ecx22(),
+            #[cfg(feature = "beta")]
+            config::CurrentSensing::ventouse_bob(), // current sense for the TMC BOB board
+            #[cfg(all(feature = "gamma", feature = "orbita2d"))]
+            config::CurrentSensing::ventouse_2d(), // current sense for gamma elec ventouse 2d
+            #[cfg(all(feature = "gamma", feature = "orbita3d"))]
+            config::CurrentSensing::ventouse_3d(), // current sense for gamma elec ventouse 2d
+        );
 
-    let driver_spi = SpiDeviceWithConfig::new(
-        &spi_bus,
-        Output::new(config.b.driver_cs, Level::High, Speed::Medium),
-        driver_spi_config,
-    );
-    
-    #[cfg(feature = "drv8316")]
-    let driver = DriverDRV8316::new(driver_spi);
-    #[cfg(feature = "tmc6200")]
-    let driver =  DriverTMC6200::new(driver_spi);
+        let driver_spi = SpiDeviceWithConfig::new(
+            &spi_bus,
+            Output::new(config.b.driver_cs, Level::High, Speed::Medium),
+            driver_spi_config,
+        );
+        
+        #[cfg(all(feature = "orbita3d", feature = "gamma"))]
+        let driver = DriverDRV8316::new(driver_spi);
+        #[cfg(any(feature="beta", all(feature = "orbita2d", feature = "gamma")))]
+        let driver =  DriverTMC6200::new(driver_spi);
 
-    let ventouse_b = Ventouse::new(foc, driver);
-    let ventouse_b = VentouseKind::B(ventouse_b);
+        let ventouse_b = Ventouse::new(foc, driver);
+        VentouseKind::B(ventouse_b)
+    };
 
     // Ventouse C
     let spi = spi::Spi::new(
@@ -243,37 +246,43 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros : [f32; config:
     );
     let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi));
 
-    let foc_spi = SpiDeviceWithConfig::new(
-        &spi_bus,
-        Output::new(config.c.foc_cs, Level::High, Speed::Medium),
-        foc_spi_config,
-    );
-    let foc = Foc::new(
-        foc_spi,
-        config.c.foc_enable,
-        #[cfg(all(feature = "orbita2d", feature = "ec45"))]
-        config::BrushlessMotor::ec45(),
-        #[cfg(all(feature = "orbita2d", feature = "ec60"))]
-        config::BrushlessMotor::ec60(),
-        #[cfg(feature = "orbita3d")]
-        config::BrushlessMotor::ecx22(),
-        // current sense for wailer B2 board
-        config::CurrentSensing::wailer_B2(),
-    );
+    let ventouse_c = {
+        let foc_spi = SpiDeviceWithConfig::new(
+            &spi_bus,
+            Output::new(config.c.foc_cs, Level::High, Speed::Medium),
+            foc_spi_config,
+        );
+        let foc = Foc::new(
+            foc_spi,
+            config.c.foc_enable,
+            #[cfg(all(feature = "orbita2d", feature = "ec45"))]
+            config::BrushlessMotor::ec45(),
+            #[cfg(all(feature = "orbita2d", feature = "ec60"))]
+            config::BrushlessMotor::ec60(),
+            #[cfg(feature = "orbita3d")]
+            config::BrushlessMotor::ecx22(),
+            #[cfg(feature = "beta")]
+            config::CurrentSensing::ventouse_bob(), // current sense for the TMC BOB board
+            #[cfg(all(feature = "gamma", feature = "orbita2d"))]
+            config::CurrentSensing::ventouse_2d(), // current sense for gamma elec ventouse 2d
+            #[cfg(all(feature = "gamma", feature = "orbita3d"))]
+            config::CurrentSensing::ventouse_3d(), // current sense for gamma elec ventouse 2d
+        );
 
-    let driver_spi = SpiDeviceWithConfig::new(
-        &spi_bus,
-        Output::new(config.c.driver_cs, Level::High, Speed::Medium),
-        driver_spi_config,
-    );
+        let driver_spi = SpiDeviceWithConfig::new(
+            &spi_bus,
+            Output::new(config.c.driver_cs, Level::High, Speed::Medium),
+            driver_spi_config,
+        );
 
-    #[cfg(feature = "drv8316")]
-    let driver = DriverDRV8316::new(driver_spi);
-    #[cfg(feature = "tmc6200")]
-    let driver =  DriverTMC6200::new(driver_spi);
+        #[cfg(all(feature = "orbita3d", feature = "gamma"))]
+        let driver = DriverDRV8316::new(driver_spi);
+        #[cfg(any(feature = "beta", all(feature = "orbita2d", feature = "gamma")))]
+        let driver =  DriverTMC6200::new(driver_spi);
 
-    let ventouse_c = Ventouse::new(foc, driver);
-    let ventouse_c = VentouseKind::C(ventouse_c);
+        let ventouse_c = Ventouse::new(foc, driver);
+        VentouseKind::C(ventouse_c)
+    };
 
     //Aksim sensor BUS C
     let mut aksim_spi_config = spi::Config::default();
