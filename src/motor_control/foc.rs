@@ -766,10 +766,7 @@ where
         )?;
 
         // set uq and ud limits
-        self.tmc4671_checked_write(
-            Tmc4671Registers::PIDOUT_UQ_UD_LIMITS as u8,
-            UQ_UD_LIMIT,
-        )?;
+        self.tmc4671_checked_write(Tmc4671Registers::PIDOUT_UQ_UD_LIMITS as u8, UQ_UD_LIMIT)?;
 
         // Limits
         //        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, 0x00007D00)?; // 32000
