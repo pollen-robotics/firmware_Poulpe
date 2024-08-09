@@ -226,7 +226,15 @@ where
 
         let mut target: i32 = 1000;
         //Assume that check_motors_1 has been called
-        #[cfg(feature = "orbita2d")]
+        #[cfg(all(feature = "orbita2d", feature = "gamma"))]
+        {
+            if self.kind == 'B' {
+                target = 500;
+            } else {
+                target = 1000;
+            }
+        }
+        #[cfg(all(feature = "orbita2d", feature = "beta"))]
         {
             if self.kind == 'B' {
                 target = 1000;
@@ -294,7 +302,15 @@ where
     pub async fn check_motors_2(&mut self) -> Result<(), IOError> {
         let mut target: i32 = -1000;
         //Assume that check_motors_1 has been called
-        #[cfg(feature = "orbita2d")]
+        #[cfg(all(feature = "orbita2d", feature = "gamma"))]
+        {
+            if self.kind == 'B' {
+                target = -500;
+            } else {
+                target = -1000;
+            }
+        }
+        #[cfg(all(feature = "orbita2d", feature = "beta"))]
         {
             if self.kind == 'B' {
                 target = -1000;

@@ -122,19 +122,27 @@ where
         let mut ret_err = false;
 
         // /!\ Please note that the TMC6200 must be in Single-line mode (aka 6-PMW)
-        self.checked_write(0x00u8, 0x00000000u32).map_err(|e| {
+        match self.checked_write(0x00u8, 0x00000000u32){
+            Ok(_) => { debug!("TMC6200 setting 6-PWM set"); },
+            Err(e) => {
             ret_err = true;
             error!(
                 "TMC6200 setting 6-PWM failed: {:?} => check SPI and power connection", e
             );
-        });
-        // DRVSRENGTH=0 for BOB
-        self.checked_write(0x0au8, 0x00000000u32).map_err(|e| {
+            }
+        };
+        // BOB configuration - this was the config for beta hardware (migth be changed)
+        // DRVSRENGTH=2 
+        // BBMCLKS=2 
+        match self.checked_write(0x0au8, 0x00000000u32){
+            Ok(_) => { debug!("TMC6200 setting DRVSRENGTH set"); },
+            Err(e) => {
             ret_err = true;
             error!(
                 "TMC6200 setting DRVSRENGTH failed: {:?} => check SPI and power connection", e
             );
-        });
+            }
+        };
         if ret_err {
             return Err(DriverError::ConfigError);
         }else{

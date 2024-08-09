@@ -79,7 +79,9 @@ where
 
             if total > (MAX_BUFFER_LENGTH - MAX_READ_BUFFER_LENGTH) {
                 error!("Usart buffer overflow");
-                return Err(CommunicationError::UartError(embassy_stm32::usart::Error::BufferTooLong));
+                return Err(CommunicationError::UartError(
+                    embassy_stm32::usart::Error::BufferTooLong,
+                ));
             }
 
             if n == 0 {

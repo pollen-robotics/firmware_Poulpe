@@ -240,62 +240,66 @@ async fn main(spawner: Spawner) {
 
     unwrap!(spawner.spawn(motor_control::task::control_loop(actuator_config, hardware_zeros)));
 
-    // Prepare and spawn the DXL communication task
-    let mut usart_config = usart_config::default();
-    // usart_config.baudrate = 1_000_000;
-    // usart_config.baudrate = 115_200;
-    usart_config.baudrate = 2_000_000;
-    usart_config.stop_bits = embassy_stm32::usart::StopBits::STOP1;
-    usart_config.data_bits = embassy_stm32::usart::DataBits::DataBits8;
-    usart_config.parity = embassy_stm32::usart::Parity::ParityNone;
-    usart_config.detect_previous_overrun = false;
+    #[cfg(feature = "dynamixel")]
+    {
+        // Prepare and spawn the DXL communication task
+        let mut usart_config = usart_config::default();
+        // usart_config.baudrate = 1_000_000;
+        // usart_config.baudrate = 115_200;
+        usart_config.baudrate = 2_000_000;
+        usart_config.stop_bits = embassy_stm32::usart::StopBits::STOP1;
+        usart_config.data_bits = embassy_stm32::usart::DataBits::DataBits8;
+        usart_config.parity = embassy_stm32::usart::Parity::ParityNone;
+        usart_config.detect_previous_overrun = false;
 
-    //Pouple A1
-    // let usart = config::DynamixelUart::new(
-    //     p.USART1,
-    //     p.PB15, //RX
-    //     p.PB14, //TX
-    //     Irqs,
-    //     p.DMA1_CH0,
-    //     p.DMA1_CH1,
-    //     usart_config,
-    // )
-    // .unwrap();
-    // unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into(), board_id)));
+        //Pouple A1
+        // let usart = config::DynamixelUart::new(
+        //     p.USART1,
+        //     p.PB15, //RX
+        //     p.PB14, //TX
+        //     Irqs,
+        //     p.DMA1_CH0,
+        //     p.DMA1_CH1,
+        //     usart_config,
+        // )
+        // .unwrap();
+        // unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into(), board_id)));
 
-    // Poulpe B1
-    // let usart = config::DynamixelUart::new(
-    //     p.USART1,
-    //     p.PB15, //RX
-    //     p.PA9,  //TX
-    //     Irqs,
-    //     p.DMA1_CH0,
-    //     p.DMA1_CH1,
-    //     usart_config,
-    // )
-    // .unwrap();
+        // Poulpe B1
+        let usart = config::DynamixelUart::new(
+            p.USART1,
+            p.PB15, //RX
+            p.PA9,  //TX
+            Irqs,
+            p.DMA1_CH0,
+            p.DMA1_CH1,
+            usart_config,
+        )
+        .unwrap();
 
-    // unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into(), board_id)));
-    // unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into())));
-
+        unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into(), board_id)));
+    }
+    
     // SPI for Ethercat LAN9252
-    let mut lan9252_spi_config = spi::Config::default();
-    lan9252_spi_config.frequency = mhz(15);
-    lan9252_spi_config.mode = spi::MODE_0;
+    #[cfg(feature = "ethercat")]
+    {
+        let mut lan9252_spi_config = spi::Config::default();
+        lan9252_spi_config.frequency = mhz(15);
+        lan9252_spi_config.mode = spi::MODE_0;
 
-    let ethconfig: LAN9252Config = EthercatConfig {
-        peri: p.SPI3,
-        sck: p.PC10,
-        mosi: p.PB2,
-        miso: p.PC11,
-        cs: p.PD0,
-    };
+        let ethconfig: LAN9252Config = EthercatConfig {
+            peri: p.SPI3,
+            sck: p.PC10,
+            mosi: p.PB2,
+            miso: p.PC11,
+            cs: p.PD0,
+        };
 
-    unwrap!(spawner.spawn(ethercat::task::messsage_handler(
-        ethconfig,
-        lan9252_spi_config
-    )));
-
+        unwrap!(spawner.spawn(ethercat::task::messsage_handler(
+            ethconfig,
+            lan9252_spi_config
+        )));
+    }
     // Prepare and spawn the main task
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
     let mut led_error = Output::new(p.PC8, Level::High, Speed::Low);
