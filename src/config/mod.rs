@@ -10,10 +10,15 @@ pub const N_AXIS: usize = 2;
 pub const N_AXIS: usize = 3;
 
 // maximal temperature limits for the motor and the boards
-// high temeperature state - only warning
+// high temeperature state (boards and motors) - only warning
 pub const HIGH_TEMP: f32 = 65.0;
-// maximal temperature limit - error state
-pub const MAX_TEMP: f32 = 75.0;
+// maximal motor temperature - error state if above
+pub const MAX_MOTOR_TEMP: f32 = 75.0;
+// maximal board temperature - error state if above
+pub const MAX_BOARD_TEMP: f32 = 100.0;
+
+// minimal bus voltage - error state if below
+pub const MIN_BUS_VOLTAGE: f32 = 10.0;
 
 // pub static DXL_ID: u8 = 42;
 
