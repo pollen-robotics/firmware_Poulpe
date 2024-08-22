@@ -5,16 +5,37 @@ version = "0.1.0"
 license = "MIT OR Apache-2.0"
 
 [features]
-#motor specifig config
-# default = ["orbita2d", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" ]
-# default = ["orbita2d", "ec60", "velocity_feedforward","cmd_filter", "axis_output"] #"gearbox_output" ]
-default = ["orbita3d", "ecx22", "velocity_feedforward","cmd_filter","gearbox_output"]
+### orbita specifig config
+
+###### old 
+## ec60 based orbita 2d + beta hardware
+# default = ["orbita2d", "beta", "ec60", "velocity_feedforward","cmd_filter", "axis_output", "use_flash"] 
+
+###### beta 
+## orbita 2d (genric boards with poulpe + 2x BOB)
+# default = ["orbita2d", "beta", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" , "use_flash"]
+## orbita 3d (genric boards with poulpe + 3x BOB)
+# default = ["orbita3d", "beta", "ecx22", "velocity_feedforward","cmd_filter","gearbox_output", "use_flash"]
+
+####### gamma
+## orbita 2d (gamma elec)
+# default = ["orbita2d", "gamma", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" , "use_flash"]
+## orbita 3d (gamma elec)
+default = ["orbita3d", "gamma", "ecx22", "velocity_feedforward", "cmd_filter", "gearbox_output", "use_flash"]
+
 # default = ["orbita3d"]
 orbita2d = []
 orbita3d = []
+
+# motor type
 ec60 = []
 ec45=[]
 ecx22=[]
+
+# driver board type
+beta = [] # beta elec with poulpe + 2/3 X sponge+BOB
+gamma = [] # new gamma elec with poulpe + ventouse 2d/3d
+
 # use command filter to reduce the jerk of the motor
 cmd_filter = []
 # using velocity feedforward to improve the velocity tracking performance
@@ -24,6 +45,12 @@ velocity_feedforward = []
 # after gearbox, after axis reduction, or directly the motor angle (by not specifying any of the following features in `defaults`)
 gearbox_output = []  # control the motor angle after the gearbox
 axis_output = []  # control the motor angle after the gearbox and axis reduction
+
+# use flash memory (if not included in `defaults` the flash memory is not used)
+use_flash = []
+# write the new config to the flash (has to be used with `use_flash`)
+# if not used the config is read from the flash
+write_flash = []
 
 # feature signaling that the board does not have a temperature sensor
 no_temperature_sensor = []

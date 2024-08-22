@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 
 use defmt::Format;
-
+use defmt::error;
 use crate::motor_control::{Actuator, Pid, RawMotorsIO, RawSensorsIO};
 use crate::{motor_control::foc::MotionMode, motor_control::BoardStatus};
 use embassy_time::Instant;
@@ -41,6 +41,7 @@ pub struct Memory<const N: usize> {
     velocity_limit_max: [f32; N],
 
     axis_sensor: [f32; N],
+    hardware_zeros: [f32; N],
 
     #[cfg(feature = "orbita3d")]
     index_sensor: [u8; N],
@@ -132,6 +133,14 @@ impl<const N: usize> SharedMemory<N> {
 
     pub fn set_axis_sensor(&self, sensor: [f32; N]) {
         self.inner.borrow_mut().axis_sensor = sensor;
+    }
+
+    pub fn get_hardware_zeros(&self) -> [f32; N] {
+        self.inner.borrow().hardware_zeros
+    }
+    
+    pub fn set_hardware_zeros(&self, zeros: [f32; N]) {
+        self.inner.borrow_mut().hardware_zeros = zeros;
     }
 
     pub fn set_error_state(&self, state: BoardStatus) {
@@ -293,6 +302,7 @@ impl<const N: usize> SharedMemory<N> {
                 target_velocity: [0.0; N],
                 target_torque: [0.0; N],
                 axis_sensor: [0.0; N],
+                hardware_zeros: [0.0; N],
 
                 velocity_feedforward_timestamp: None,
                 get_target_set_timestamp: None,
@@ -346,6 +356,7 @@ impl<const N: usize> SharedMemory<N> {
             get_target_set_timestamp: Some(Instant::now()),
 
             axis_sensor: actuator.get_axis_sensors().unwrap_or([f32::NAN; N]),
+            hardware_zeros: actuator.get_hardware_zeros().unwrap_or([f32::NAN; N]),
 
             flux_pid_gains: actuator
                 .get_flux_pid_gains()

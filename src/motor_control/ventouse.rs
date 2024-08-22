@@ -8,22 +8,22 @@ use crate::{
     SHARED_MEMORY,
 };
 
+use super::driver::Driver;
+
 use super::{
-    // axis_sensor::AxisSensor,
-    driver::Driver,
     foc::Foc,
     motors_io::{IOError, Pid, RawMotorsIO},
 };
 
-pub struct Ventouse<'d, T, FocP, FocEnb, DrvP>
+pub struct Ventouse<'d, T, FocP, FocEnb, Drv>
 where
     T: spi::Instance,
     FocP: Pin,
     FocEnb: Pin,
-    DrvP: Pin,
+    Drv: Driver
 {
     foc: Foc<'d, T, FocP, FocEnb>,
-    driver: Driver<'d, T, DrvP>,
+    driver: Drv,
     pub kind: char,
 }
 
@@ -48,14 +48,14 @@ where
     pub driver_cs: DrvCs,
 }
 
-impl<'d, T, FocP, FocEnb, DrvP> Ventouse<'d, T, FocP, FocEnb, DrvP>
+impl<'d, T, FocP, FocEnb, Drv> Ventouse<'d, T, FocP, FocEnb, Drv>
 where
     T: spi::Instance,
     FocP: Pin,
     FocEnb: Pin,
-    DrvP: Pin,
+    Drv: Driver
 {
-    pub fn new(foc: Foc<'d, T, FocP, FocEnb>, driver: Driver<'d, T, DrvP>) -> Self {
+    pub fn new(foc: Foc<'d, T, FocP, FocEnb>, driver: Drv) -> Self {
         Self {
             foc,
             driver,
@@ -70,28 +70,15 @@ where
         let mut err = IOError::InitError;
         info!("[Ventouse{:?}] Initializing register...", self.kind);
 
-        match self.driver.tmc6200_checked_write(0x00u8, 0x00000000u32) {
-            Ok(_) => info!("[Ventouse{:?}] TMC6200 init done", self.kind),
+
+        match self.driver.configure(){
+            Ok(_) => info!("[Ventouse{:?}] Driver init done", self.kind),
             Err(e) => {
                 ret_err = true;
-                error!(
-                    "[Ventouse{:?}] TMC6200 init failed: {:?} => check SPI and power connection",
-                    self.kind, e
-                );
-                err = IOError::SpiError(e);
+                error!("[Ventouse{:?}] Driver init failed: {:?} => check SPI and power connection", self.kind, e);
+                err = IOError::InitError;
             }
         }
-        match self.driver.tmc6200_checked_write(0x0au8, 0x00000000u32) // DRVSRENGTH=0 for BOB
-	{
-	    Ok(_) => info!("[Ventouse{:?}] TMC6200 init done",self.kind),
-	    Err(e) => {
-		ret_err=true;
-		error!("[Ventouse{:?}] TMC6200 init failed: {:?}  => check SPI and power connection", self.kind,e);
-		err=IOError::SpiError(e);
-
-	    }
-
-	}
 
         match self.foc.tmc4671_init_registers().await {
             Ok(_) => info!("[Ventouse{:?}] TMC4671 init done", self.kind),
@@ -160,14 +147,12 @@ where
 
         let adc_offset = self.foc.tmc4671_calibrate_adc_offsets()?;
 
-        debug!("[Ventouse{:?}] ADC offsets: {:?}", self.kind, adc_offset);
+        info!("[Ventouse{:?}] ADC offsets: {:?}", self.kind, adc_offset);
 
         Ok(())
     }
 
     pub async fn align_motor(&mut self) -> Result<(), embassy_stm32::spi::Error> {
-        // /!\ Please note that the TMC6200 must be in Single-line mode (aka 6-PMW)
-        self.driver.tmc6200_checked_write(0x00u8, 0x00000000u32)?;
 
         // Set openloop mode
         self.foc
@@ -241,7 +226,15 @@ where
 
         let mut target: i32 = 1000;
         //Assume that check_motors_1 has been called
-        #[cfg(feature = "orbita2d")]
+        #[cfg(all(feature = "orbita2d", feature = "gamma"))]
+        {
+            if self.kind == 'B' {
+                target = 500;
+            } else {
+                target = 1000;
+            }
+        }
+        #[cfg(all(feature = "orbita2d", feature = "beta"))]
         {
             if self.kind == 'B' {
                 target = 1000;
@@ -261,7 +254,7 @@ where
                 .foc
                 .tmc4671_get_actual_velocity()
                 .map_err(IOError::SpiError)?;
-            if velocity > 2 * target || velocity < -200 {
+            if velocity > 3 * target || velocity < -200 {
                 // check if the motor is moving in the right direction and not too fast
                 self.foc.tmc4671_disable();
                 error!(
@@ -309,7 +302,15 @@ where
     pub async fn check_motors_2(&mut self) -> Result<(), IOError> {
         let mut target: i32 = -1000;
         //Assume that check_motors_1 has been called
-        #[cfg(feature = "orbita2d")]
+        #[cfg(all(feature = "orbita2d", feature = "gamma"))]
+        {
+            if self.kind == 'B' {
+                target = -500;
+            } else {
+                target = -1000;
+            }
+        }
+        #[cfg(all(feature = "orbita2d", feature = "beta"))]
         {
             if self.kind == 'B' {
                 target = -1000;
@@ -330,7 +331,7 @@ where
                 .foc
                 .tmc4671_get_actual_velocity()
                 .map_err(IOError::SpiError)?;
-            if velocity < 2 * target || velocity > 200 {
+            if velocity < 3 * target || velocity > 200 {
                 // check if the motor is moving in the right direction and not too fast
                 self.foc.tmc4671_disable();
                 error!(
@@ -377,12 +378,12 @@ where
     }
 }
 
-impl<'d, T, FocP, FocEnb, DrvP> RawMotorsIO<1> for Ventouse<'d, T, FocP, FocEnb, DrvP>
+impl<'d, T, FocP, FocEnb, Drv> RawMotorsIO<1> for Ventouse<'d, T, FocP, FocEnb, Drv>
 where
     T: spi::Instance,
     FocP: Pin,
     FocEnb: Pin,
-    DrvP: Pin,
+    Drv:Driver
 {
     /// Check if the motors are ON or OFF
     fn is_torque_on(&mut self) -> Result<[bool; 1], IOError> {

@@ -10,18 +10,21 @@ pub struct BrushlessMotor {
     pid_torque: Pid,
     pid_velocity: Pid,
     pid_position: Pid,
-    torque_flux_limit_max: u32,  // milliAmps
-    velocity_limit_max: u32,   // rad/s at the output of the gearbox/axis/motor - depends on the features enabled
+    torque_flux_limit_max: u32, // milliAmps
+    velocity_limit_max: u32, // rad/s at the output of the gearbox/axis/motor - depends on the features enabled
     // The encoder PPR value - register ABN_DECODER_PPR
     abn_decoder_ppr: u32,
     // ratio of motor's gearbox
     gearbox_ratio: f32,
     // additional reduction ration of the axis
     axis_ratio: f32,
+
 }
 
 impl BrushlessMotor {
+    
     #[allow(dead_code)]
+    #[cfg(not(all(feature = "gamma", feature = "orbita3d")))]
     pub fn ecx22() -> Self {
         Self {
             // 4 pole pairs for the ecx22
@@ -29,11 +32,32 @@ impl BrushlessMotor {
 
             // the encoder with 4096 ppr
             abn_decoder_ppr: 0x00001000,
-            // PI controller params
+            // PI controller params            
             pid_flux: Pid { p: 200, i: 500 },
             pid_torque: Pid { p: 200, i: 500 },
             pid_velocity: Pid { p: 500, i: 100 },
             pid_position: Pid { p: 100, i: 0 },
+            torque_flux_limit_max: 2500, // 2.5 amps
+            velocity_limit_max: 40, // 40 rad/s
+            // gearing ratios
+            gearbox_ratio: 1.0 / 35.0,
+            axis_ratio: 12.0 / 64.0,
+        }
+    }
+    #[allow(dead_code)]
+    #[cfg(all(feature = "gamma", feature = "orbita3d"))]
+    pub fn ecx22() -> Self {
+        Self {
+            // 4 pole pairs for the ecx22
+            n_pole_pairs: 4,
+
+            // the encoder with 4096 ppr
+            abn_decoder_ppr: 0x00001000,
+            // PI controller params             
+            pid_flux: Pid { p: 80, i: 200 },
+            pid_torque: Pid { p: 80, i: 200 },
+            pid_velocity: Pid { p: 500, i: 200 },
+            pid_position: Pid { p: 50, i: 0 },
             torque_flux_limit_max: 2500, // 2.5 amps
             velocity_limit_max: 40, // 40 rad/s
             // gearing ratios
@@ -54,8 +78,8 @@ impl BrushlessMotor {
             pid_torque: Pid { p: 44, i: 120 },
             pid_velocity: Pid { p: 600, i: 400 },
             pid_position: Pid { p: 50, i: 0 },
-            torque_flux_limit_max: 6000, // 4 amps
-            velocity_limit_max: 10, // 10 rad/s
+            torque_flux_limit_max: 6000, // 6 amps
+            velocity_limit_max: 10,      // 10 rad/s
             // gearing ratios
             gearbox_ratio: 1.0 / 25.01,
             axis_ratio: 28.0 / 52.0,
@@ -76,7 +100,7 @@ impl BrushlessMotor {
             pid_velocity: Pid { p: 500, i: 600 },
             pid_position: Pid { p: 50, i: 0 },
 
-            torque_flux_limit_max: 6000, // 4 amps
+            torque_flux_limit_max: 6000, // 6 amps
             velocity_limit_max: 10, // 410 rad/s
             // gearing ratios
             gearbox_ratio: 1.0 / 35.0,
@@ -108,7 +132,7 @@ impl BrushlessMotor {
         self.torque_flux_limit_max
     }
     pub fn velocity_limit_max(&self) -> u32 {
-        self.velocity_limit_max 
+        self.velocity_limit_max
     }
 
     pub fn gearbox_ratio(&self) -> f32 {
