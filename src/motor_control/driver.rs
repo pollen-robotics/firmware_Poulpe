@@ -6,7 +6,21 @@ use embassy_stm32::spi::{Instance, Spi};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embedded_hal_1::spi::SpiDevice;
 
-pub struct Driver<'d, T, P>
+use defmt::Format;
+use embassy_stm32::spi;
+
+#[derive(Debug, Format)]
+pub enum DriverError {
+    SpiError(spi::Error),
+    ConfigError
+}
+
+pub trait Driver {
+    fn configure(&mut self) -> Result<(), DriverError>;
+}
+
+
+pub struct DriverTMC6200<'d, T, P>
 where
     T: Instance,
     P: Pin,
@@ -14,7 +28,7 @@ where
     spi: SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'static, T, NoDma, NoDma>, Output<'static, P>>,
 }
 
-impl<'d, T, P> Driver<'d, T, P>
+impl<'d, T, P> DriverTMC6200<'d, T, P>
 where
     T: Instance,
     P: Pin,
@@ -30,13 +44,13 @@ where
         Self { spi }
     }
 
-    pub(crate) fn tmc6200_checked_write(
+    pub fn checked_write(
         &mut self,
         reg: u8,
         data_w: u32,
     ) -> Result<(), embassy_stm32::spi::Error> {
-        self.tmc6200_write_register(reg, data_w)?;
-        let data_r = self.tmc6200_read_register(reg)?;
+        self.write_register(reg, data_w)?;
+        let data_r = self.read_register(reg)?;
         if data_r == data_w {
             Ok(())
         } else {
@@ -48,21 +62,21 @@ where
         }
     }
 
-    fn tmc6200_write_register(
+    fn write_register(
         &mut self,
         reg: u8,
         data_w: u32,
     ) -> Result<u32, embassy_stm32::spi::Error> {
         let data_m = data_w;
-        self.tmc6200_transmit_raw_data(true, reg, &data_m)
+        self.transmit_raw_data(true, reg, &data_m)
     }
 
-    fn tmc6200_read_register(&mut self, reg: u8) -> Result<u32, embassy_stm32::spi::Error> {
+    fn read_register(&mut self, reg: u8) -> Result<u32, embassy_stm32::spi::Error> {
         let data_m = 0x00000000u32;
-        self.tmc6200_transmit_raw_data(false, reg, &data_m)
+        self.transmit_raw_data(false, reg, &data_m)
     }
 
-    fn tmc6200_transmit_raw_data(
+    fn transmit_raw_data(
         &mut self,
         write_bit: bool,
         addr: u8,
@@ -98,3 +112,180 @@ where
         Ok(read_data)
     }
 }
+
+impl <'d, T, P> Driver for DriverTMC6200<'d, T, P>
+where
+    T: Instance,
+    P: Pin,
+{
+    fn configure(&mut self) -> Result<(), DriverError>{
+        let mut ret_err = false;
+
+        // /!\ Please note that the TMC6200 must be in Single-line mode (aka 6-PMW)
+        match self.checked_write(0x00u8, 0x00000000u32){
+            Ok(_) => { debug!("TMC6200 setting 6-PWM set"); },
+            Err(e) => {
+            ret_err = true;
+            error!(
+                "TMC6200 setting 6-PWM failed: {:?} => check SPI and power connection", e
+            );
+            }
+        };
+        // BOB configuration - this was the config for beta hardware (migth be changed)
+        // DRVSRENGTH=2 
+        // BBMCLKS=2 
+        match self.checked_write(0x0au8, 0x00000000u32){
+            Ok(_) => { debug!("TMC6200 setting DRVSRENGTH set"); },
+            Err(e) => {
+            ret_err = true;
+            error!(
+                "TMC6200 setting DRVSRENGTH failed: {:?} => check SPI and power connection", e
+            );
+            }
+        };
+        if ret_err {
+            return Err(DriverError::ConfigError);
+        }else{
+            return Ok(());
+        }
+    }
+}
+
+
+pub struct DriverDRV8316<'d, T, P>
+where
+    T: Instance,
+    P: Pin,
+{
+    spi: SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'static, T, NoDma, NoDma>, Output<'static, P>>,
+}
+
+impl<'d, T, P> DriverDRV8316<'d, T, P>
+where
+    T: Instance,
+    P: Pin,
+{
+    pub fn new(
+        spi: SpiDeviceWithConfig<
+            'd,
+            NoopRawMutex,
+            Spi<'static, T, NoDma, NoDma>,
+            Output<'static, P>,
+        >,
+    ) -> Self {
+        Self { spi }
+    }
+
+    pub fn checked_write(
+        &mut self,
+        reg: u8,
+        data_w: u8,
+    ) -> Result<(), embassy_stm32::spi::Error> {
+        self.write_register(reg, data_w)?;
+        let data_r = self.read_register(reg)?;
+        if data_w == data_r[1]{
+            Ok(())
+        } else {
+            info!(
+                "!!! DRV8316: Error checked write addr {:#x} {:#x}_r / {:#x}_w !!!",
+                reg, data_r[1], data_w
+            );
+            Err(embassy_stm32::spi::Error::Framing)
+        }
+    }
+
+    fn write_register(
+        &mut self,
+        reg: u8,
+        data_w: u8,
+    ) -> Result<[u8;2], embassy_stm32::spi::Error> {
+        let data_m = data_w;
+        self.transmit_raw_data(true, reg, data_m)
+    }
+
+    fn read_register(&mut self, reg: u8) -> Result<[u8;2], embassy_stm32::spi::Error> {
+        let data_m = 0x00u8;
+        self.transmit_raw_data(false, reg, data_m)
+    }
+
+    fn transmit_raw_data(
+        &mut self,
+        write_bit: bool,
+        addr: u8,
+        data: u8,
+    ) -> Result<[u8;2] , embassy_stm32::spi::Error> {
+        // Building array
+        let mut msb_data: u8 = addr << 1;
+        let mut data = data;
+        if write_bit == false { //if read
+            msb_data |= 0b10000000;
+            data = 0x00;
+        }
+
+        let mut transfer_data = ((msb_data as u16) << 8) | data as u16;
+        // check parity
+        if transfer_data.count_ones() % 2 != 0 {
+            transfer_data |= 0x0100;
+        }
+        let mut transfer_data = transfer_data.to_be_bytes();
+
+        // Sending data 
+        self.spi
+            .transfer_in_place(&mut transfer_data)
+            .map_err(|e| {
+                error!("!!! DRV8316: Error SPI {:?}!!!", e);
+                embassy_stm32::spi::Error::Framing
+            })?;
+
+        let mut read_data = [0x00u8; 2];
+        read_data[0] = transfer_data[0];
+        read_data[1] = transfer_data[1];
+    
+        Ok(read_data)
+    }
+}
+
+impl <'d, T, P> Driver for DriverDRV8316<'d, T, P>
+where
+    T: Instance,
+    P: Pin,
+{
+    fn configure(&mut self) -> Result<(), DriverError>{
+       
+        let mut ret_err = false;
+        debug!("DRV8316: Configuring the driver");
+        // unlock the registers in order to be able to write to them
+        // write 0x3 (position 0-2) to register 0x3 (control register 1 pp. 62)
+        let mut data: u8 = 0b011 ; 
+        match self.checked_write( 0x3, data) {
+            Ok(_) => { debug!("DRV8316: Registers unlocked"); },
+            Err(e) => {ret_err = true; error!("DRV8316: Could not unlock the registers: {:?}", e);}
+        };
+        
+        // set the slew rate to the faster setting
+        // setting it to 200V/us
+        // write 0x3 (position 3-4) to register 0x4 (control register 2 pp. 63)
+        data = 0x60 as u8  | 0b11 << 3;
+        match self.checked_write( 0x4, data){
+            Ok(_) => { debug!("DRV8316: Slew rate set!"); },
+            Err(e) => {ret_err = true; error!("DRV8316: Could not set the slew rate: {:?}", e);}
+        };
+        
+        // set the gain
+        // set gain to 0.3V/A
+        // write 0x1 (position 0-1) to register 0x7 (control register 5 pp. 66)
+        data = 0x00 as u8  | 0x1;
+        match self.checked_write( 0x7, data) {
+            Ok(_) => { debug!("DRV8316: Gain set"); },
+            Err(e) => {ret_err = true; error!("DRV8316: Could not set the gain rate: {:?}", e);}
+        };
+        
+        if ret_err {
+            return Err(DriverError::ConfigError);
+        }else{
+            return Ok(());
+        }
+    }
+}
+
+

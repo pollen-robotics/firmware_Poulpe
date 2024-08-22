@@ -2,8 +2,8 @@ mod actuator;
 pub mod sensors;
 pub use actuator::Actuator;
 mod axis_sensor;
-mod driver;
-pub use driver::Driver;
+pub mod driver;
+pub use driver::{DriverTMC6200, DriverDRV8316};
 pub(crate) mod foc;
 pub use foc::Foc;
 mod motors_io;
@@ -27,6 +27,7 @@ pub enum BoardStatus {
     OverCurrentError = 6,
     BusVoltageError = 7,
     HighTemperatureState = 100,
+    Init = 20,
     Unknown = 255,
 }
 
@@ -42,6 +43,7 @@ impl BoardStatus {
             6 => BoardStatus::OverCurrentError,
             7 => BoardStatus::BusVoltageError,
             100 => BoardStatus::HighTemperatureState,
+            20 => BoardStatus::Init,
             255 => BoardStatus::Unknown,
             _ => BoardStatus::Unknown,
         }

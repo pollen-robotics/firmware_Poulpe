@@ -11,20 +11,25 @@ use defmt::{info, unwrap, error};
 use embassy_executor::Spawner;
 use embassy_stm32::dma::NoDma;
 use embassy_stm32::gpio::{Level, Output, Speed};
+use embassy_stm32::time::{khz, mhz};
 use embassy_stm32::usart::Config as usart_config;
 use embassy_stm32::{bind_interrupts, peripherals, usart};
 use embassy_stm32::{i2c, Config as stm32_config};
+use embassy_stm32::{spi, Config};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{block_for, Duration, Timer};
 mod config;
 mod dynamixel;
+mod ethercat;
 mod motor_control;
 mod shared_memory;
 
 use crate::config::{
     AD5047Config, AD5047ConfigBot, AD5047ConfigMid, AD5047ConfigTop, ActuatorConfig, AksimConfig,
+    LAN9252Config,
 };
+use crate::ethercat::EthercatConfig;
 use crate::motor_control::sensors::I2cHallConfig;
 use crate::motor_control::ventouse::VentouseConfig;
 use crate::shared_memory::SharedMemory;
@@ -192,7 +197,10 @@ async fn main(spawner: Spawner) {
         ad5047mid: AD5047ConfigMid { cs: p.PE4 },
         ad5047bot: AD5047ConfigBot { cs: p.PA15 },
         #[cfg(not(feature = "no_temperture_sensor"))]
-        temperature_sensor: TemperatureSensorConfig { adc: p.ADC1, pin: p.PB1 },
+        temperature_sensor: TemperatureSensorConfig {
+            adc: p.ADC1,
+            pin: p.PB1,
+        },
 
         donut_hall: I2cHallConfig {
             peri: p.I2C1,
@@ -224,48 +232,74 @@ async fn main(spawner: Spawner) {
         aksim: AksimConfig { cs: p.PA15 },
         ad5047: AD5047Config { cs: p.PE4 },
         #[cfg(not(feature = "no_temperture_sensor"))]
-        temperature_sensor: TemperatureSensorConfig { adc: p.ADC1, pin: p.PB1 },
+        temperature_sensor: TemperatureSensorConfig {
+            adc: p.ADC1,
+            pin: p.PB1,
+        },
     };
 
     unwrap!(spawner.spawn(motor_control::task::control_loop(actuator_config, hardware_zeros)));
 
-    // Prepare and spawn the DXL communication task
-    let mut usart_config = usart_config::default();
-    // usart_config.baudrate = 1_000_000;
-    // usart_config.baudrate = 115_200;
-    usart_config.baudrate = 2_000_000;
-    usart_config.stop_bits = embassy_stm32::usart::StopBits::STOP1;
-    usart_config.data_bits = embassy_stm32::usart::DataBits::DataBits8;
-    usart_config.parity = embassy_stm32::usart::Parity::ParityNone;
-    usart_config.detect_previous_overrun = false;
+    #[cfg(feature = "dynamixel")]
+    {
+        // Prepare and spawn the DXL communication task
+        let mut usart_config = usart_config::default();
+        // usart_config.baudrate = 1_000_000;
+        // usart_config.baudrate = 115_200;
+        usart_config.baudrate = 2_000_000;
+        usart_config.stop_bits = embassy_stm32::usart::StopBits::STOP1;
+        usart_config.data_bits = embassy_stm32::usart::DataBits::DataBits8;
+        usart_config.parity = embassy_stm32::usart::Parity::ParityNone;
+        usart_config.detect_previous_overrun = false;
 
-    //Pouple A1
-    // let usart = config::DynamixelUart::new(
-    //     p.USART1,
-    //     p.PB15, //RX
-    //     p.PB14, //TX
-    //     Irqs,
-    //     p.DMA1_CH0,
-    //     p.DMA1_CH1,
-    //     usart_config,
-    // )
-    // .unwrap();
-    // unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into(), board_id)));
+        //Pouple A1
+        // let usart = config::DynamixelUart::new(
+        //     p.USART1,
+        //     p.PB15, //RX
+        //     p.PB14, //TX
+        //     Irqs,
+        //     p.DMA1_CH0,
+        //     p.DMA1_CH1,
+        //     usart_config,
+        // )
+        // .unwrap();
+        // unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into(), board_id)));
 
-    // Poulpe B1
-    let usart = config::DynamixelUart::new(
-        p.USART1,
-        p.PB15, //RX
-        p.PA9,  //TX
-        Irqs,
-        p.DMA1_CH0,
-        p.DMA1_CH1,
-        usart_config,
-    )
-    .unwrap();
+        // Poulpe B1
+        let usart = config::DynamixelUart::new(
+            p.USART1,
+            p.PB15, //RX
+            p.PA9,  //TX
+            Irqs,
+            p.DMA1_CH0,
+            p.DMA1_CH1,
+            usart_config,
+        )
+        .unwrap();
 
-    unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into(), board_id)));
+        unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into(), board_id)));
+    }
+    
+    // SPI for Ethercat LAN9252
+    #[cfg(feature = "ethercat")]
+    {
+        let mut lan9252_spi_config = spi::Config::default();
+        lan9252_spi_config.frequency = mhz(15);
+        lan9252_spi_config.mode = spi::MODE_0;
 
+        let ethconfig: LAN9252Config = EthercatConfig {
+            peri: p.SPI3,
+            sck: p.PC10,
+            mosi: p.PB2,
+            miso: p.PC11,
+            cs: p.PD0,
+        };
+
+        unwrap!(spawner.spawn(ethercat::task::messsage_handler(
+            ethconfig,
+            lan9252_spi_config
+        )));
+    }
     // Prepare and spawn the main task
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
     let mut led_error = Output::new(p.PC8, Level::High, Speed::Low);

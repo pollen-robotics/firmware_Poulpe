@@ -84,6 +84,11 @@ In addition to the configuration structures, it has several safety tresholds tha
 // maximal temperature limits for the motor and the boards
 // high temeperature state - only warning
 pub const HIGH_TEMP: f32 = 65.0;
-// maximal temperature limit - error state
-pub const MAX_TEMP: f32 = 75.0;
+// maximal motor temperature - error state if above
+pub const MAX_MOTOR_TEMP: f32 = 75.0;
+// maximal board temperature - error state if above
+pub const MAX_BOARD_TEMP: f32 = 100.0;
+
+// minimal bus voltage - error state if below
+pub const MIN_BUS_VOLTAGE: f32 = 10.0;
 ```

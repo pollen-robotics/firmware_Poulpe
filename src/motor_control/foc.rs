@@ -16,21 +16,60 @@ use super::ventouse::conversion;
 
 // PWM configuration
 const PWM_POLARITIES: u32 = 0x00000000;
-// const PWM_MAXCNT: u32 = 0x00000F9F; // PWM-freq 3999 = > 25KHz
+
+
+// drv8316 which are in the gamma elec for orbita3d use low-side 
+// current sensing and require a bit more time to measure the current
+// so we need to keep the pwm frequency a bit lower (at 25kHz)
+#[cfg(all(feature="gamma", feature="orbita3d"))] 
+const PWM_MAXCNT: u32 = 0x00000F9F; // PWM-freq 3999 = > 25KHz
+// for other boards we can use a higher frequency as they use inline current sensing
+#[cfg(not(all(feature="gamma", feature="orbita3d")))] 
 const PWM_MAXCNT: u32 = 0x000007CF; // PWM-freq 1999 = > 50KHz slightly less noisy
                                     // const PWM_MAXCNT: u32 = 0x000003E7; // PWM-freq 999 = > 100KHz
 
 const PWM_BBM_H_BBM_L: u32 = 0x00001919; // Break-Before-Make
-                                         // const PWM_SV_CHOP: u32 = 0x00000107; //Space vector On + PWM centered
+
+// for drv8316 which are in the gamma elec for orbita3d use low-side
+// better current measurement with space vector than with sine wave
+#[cfg(all(feature="gamma", feature="orbita3d"))] 
+const PWM_SV_CHOP: u32 = 0x00000107; //Space vector On + PWM centered
+// for other boards we can use the default value
+#[cfg(not(all(feature="gamma", feature="orbita3d")))] 
 const PWM_SV_CHOP: u32 = 0x00000007; //Space vector On + PWM centered
 
 // ADC configuration
-// const ADC_I_SELECT: u32 = 0x24000100;
+#[cfg(feature = "beta")] // current U and V inversion for BOBs in beta elec
 const ADC_I_SELECT: u32 = 0x18000100;
+#[cfg(feature = "gamma")] // no inversions for gamma elec
+const ADC_I_SELECT: u32 = 0x24000100;
+
 const DS_ADC_MCFG_B_MCFG_A: u32 = 0x00100010;
-const DS_ADC_MCLK_A: u32 = 0x20000000;
-const DS_ADC_MCLK_B: u32 = 0x20000000;
+
+// for drv8316 which are in the gamma elec for orbita3d use low-side
+// better current sensing for lower ADC frequency (20Mhz)
+// datasheet Table 9: Delta Sigma MCLK Configurations
+#[cfg(all(feature="gamma", feature="orbita3d"))] 
+const DS_ADC_MCLK: u32 = 0x19000000;  
+// for other boards we can use the default value (25Mhz)
+#[cfg(not(all(feature="gamma", feature="orbita3d")))] 
+const DS_ADC_MCLK: u32 = 0x20000000;  
+
+const DS_ADC_MCLK_A: u32 = DS_ADC_MCLK; 
+const DS_ADC_MCLK_B: u32 = DS_ADC_MCLK;
+
+// drv8316 which are in the gamma elec for orbita3d use low-side 
+// current sensing and require an exact synchronisation between the ADC and the 
+// PWM frequency 
+// The MDEC_A and MDEC_B should be set to 665 to be in sync with 25KHz pwm
+// dataheet https://www.analog.com/media/en/technical-documentation/data-sheets/TMC4671_datasheet_v1.06.pdf (page 27, table 10.)
+#[cfg(all(feature="gamma", feature="orbita3d"))] 
+const DS_ADC_MDEC_B_MDEC_A: u32 = 0x02990299;
+// for other boards we can use the default value
+#[cfg(not(all(feature="gamma", feature="orbita3d")))] 
 const DS_ADC_MDEC_B_MDEC_A: u32 = 0x014E014E;
+
+
 // full resolution of the ADC is 2^16 - 1
 // bidirectional current measurement is used
 // center is around 2^15 - 1
@@ -60,7 +99,15 @@ const PID_VELOCITY_LIMIT: u32 = 0x0000_7D00; //32000 //tuned ok at 500Hz
 // Motor alignment
 pub const OPENLOOP_ACCELERATION: u32 = 0x0000003c; // Wizard default
                                                    // pub const UQ_UD_EXT: u32 = 0x000007D0; // Openloop "torque_target" 2000
-pub const UQ_UD_EXT: u32 = 0x000001000; // Openloop "torque_target" 2000
+
+// for drv8316 which are in the gamma elec for orbita3d use low-side
+// better motor encoder align if higher voltage is used (5000 out of 32000)
+#[cfg(all(feature="gamma", feature="orbita3d"))] 
+pub const UQ_UD_EXT: u32 = 0x1388; 
+// for other boards we can use the default value (4000 out of 32000)
+#[cfg(not(all(feature="gamma", feature="orbita3d")))] 
+pub const UQ_UD_EXT: u32 = 0x000001000; 
+
 // max is 32000
 pub const UQ_UD_LIMIT: u32 = 31000;
 
@@ -318,12 +365,13 @@ where
         )?;
         self.tmc4671_checked_write(
             Tmc4671Registers::ADC_I1_SCALE_OFFSET as u8,
-            0x01000000 | adc_offset[0],
+            0x01000000 | adc_offset[1],
         )?;
 
         Ok((adc_offset[0] as u32, adc_offset[1] as u32))
     }
 
+    #[cfg(feature="beta")]
     fn adc_to_temperature(&self, adc_raw: u32) -> Result<f32, IOError> {
         // datasheet BOB: https://www.mouser.fr/datasheet/2/281/r44e-522712.pdf  (NCP18XH103F03RB)
         // ADC is operated in a single ended mode it measures the voltage from 0 to 2.5V
@@ -337,8 +385,8 @@ where
         let beta: f32 = 3455.0;
         let room_temp_inv: f32 = 1.0 / 298.15; //[K]
         let r_t: f32 = r_div * (3.3 / volt - 2.0); // estimated resistance of the NTC
-        let r_10k: f32 = 10000.0;
-        let t: f32 = 1.0 / (((libm::log((r_t / r_10k) as f64) as f32) / beta) + room_temp_inv);
+        let r_25: f32 = 10000.0;
+        let t: f32 = 1.0 / (((libm::log((r_t / r_25) as f64) as f32) / beta) + room_temp_inv);
 
         match t {
             t if t.is_nan() => Err(IOError::InvalidData),
@@ -346,6 +394,30 @@ where
                 let mut t_celsius = (t as f32) - 273.15;
                 // a seemingly constant linear error
                 // empirically tested correction
+                t_celsius = (t_celsius - 1.75297) / 1.0987;
+                Ok(t_celsius) // final conversion to Celsius
+            }
+        }
+    }
+    #[cfg(feature="gamma")]
+    fn adc_to_temperature(&self, adc_raw: u32) -> Result<f32, IOError> {
+        // NTCS0603E3103FMT 10k
+        // https://www.vishay.com/docs/29056/ntcs0603e3t.pdf
+        let volt = (adc_raw as f32 - self.adc_temp_offset as f32) / 65535.0 * 5.0;
+        let r_div: f32 = 4700.0;
+        let beta: f32 = 3610.0;
+        let room_temp_inv: f32 = 1.0 / 298.15; //[K]
+        let r_t: f32 = r_div * ((3.3 / volt) - 1.0); // estimated resistance of the NTC
+        let r_25: f32 = 10000.0;
+        let t: f32 = 1.0 / (((libm::log((r_t / r_25) as f64) as f32) / beta) + room_temp_inv);
+
+        match t {
+            t if t.is_nan() => Err(IOError::InvalidData),
+            _ => {
+                let mut t_celsius = (t as f32) - 273.15;
+                // a seemingly constant linear error
+                // empirically tested correction
+                // https://www.notion.so/pollen-robotics/Overtemperature-protection-91d2e7de1c5e4745a34cd67209dca090?pvs=4
                 t_celsius = (t_celsius - 1.75297) / 1.0987;
                 Ok(t_celsius) // final conversion to Celsius
             }
@@ -371,11 +443,20 @@ where
         match self.tmc4671_get_u32(Tmc4671Registers::ADC_RAW_DATA as u8) {
             Ok(raw) => {
                 let adc_raw = (raw & 0xffff) as f32; // extract the raw value
-                let mut voltage = (adc_raw - self.adc_vm_offset) / 32768.0 * 2.5; // scale to 0-2.5V
-                voltage = voltage * 48.0; // 47k/1k voltage divider
-                                          // a seemingly constant linear error
-                                          // empirically tested correction
-                voltage = (voltage - 0.8580) / 1.0285;
+                let voltage = (adc_raw - self.adc_vm_offset) / 32768.0 * 2.5; // scale to 0-2.5V
+                #[cfg(feature = "beta")]
+                let voltage = voltage / (1.0/(47.0 + 1.0)); // 47k/1k voltage divider (BOB)
+                #[cfg(feature = "gamma")]
+                let voltage = voltage / (4.7/(75.0 + 4.7)); // 75k/4.7k voltage divider (gamma elec ventouse 2d/3d)
+                
+                // a seemingly constant linear error
+                // empirically tested correction
+                // https://www.notion.so/pollen-robotics/Low-bus-voltage-protection-78fead7508fe4027a00669618095f125?pvs=4
+                
+                #[cfg(feature = "beta")]
+                let voltage = (voltage - 0.8580) / 1.0285;
+                #[cfg(feature = "gamma")]
+                let voltage = (voltage - 6.1204) / 0.8779;
                 Ok(voltage)
             }
             Err(e) => Err(e),
@@ -637,8 +718,6 @@ where
     }
 
     pub async fn tmc4671_init_registers(&mut self) -> Result<(), embassy_stm32::spi::Error> {
-        // // /!\ Please note that the TMC6200 must be in Single-line mode (aka 6-PMW)
-        // self.tmc6200_checked_write(0x00u8, 0x00000000u32);
 
         // Motor type & PWM configuration
         self.tmc4671_checked_write(
@@ -687,10 +766,7 @@ where
         )?;
 
         // set uq and ud limits
-        self.tmc4671_checked_write(
-            Tmc4671Registers::PIDOUT_UQ_UD_LIMITS as u8,
-            UQ_UD_LIMIT,
-        )?;
+        self.tmc4671_checked_write(Tmc4671Registers::PIDOUT_UQ_UD_LIMITS as u8, UQ_UD_LIMIT)?;
 
         // Limits
         //        self.tmc4671_checked_write(Tmc4671Registers::PID_TORQUE_FLUX_LIMITS as u8, 0x00007D00)?; // 32000

@@ -235,19 +235,20 @@ The actuators can not be enabled if the board is in one of these states
 <b>Real-time safety violation states</b>
 The actuators will stop their operation gracefully if the board is in one of these states
 - `OverTemperatureError = 5` - The motor/board temperature is too high
-    - temperature threshold is set in the `config` module (`config::MAX_TEMP` - default `75°C`)
-- `OverCurrentError = 6` - The motor current is too high (not implemented yet)
+    - temperature threshold is set in the `config` module 
+    - boards: `config::MAX_BOARD_TEMP` - default `100°C`
+    - motors: `config::MAX_MOTOR_TEMP` - default `75°C`
+- `OverCurrentError = 6` - The motor current is too high (**not implemented yet**)
 - `BusVoltageError = 7` - The bus voltage is too low
     - voltage threshold is set to `10V` 
 - `Unknown = 255` - Unknown error
 > these errors are not recoverable
 
-If any of thre real-time safety violation states are triggered the actuators will stop their operation gracefully. They will try to go to their home zero position with reduced speed and torque. Once they reach the home position the actuators will be disabled. The user has to reset the board in order to enable the actuators again.
+If any of thre real-time safety violation states are triggered the actuators will stop their operation gracefully. They will try reduce the velocity limit to the 10% of the max value and reduce the torque to 0 gradually over 5 seconds. 
+Once the zero torque is reached the actuators will be disabled. The user has to reset the board in order to enable the actuators again.
 
 ## Future work and improvements
 
-- Communication
-    - Ethercat: ethercat communication
 - Safety 
     - Make more accurate motor temperature reading
     - Add over-current protection

@@ -1,3 +1,5 @@
+use defmt::debug;
+
 pub struct CurrentSensing {
     // current sensing parameters
     // Shunt resistor value
@@ -9,30 +11,51 @@ pub struct CurrentSensing {
     // adc offset and scale values - register ADC_I0_SCALE_OFFSET and ADC_I1_SCALE_OFFSET
     adc_i0_scale_offset: u32,
     adc_i1_scale_offset: u32,
+    
 }
 
 impl CurrentSensing {
     #[allow(dead_code)]
-    pub fn wailer_B2() -> Self {
-        let mut return_struct = Self {
+    pub fn ventouse_bob() -> Self {
+        Self {
             // current sensing parameters
-            resistance_shunt: 0.003, // [Ohms]
+            resistance_shunt: 0.003, // 0.003 [Ohms]
             amp_gain: 20.0,          // [V/V]gain of the amplifier
             amp_voltage: 5.0,        // [V]
             // middle of the range  and scale 1
-            adc_i0_scale_offset: 0x01000000 | (0x8000),
-            adc_i1_scale_offset: 0x01000000 | (0x8000),
-        };
-        // update the default offset values
-        // this will be automated later on
-        #[cfg(feature = "ecx22")]
-        return_struct.set_adc_offsets(0x81D3, 0x825B);
-        #[cfg(feature = "ec60")]
-        return_struct.set_adc_offsets(0x81FA, 0x826C);
-        #[cfg(feature = "ec45")]
-        return_struct.set_adc_offsets(0x819E, 0x821C);
-
-        return return_struct;
+            // values ignored - configured automatically 
+            adc_i0_scale_offset: 0x01000000 | (0x8000), 
+            adc_i1_scale_offset: 0x01000000 | (0x8000), 
+        }
+    }
+    #[allow(dead_code)]
+    pub fn ventouse_2d() -> Self{
+        Self {
+            // current sensing parameters
+            resistance_shunt: 0.01, // 0.01 [Ohms]
+            amp_gain: 20.0,          // [V/V]gain of the amplifier
+            amp_voltage: 5.0,        // [V]
+            // middle of the range  and scale 1
+            // values ignored - configured automatically 
+            adc_i0_scale_offset: 0x01000000 | (0x8000), 
+            adc_i1_scale_offset: 0x01000000 | (0x8000), 
+        }
+    }
+    #[allow(dead_code)]
+    pub fn ventouse_3d() -> Self{
+        Self {
+            // current sensing parameters
+            resistance_shunt: 1.0,  // no shunt resistor
+            amp_gain: 0.15,         // 0.15 [V/A] gain of the DRV8316 amplifier 
+                                    // IMPORTANT: real gain is of DRV8316 is 0.3 V/A
+                                    //  but the current measured is just a half of the real value
+                                    //  This is an empirical conclusion, done in comparison with the BOB!!!
+            amp_voltage: 5.0,       // [V]
+            // middle of the range  and scale 1
+            // values ignored - configured automatically 
+            adc_i0_scale_offset: 0x01000000 | (0x8000), 
+            adc_i1_scale_offset: 0x01000000 | (0x8000), 
+        }
     }
 }
 
