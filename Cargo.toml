@@ -7,11 +7,11 @@ license = "MIT OR Apache-2.0"
 [features]
 ### orbita specifig config
 
-###### old 
+###### old
 ## ec60 based orbita 2d + beta hardware
-# default = ["orbita2d", "beta", "ec60", "velocity_feedforward","cmd_filter", "axis_output", "use_flash"] 
+# default = ["orbita2d", "beta", "ec60", "velocity_feedforward","cmd_filter", "axis_output", "use_flash"]
 
-###### beta 
+###### beta
 ## orbita 2d (genric boards with poulpe + 2x BOB)
 # default = ["orbita2d", "beta", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" , "use_flash"]
 ## orbita 3d (genric boards with poulpe + 3x BOB)
@@ -21,9 +21,13 @@ license = "MIT OR Apache-2.0"
 ## orbita 2d (gamma elec)
 # default = ["orbita2d", "gamma", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" , "use_flash"]
 ## orbita 3d (gamma elec)
-default = ["orbita3d", "gamma", "ecx22", "velocity_feedforward", "cmd_filter", "gearbox_output", "use_flash"]
+# default = ["orbita3d", "gamma", "ecx22", "velocity_feedforward", "cmd_filter", "gearbox_output", "use_flash"]
 
-# default = ["orbita3d"]
+
+orbita2d_gamma = ["orbita2d", "gamma", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" , "use_flash"]
+orbita3d_gamma = ["orbita3d", "gamma", "ecx22", "velocity_feedforward", "cmd_filter", "gearbox_output", "use_flash"]
+
+# default = ["orbita2d_gamma"]
 orbita2d = []
 orbita3d = []
 
@@ -54,7 +58,7 @@ write_flash = []
 
 # feature signaling that the board does not have a temperature sensor
 no_temperature_sensor = []
-# feature allowing to ignore the errors and continue the operation 
+# feature allowing to ignore the errors and continue the operation
 # this is a debug feature and should not be used in production
 ignore_errors = []
 
