@@ -5,14 +5,16 @@ A complete firmware stack for the [Poulpe](https://github.com/pollen-robotics/el
 
 ## Table of contents
 
+
 - [Installation](#installation)
     - [Build](#build)
     - [Run/Flush](#runflush)
 - [Software architecture](#software-architecture)
-    - [Firmware configuration](#firmware-configuration)
+    - [Real-time tasks](#real-time-tasks)
+    - [Orbita2d architecture](#orbita2d-architecture)
+    - [Orbita3d architecture](#orbita3d-architecture)
+- [Firmware configuration](#firmware-configuration)
     - [Dynamixel ID and sensor zeros configuration](#dynamixel-id-and-sensor-zeros-configuration)
-- [Orbita2d architecture](#orbita2d-architecture)
-- [Orbita3d architecture](#orbita3d-architecture)
 - [Safety features](#safety-features)
     - [Board state](#board-state)
 - [Future work and improvements](#future-work-and-improvements)
@@ -64,10 +66,7 @@ The dynamixel ID can be changed by setting the <code>DXL_ID</code> environment v
 
 ## Software architecture
 
-The software is divided into four main rust modules:
-- `dynamixel` - Implementation of the dynamixel protocol - [Read more](src/dynamixel/README.md)
-    - `registers` - Dynamixel registers used to communicate with the host computer
-    - `task` - Real-time task executing the dynamixel communication
+The software is divided into a few main rust modules:
 - `motor_control` - Implementation of the low-level motor control - [Read more](src/motor_control/README.md)
    - `foc` - Communication/configuration of the TMC4671 controller
    - `sensors` - Communication with the RLS and AS5047 sensors
@@ -78,10 +77,17 @@ The software is divided into four main rust modules:
     - `current_sense` - Current sense configuration
     - `flash` - Flash memory management and configuration
 - `shared_memory` - Shared memory between the motor controla and dynamixel communication tasks
+- `dynamixel` (optional) - Implementation of the dynamixel protocol - [Read more](src/dynamixel/README.md)
+    - `registers` - Dynamixel registers used to communicate with the host computer
+    - `task` - Real-time task executing the dynamixel communication  and seting/reading the values from/into the shared memory
+- `ethercat` (optional) - Implementation of the EtherCAT communication - [Read more](src/ethercat/README.md)
+    - `task` - Real-time task reading and writing ethercat network and seting/reading the values from/into the shared memory
 
-#### Real-time tasks
+### Real-time tasks
 The firmware runs two real-time tasks:
-1) `message_handler` - responsible for the communication with the host computer using the serial communication and Dynamixel protocol
+1) `message_handler` - responsible for the communication with the host computer either
+  - using the serial communication and Dynamixel protocol - `dynamixel`
+  - using EtherCAT protocol - `ethercat`
 2) `control_loop` - responsible for the motor control and sensor reading  
     - inialization of the motor control and sensor reading
     - communication with the low-level TMC4671 actuators using SPI
@@ -92,8 +98,25 @@ The firmware runs two real-time tasks:
 The tasks share data through the `SHARED_MEMORY` module.
 
 
-### Firmware configuration
-The same firmware can be configured to work with two different actuator setups: orbita2d and orbita3d. The orbita2d setup is a 2dof actuator with two motors and the orbita3d setup is a 3dof actuator with three motors. 
+### Orbita2d architecture
+<img src="docs/orbita2d.png" alt="Orbita 2D" />
+
+Orbita2d is a robotic actuator with two motors that use differential drive to run two axis. The motors used are maxon flat motors of either `EC60` or `EC45` series. The motor control board used in the setup is the [TMC4671 + TMC6100 BOB](https://www.analog.com/en/resources/evaluation-hardware-and-software/evaluation-boards-kits/tmc4671-tmc6100-bob.html) board. These boards implment the FOC control of the motor and the communication with the motor sensors (incremental encoders). The motor control board is connected to the Poulpe board using SPI. The motor control board is also connected to the motor temperature sensor and read's it using the internal ADC. The two output axis of the orbita2d are equiped with absolute encoders that are read using SPI. Given the position sensors after the gearbox, the orbita2d can be used in absolute positin mode, if the aboslute zero is provided using the `ZEROS` parameter.
+
+
+
+
+### Orbita3d architecture
+<img src="docs/orbita3d.png" alt="Orbita 3D" />
+
+Orbita3d is a robotic actuator with three motors that use a parallel mechanical structure drive to run three axis. The motors used are maxon motors of the `ECX22` series. As well as for orbita2s, the motor control board used in the setup is the [TMC4671 + TMC6100 BOB](https://www.analog.com/en/resources/evaluation-hardware-and-software/evaluation-boards-kits/tmc4671-tmc6100-bob.html) board which are connected to the Poulpe board using SPI. The motor control board is also connected to the motor temperature sensor and read's it using the internal ADC. The three output axis of the motors (after the gearbox) are equiped with absolute encoders that are read using SPI. Additionally, the orbita3d setup has an absolute position sensor based on an array of hall sensors, that are read using the I2C communication protocol. Given the position sensors after the gearbox and the hall sensor array, the orbita3d is capable of detecting the absolute position of the end effector, if one is provided using the `ZEROS` parameter.
+
+
+
+## Firmware configuration
+The same firmware can be configured to work with two different actuator setups: 
+- orbita2d (beta or gamma version)
+- orbita3d (beta or gamma version)
 
 The firmware is configured using the `Cargo.toml` file. The configuration is done using the `features` field. In order for the feature to be used in the firmware its name has to be added to the `defualt` array. The following features are available:
 
@@ -101,9 +124,19 @@ The firmware is configured using the `Cargo.toml` file. The configuration is don
 These features are used to configure the actuator setup 
 - `orbita2d` - Orbita2d actuator setup - [github page](https://github.com/pollen-robotics/orbita2d_control)
 - `orbita3d` - Orbita3d actuator setup - [github page](https://github.com/pollen-robotics/orbita3d_control)
+- `gamma` - Gamma electronics version
+- `beta` - beta electronics version
 - `ec60` - EC60 flat maxon motor used - [datasheet](https://www.maxongroup.net.au/maxon/view/product/motor/ecmotor/ecflat/ecflat60/645604)
 - `ec45` - EC45 flat maxon motor used - [datasheet](https://www.maxongroup.fr/medias/sys_master/root/8882563907614/EN-21-300.pdf)
 - `ecx22` - ECX22 maxon motor used - [datasheet](https://www.maxongroup.com/maxon/view/product/motor/ecmotor/ECX/ECX22/ECXI22M4ZF46C4IL1Y501A)
+
+
+<b> Communication configuration features </b>
+There are two supported communication protocoles and each can be enabled using its dedicated feature
+- `ethercat` - EtherCAT communication
+- `dynamixel` - dynamixel communication 
+
+They cannot be used both at the same time. At least one of them has to be used in order to be able to talk to the poulpe board.
 
 <b>Advanced control features</b>
 These features are used to configure the advanced control features in order to improve the motor control performance
@@ -166,8 +199,6 @@ DXL_ID=50 ZEROS=0.12,0.34,0.56 cargo run --release --features write_flash
 cargo run --release
 ```
 
-
-
 #### Configuration using command line arguments
 
 The same two command line arguments `ZEROS` and `DXL_ID` can be used to configure the firmware without using the flash memory (no `use_flash` speciifed). 
@@ -180,19 +211,6 @@ This way the configuration can be set without using the flash memory, however it
 ```bash
 DXL_ID=50 ZEROS=0.12,0.34,0.56 cargo run --release
 ```
-
-
-### Orbita2d architecture
-<img src="docs/orbita2d.png" alt="Orbita 2D" />
-
-Orbita2d is a robotic actuator with two motors that use differential drive to run two axis. The motors used are maxon flat motors of either `EC60` or `EC45` series. The motor control board used in the setup is the [TMC4671 + TMC6100 BOB](https://www.analog.com/en/resources/evaluation-hardware-and-software/evaluation-boards-kits/tmc4671-tmc6100-bob.html) board. These boards implment the FOC control of the motor and the communication with the motor sensors (incremental encoders). The motor control board is connected to the Poulpe board using SPI. The motor control board is also connected to the motor temperature sensor and read's it using the internal ADC. The two output axis of the orbita2d are equiped with absolute encoders that are read using SPI. 
-
-
-
-### Orbita3d architecture
-<img src="docs/orbita3d.png" alt="Orbita 3D" />
-
-Orbita3d is a robotic actuator with three motors that use a parallel mechanical structure drive to run three axis. The motors used are maxon motors of the `ECX22` series. As well as for orbita2s, the motor control board used in the setup is the [TMC4671 + TMC6100 BOB](https://www.analog.com/en/resources/evaluation-hardware-and-software/evaluation-boards-kits/tmc4671-tmc6100-bob.html) board which are connected to the Poulpe board using SPI. The motor control board is also connected to the motor temperature sensor and read's it using the internal ADC. The three output axis of the motors (after the gearbox) are equiped with absolute encoders that are read using SPI. Additionally, the orbita3d setup has an absolute position sensor based on an array of hall sensors, that are read using the I2C communication protocol. Given the position sensors after the gearbox and the hall sensor array, the orbita3d is capable of detecting the absolute position of the end effector, if one is provided using the `ZEROS` parameter.
 
 
 ## Safety features
