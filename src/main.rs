@@ -118,11 +118,11 @@ async fn main(spawner: Spawner) {
     // set the default values into the memory
     let mut board_id = config::DXL_ID;
     let mut hardware_zeros: [f32; config::N_AXIS] = config::HARDWARE_ZEROS;
-    
+
 
     #[cfg(feature = "use_flash")]
     {
-    
+
     let mut flash_manager = FlashManager::new(p.FLASH).await;
     #[cfg(feature = "write_flash" )]
     {
@@ -151,6 +151,8 @@ async fn main(spawner: Spawner) {
                     info!("Data in flash valid, using values from flash");
                     board_id = b.board_id;
                     hardware_zeros = b.sensor_offsets;
+		    info!("board id: {:?} hardware_zeros: {:?}", board_id, hardware_zeros);
+
                 }
             }
             Err(e) => {
@@ -160,7 +162,7 @@ async fn main(spawner: Spawner) {
     }
 
     }
-    
+
 
     // Spawn the control loop
     #[cfg(feature = "orbita3d")]
@@ -279,7 +281,7 @@ async fn main(spawner: Spawner) {
 
         unwrap!(spawner.spawn(dynamixel::task::messsage_handler(usart, p.PD9.into(), board_id)));
     }
-    
+
     // SPI for Ethercat LAN9252
     #[cfg(feature = "ethercat")]
     {

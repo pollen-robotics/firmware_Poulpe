@@ -4,7 +4,7 @@ use defmt::Format;
 #[derive(Format)]
 pub enum ConversionError {
     InvalidDataLength,
-    NanReceived
+    NanReceived,
 }
 
 use crate::motor_control::Pid;
