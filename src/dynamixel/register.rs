@@ -36,7 +36,7 @@ pub enum DynamixelRegister {
     #[cfg(feature = "orbita3d")]
     IndexSensor,
     AxisZeros,
-    
+
     FullState,
 }
 

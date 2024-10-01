@@ -1,9 +1,9 @@
 use core::cell::RefCell;
 
-use defmt::Format;
-use defmt::error;
 use crate::motor_control::{Actuator, Pid, RawMotorsIO, RawSensorsIO};
 use crate::{motor_control::foc::MotionMode, motor_control::BoardStatus};
+use defmt::error;
+use defmt::Format;
 use embassy_time::Instant;
 
 #[derive(Clone, Format)]
@@ -138,7 +138,7 @@ impl<const N: usize> SharedMemory<N> {
     pub fn get_hardware_zeros(&self) -> [f32; N] {
         self.inner.borrow().hardware_zeros
     }
-    
+
     pub fn set_hardware_zeros(&self, zeros: [f32; N]) {
         self.inner.borrow_mut().hardware_zeros = zeros;
     }

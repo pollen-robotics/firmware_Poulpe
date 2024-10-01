@@ -12,6 +12,7 @@ use embassy_stm32::{
 
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex};
 use embassy_time::{block_for, Duration, Instant, Ticker, Timer};
+use micromath::F32Ext;
 
 const SPI_FREQ: u32 = 2_000_000;
 
@@ -36,9 +37,9 @@ use super::driver::{DriverDRV8316, DriverTMC6200};
 
 // macro setting the actuator parameters
 macro_rules! update_actuator_setting {
-    ( 
+    (
         $actuator:ident, // orbita2d or orbita3d actuator
-        $init_value:ident, // previous value 
+        $init_value:ident, // previous value
         $get_value:ident,   // shared memory function to get the value
         $set_function:ident,  // actuator function to set the value
         $error_led:ident,  // error led flag
@@ -159,6 +160,7 @@ pub fn check_moved_sensors(moved_sensors: &[f32; 2], init_sensors: &[f32; 2]) ->
 pub async fn robust_read_axis_sensors<'d, const N: usize>(
     mut actuator: &mut Actuator<'d, N>,
     n_read_tries: u8,
+    n_read: u8,
 ) -> Result<[f32; N], spi::Error> {
     // read the sensors - but disable the torque to avoid the noise
     actuator.set_torque([false; N]).unwrap();
@@ -173,21 +175,54 @@ pub async fn robust_read_axis_sensors<'d, const N: usize>(
             error!("Error reading axis sensors: too many tries (10), retrying...");
             return Err(spi::Error::ModeFault);
         }
-        match actuator.get_axis_sensors() {
-            Ok(sensors) => {
-                if sensors.iter().any(|x| x.is_nan()) {
-                    error!("Nan values in sensors, retrying...");
-                    Timer::after(Duration::from_micros(100000)).await; // wait for a bit
-                    continue;
+
+        // We read n_read time the sensor and take the average and deviation to check if the sensor is stable
+        let mut sensor_reads_avg: [f32; N] = [0.0; N];
+        let mut sensor_reads_std: [f32; N] = [0.0; N];
+        let mut sensor_reads_M2: [f32; N] = [0.0; N];
+
+        let mut n: f32 = 0.0;
+        for _ in 0..n_read {
+            n = n + 1.0;
+            match actuator.get_axis_sensors() {
+                Ok(sensors) => {
+                    if sensors.iter().any(|x| x.is_nan()) {
+                        error!("Nan values in sensors, retrying...");
+                        Timer::after(Duration::from_micros(100000)).await; // wait for a bit
+                        continue;
+                    }
+                    // break sensors;
+                    let mut delta: [f32; N] = [0.0; N];
+                    for s in 0..N {
+                        delta[s] = sensors[s] - sensor_reads_avg[s];
+                        sensor_reads_avg[s] = sensor_reads_avg[s] + delta[s] / n;
+                        sensor_reads_M2[s] = sensor_reads_M2[s]
+                            + F32Ext::sqrt(delta[s] * (sensors[s] - sensor_reads_avg[s]));
+                        sensor_reads_std[s] = sensor_reads_M2[s] / n;
+                    }
                 }
-                break sensors;
-            }
-            Err(e) => {
-                error!("Error reading axis sensors: {:?}", e);
-                Timer::after(Duration::from_micros(100000)).await;
-                continue; //  retry the init if the read
+                Err(e) => {
+                    error!("Error reading axis sensors: {:?}", e);
+                    Timer::after(Duration::from_micros(100000)).await;
+                    continue; //  retry the init if the read
+                }
             }
         }
+        info!(
+            "Sensor avg: {:?} sensor deviation: {:?}",
+            sensor_reads_avg, sensor_reads_std
+        );
+        let mut should_retry: bool = false;
+        for s in 0..N {
+            if F32Ext::abs(sensor_reads_std[s]) > 1e-3 {
+                error!("Sensor deviation is to high!");
+                should_retry = true;
+            }
+        }
+        if should_retry {
+            continue;
+        }
+        break sensor_reads_avg;
     };
     // read the sensors - but disable the torque to avoid the noise
     actuator.set_torque([true; N]).unwrap();
@@ -325,7 +360,7 @@ pub async fn find_index_orbita2d<'d, const N: usize>(
     } else {
         info!("Hardware zeros: {:?}", zeros);
         // read the axis sensors
-        let mut curaxis = match robust_read_axis_sensors(&mut actuator, 10).await {
+        let mut curaxis = match robust_read_axis_sensors(&mut actuator, 10, 100).await {
             Ok(sensor_values) => {
                 debug!("init sensors: {:?}", sensor_values);
                 sensor_values
@@ -722,7 +757,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
         // this function makes a few tries to avoid nan values and errors
         // it disables the torque to avoid the noise (during the read - enable it after)
         // if there is an error, return an error
-        let init_sensors = match robust_read_axis_sensors(&mut actuator, 10).await {
+        let init_sensors = match robust_read_axis_sensors(&mut actuator, 10, 100).await {
             Ok(sensor_values) => {
                 debug!("init sensors: {:?}", sensor_values);
                 sensor_values
@@ -752,7 +787,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
         // this function makes a few tries to avoid nan values and errors
         // it disables the torque to avoid the noise (during the read - enable it after)
         // if there is an error, return an error
-        let moved_sensors = match robust_read_axis_sensors(&mut actuator, 10).await {
+        let moved_sensors = match robust_read_axis_sensors(&mut actuator, 10, 100).await {
             Ok(sensor_values) => {
                 debug!("moved sensors: {:?}", sensor_values);
                 sensor_values
@@ -973,11 +1008,11 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
 
                         // reduce the torque limit to 0 (from 1) over 5 seconds
                         // this runs at 1kHz so it will take 5000 iterations
-                        let mut home_torque_limit = {SHARED_MEMORY.lock().await.get_torque_flux_limit()};
+                        let mut home_torque_limit =
+                            { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
                         home_torque_limit.iter_mut().for_each(
-                            |t| 
-                            *t -= 0.0002 // 1/5000 = 0.0002 (5 seconds at 1kHz)
-                        ); 
+                            |t| *t -= 0.0002, // 1/5000 = 0.0002 (5 seconds at 1kHz)
+                        );
                         // if the torque limit is under 5% (0.05), the operation stops
                         if home_torque_limit.iter().all(|t| *t < 0.05) {
                             torque_on = [false; config::N_AXIS];
@@ -993,7 +1028,6 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                                 .await
                                 .set_torque_flux_limit(home_torque_limit)
                         };
-
                     } else {
                         // if the joint is stopped, set prevent it from being restarted
                         // this is a safety feature to avoid the joint to start again
@@ -1044,28 +1078,28 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
 
         // Update torque-flux limits
         update_limit_setting!(
-            actuator, // orbita2d/3d
-            get_torque_flux_limit, // shared memory getter
-            get_torque_flux_limit_max, // shared memory getter
-            init_torquefluxlimit, // previous value
-            init_torquefluxlimit_max, // previous value
-            set_torque_flux_limit, // actuator setter
-            error_led, // error led flag
+            actuator,                                           // orbita2d/3d
+            get_torque_flux_limit,                              // shared memory getter
+            get_torque_flux_limit_max,                          // shared memory getter
+            init_torquefluxlimit,                               // previous value
+            init_torquefluxlimit_max,                           // previous value
+            set_torque_flux_limit,                              // actuator setter
+            error_led,                                          // error led flag
             "Setting torquefluxlimit: {:?} => {:?} (max={:?})", // onchange log message
-            "Error setting torque/flux limit: {:?}" // error message
+            "Error setting torque/flux limit: {:?}"             // error message
         );
 
         // Update velocity limits
         update_limit_setting!(
-            actuator, // orbita2d/3d
-            get_velocity_limit, // shared memory getter
-            get_velocity_limit_max, // shared memory getter
-            init_velocitylimit, // previous value
-            init_velocitylimit_max, // previous value
-            set_velocity_limit, // actuator setter
-            error_led, // error led flag
+            actuator,                                         // orbita2d/3d
+            get_velocity_limit,                               // shared memory getter
+            get_velocity_limit_max,                           // shared memory getter
+            init_velocitylimit,                               // previous value
+            init_velocitylimit_max,                           // previous value
+            set_velocity_limit,                               // actuator setter
+            error_led,                                        // error led flag
             "Setting velocitylimit: {:?} => {:?} (max={:?})", // onchange log message
-            "Error setting velocity limit: {:?}" // error message
+            "Error setting velocity limit: {:?}"              // error message
         );
 
         // add the feedforward control to the velocity loop
@@ -1161,52 +1195,51 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
 
         // running the second (slow) task at slower rate (1Hz)
         if slow_timer == 0 {
-
             // update the flux pid gains
             update_actuator_setting!(
-                actuator, // orbita2d/3d
-                init_fluxpid, // previous value
-                get_flux_pid_gains, // shared memory getter
-                set_flux_pid_gains, // actuator setter
-                error_led, // error led flag
-                "Error setting flux pid: {:?}" // error message
+                actuator,                       // orbita2d/3d
+                init_fluxpid,                   // previous value
+                get_flux_pid_gains,             // shared memory getter
+                set_flux_pid_gains,             // actuator setter
+                error_led,                      // error led flag
+                "Error setting flux pid: {:?}"  // error message
             );
             // update the torque pid gains
             update_actuator_setting!(
-                actuator, // orbita2d/3d
-                init_torquepid, // previous value
-                get_torque_pid_gains, // shared memory getter
-                set_torque_pid_gains, // actuator setter
-                error_led, // error led flag
-                "Error setting torque pid: {:?}" // error message
+                actuator,                         // orbita2d/3d
+                init_torquepid,                   // previous value
+                get_torque_pid_gains,             // shared memory getter
+                set_torque_pid_gains,             // actuator setter
+                error_led,                        // error led flag
+                "Error setting torque pid: {:?}"  // error message
             );
             // update the velocity pid gains
             update_actuator_setting!(
-                actuator, // orbita2d/3d
-                init_velocitypid, // previous value
-                get_velocity_pid_gains, // shared memory getter
-                set_velocity_pid_gains, // actuator setter
-                error_led, // error led flag
+                actuator,                           // orbita2d/3d
+                init_velocitypid,                   // previous value
+                get_velocity_pid_gains,             // shared memory getter
+                set_velocity_pid_gains,             // actuator setter
+                error_led,                          // error led flag
                 "Error setting velocity pid: {:?}"  // error message
             );
             // update the position pid gains
             update_actuator_setting!(
-                actuator, // orbita2d/3d
-                init_positionpid, // previous value
-                get_position_pid_gains, // shared memory getter
-                set_position_pid_gains, // actuator setter
-                error_led, // error led flag
-                "Error setting position pid: {:?}" // error message
+                actuator,                           // orbita2d/3d
+                init_positionpid,                   // previous value
+                get_position_pid_gains,             // shared memory getter
+                set_position_pid_gains,             // actuator setter
+                error_led,                          // error led flag
+                "Error setting position pid: {:?}"  // error message
             );
-            
+
             // update the uq/ud limit
             update_actuator_setting!(
-                actuator, // orbita2d/3d
-                init_uqudlimit, // previous value
-                get_uq_ud_limit, // shared memory getter
-                set_uq_ud_limit, // actuator setter
-                error_led, // error led flag
-                "Error setting uq/ud limit: {:?}" // error message
+                actuator,                          // orbita2d/3d
+                init_uqudlimit,                    // previous value
+                get_uq_ud_limit,                   // shared memory getter
+                set_uq_ud_limit,                   // actuator setter
+                error_led,                         // error led flag
+                "Error setting uq/ud limit: {:?}"  // error message
             );
 
             // perform checks on the actuator to determine the error state
@@ -1311,10 +1344,11 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                                 .await
                                 .set_error_state(BoardStatus::BusVoltageError)
                         };
-                        error!("Bus voltages {:?} are too low (under {})!",
+                        error!(
+                            "Bus voltages {:?} are too low (under {})!",
                             v,
                             config::MIN_BUS_VOLTAGE
-                            );
+                        );
                     }
                     debug!("Bus voltage: {:?}", v);
                 }

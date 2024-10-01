@@ -22,7 +22,6 @@ pub const MIN_BUS_VOLTAGE: f32 = 10.0;
 
 // pub static DXL_ID: u8 = 42;
 
-
 pub type DynamixelUart = Uart<'static, p::USART1, p::DMA1_CH0, p::DMA1_CH1>;
 
 pub type LAN9252Config = EthercatConfig<p::SPI3, p::PC10, p::PB2, p::PC11, p::PD0>;
@@ -40,24 +39,22 @@ use crate::{
 use crate::motor_control::driver::{DriverDRV8316, DriverTMC6200};
 
 // Ventouse A
-#[cfg(any(feature = "beta", all(feature="orbita2d", feature="gamma")))] // any beta or 2d gamma
+#[cfg(any(feature = "beta", all(feature = "orbita2d", feature = "gamma")))] // any beta or 2d gamma
 pub type VentouseA<'d> = Ventouse<'d, p::SPI1, p::PA3, p::PC0, DriverTMC6200<'d, p::SPI1, p::PA2>>;
-#[cfg(any(all(feature="gamma", feature="orbita3d")))] // 3d gamma
+#[cfg(any(all(feature = "gamma", feature = "orbita3d")))] // 3d gamma
 pub type VentouseA<'d> = Ventouse<'d, p::SPI1, p::PA3, p::PC0, DriverDRV8316<'d, p::SPI1, p::PA2>>;
 
 // Ventouse B
-#[cfg(any(feature = "beta", all(feature="orbita2d", feature="gamma")))] // any beta or 2d gamma
+#[cfg(any(feature = "beta", all(feature = "orbita2d", feature = "gamma")))] // any beta or 2d gamma
 pub type VentouseB<'d> = Ventouse<'d, p::SPI4, p::PE3, p::PE0, DriverTMC6200<'d, p::SPI4, p::PC15>>;
-#[cfg(any(all(feature="gamma", feature="orbita3d")))] // 3d gamma
+#[cfg(any(all(feature = "gamma", feature = "orbita3d")))] // 3d gamma
 pub type VentouseB<'d> = Ventouse<'d, p::SPI4, p::PE3, p::PE0, DriverDRV8316<'d, p::SPI4, p::PC15>>;
 
 // Ventouse C
-#[cfg(any(feature = "beta", all(feature="orbita2d", feature="gamma")))] // any beta or 2d gamma
+#[cfg(any(feature = "beta", all(feature = "orbita2d", feature = "gamma")))] // any beta or 2d gamma
 pub type VentouseC<'d> = Ventouse<'d, p::SPI6, p::PD7, p::PD5, DriverTMC6200<'d, p::SPI6, p::PD6>>;
-#[cfg(any(all(feature="gamma", feature="orbita3d")))] // 3d gamma
-pub type VentouseC<'d> = Ventouse<'d, p::SPI6, p::PD7, p::PD5,  DriverDRV8316<'d, p::SPI6, p::PD6>>;
-
-
+#[cfg(any(all(feature = "gamma", feature = "orbita3d")))] // 3d gamma
+pub type VentouseC<'d> = Ventouse<'d, p::SPI6, p::PD7, p::PD5, DriverDRV8316<'d, p::SPI6, p::PD6>>;
 
 #[cfg(feature = "orbita3d")]
 pub type VentouseAConfig = VentouseConfig<p::SPI1, p::PA5, p::PA7, p::PA6, p::PA3, p::PC0, p::PA2>;

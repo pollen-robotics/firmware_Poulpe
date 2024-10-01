@@ -20,7 +20,7 @@ where
     T: spi::Instance,
     FocP: Pin,
     FocEnb: Pin,
-    Drv: Driver
+    Drv: Driver,
 {
     foc: Foc<'d, T, FocP, FocEnb>,
     driver: Drv,
@@ -53,7 +53,7 @@ where
     T: spi::Instance,
     FocP: Pin,
     FocEnb: Pin,
-    Drv: Driver
+    Drv: Driver,
 {
     pub fn new(foc: Foc<'d, T, FocP, FocEnb>, driver: Drv) -> Self {
         Self {
@@ -70,12 +70,14 @@ where
         let mut err = IOError::InitError;
         info!("[Ventouse{:?}] Initializing register...", self.kind);
 
-
-        match self.driver.configure(){
+        match self.driver.configure() {
             Ok(_) => info!("[Ventouse{:?}] Driver init done", self.kind),
             Err(e) => {
                 ret_err = true;
-                error!("[Ventouse{:?}] Driver init failed: {:?} => check SPI and power connection", self.kind, e);
+                error!(
+                    "[Ventouse{:?}] Driver init failed: {:?} => check SPI and power connection",
+                    self.kind, e
+                );
                 err = IOError::InitError;
             }
         }
@@ -153,7 +155,6 @@ where
     }
 
     pub async fn align_motor(&mut self) -> Result<(), embassy_stm32::spi::Error> {
-
         // Set openloop mode
         self.foc
             .tmc4671_checked_write(Tmc4671Registers::OPENLOOP_MODE as u8, 0x00000000)?; // Positive Openloop phi e (OPENLOOP_MODE)
@@ -383,7 +384,7 @@ where
     T: spi::Instance,
     FocP: Pin,
     FocEnb: Pin,
-    Drv:Driver
+    Drv: Driver,
 {
     /// Check if the motors are ON or OFF
     fn is_torque_on(&mut self) -> Result<[bool; 1], IOError> {

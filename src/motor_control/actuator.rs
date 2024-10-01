@@ -179,15 +179,13 @@ impl<'d, const N: usize> Actuator<'d, N> {
         Ok((offsets, found_turn))
     }
 
-
     pub fn get_hardware_zeros(&mut self) -> Result<[f32; N]> {
         Ok(self.hardware_zeros)
     }
-    pub fn set_hardware_zeros(&mut self, zeros: [f32; N]) -> Result<()>{
+    pub fn set_hardware_zeros(&mut self, zeros: [f32; N]) -> Result<()> {
         self.hardware_zeros = zeros;
         Ok(())
     }
-
 }
 
 pub fn angle_diff(angle_a: f32, angle_b: f32) -> f32 {
