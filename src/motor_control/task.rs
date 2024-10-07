@@ -214,7 +214,7 @@ pub async fn robust_read_axis_sensors<'d, const N: usize>(
         );
         let mut should_retry: bool = false;
         for s in 0..N {
-            if F32Ext::abs(sensor_reads_std[s]) > 1e-3 {
+            if sensor_reads_std[s] > 1e-3 {
                 error!("Sensor deviation is to high!");
                 should_retry = true;
             }
