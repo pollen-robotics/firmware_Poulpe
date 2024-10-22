@@ -24,8 +24,8 @@ license = "MIT OR Apache-2.0"
 # default = ["orbita3d", "gamma", "ecx22", "velocity_feedforward", "cmd_filter", "gearbox_output", "use_flash"]
 
 
-orbita2d_gamma = ["orbita2d", "gamma", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" , "use_flash"]
-orbita3d_gamma = ["orbita3d", "gamma", "ecx22", "velocity_feedforward", "cmd_filter", "gearbox_output", "use_flash"]
+orbita2d_gamma = ["orbita2d", "gamma", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" , "use_flash", "ethercat"]
+orbita3d_gamma = ["orbita3d", "gamma", "ecx22", "velocity_feedforward", "cmd_filter", "gearbox_output", "use_flash", "ethercat"]
 
 # default = ["orbita2d_gamma"]
 orbita2d = []
@@ -64,6 +64,11 @@ ignore_errors = []
 
 # for the computation of the zero position prior to Reachy2 DVT
 orbita3d_zero_pre_dvt =[]
+
+# chosing the communication protocol
+ethercat = []
+dynamixel = []
+
 [dependencies]
 # rustypot = "0.4.2"
 # stm32h742vg
