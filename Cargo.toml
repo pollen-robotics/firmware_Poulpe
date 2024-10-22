@@ -141,7 +141,7 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 futures = { version = "=0.3.28", default-features = false, features = ["async-await"] }
 # heapless = { version = "=0.7.15", default-features = false }
 rand_core = "0.6.3"
-critical-section = "=1.1"
+critical-section = "=1.1.2"
 micromath = "2.0.0"
 stm32-fmc = "=0.2.4"
 embedded-storage = "=0.3.0"
