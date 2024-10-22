@@ -109,6 +109,11 @@ pub struct ActuatorConfig {
     pub temperature_sensor: TemperatureSensorConfig,
 }
 
+#[cfg(feature = "orbita3d_zero_pre_dvt")]
+pub const ORBITA3D_HALL_ZERO_IDX: [u8; 3] = [0, 5, 10]; // This is the expected configuration with a "standard" zero as it was done until Reachy2 DVT
+#[cfg(not(feature = "orbita3d_zero_pre_dvt"))]
+pub const ORBITA3D_HALL_ZERO_IDX: [u8; 3] = [8, 13, 2]; // This is the expected configuration with a zero as it is done from Reachy2 DV
+
 mod motor;
 pub use motor::BrushlessMotor;
 mod current_sense;

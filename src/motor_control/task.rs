@@ -407,7 +407,7 @@ pub async fn set_error_led() {
 // function wrapping an angle in radians to
 // the range [-pi, pi]
 fn wrap_to_pi(angle: f32) -> f32 {
-    let PI = 3.14159265359;
+    const PI: f32 = 3.14159265359;
     (((angle + PI) % (2.0 * PI)) + (2.0 * PI)) % (2.0 * PI) - PI
 }
 

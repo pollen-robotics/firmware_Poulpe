@@ -12,7 +12,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    - name: Build
+    - name: Build Orbita3d
       run: cargo build --verbose --features=orbita3d_gamma
+    - name: Build Orbita2d
+      run: cargo build --verbose --features=orbita2d_gamma
     - name: Run tests
       run: cargo test --verbose

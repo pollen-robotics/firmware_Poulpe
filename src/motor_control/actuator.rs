@@ -102,19 +102,28 @@ impl<'d, const N: usize> Actuator<'d, N> {
     pub fn set_index_sensor(&mut self, index: [u8; N]) {
         self.index_sensor = index;
     }
+
     #[cfg(feature = "orbita3d")]
     pub fn compute_offset(
         &mut self,
         hall_idx: [u8; N],
         hardware_zero: [f32; N],
     ) -> Result<([f32; N], [i16; N])> {
+        use crate::config::ORBITA3D_HALL_ZERO_IDX;
+
         let mut zero_hall_offsets: [f32; 3] = [0.0, 0.0, 0.0]; //orbita domain
-        zero_hall_offsets[0] =
-            hall_diff(hall_idx[0], 0) * 22.5_f32.to_radians() + 11.25_f32.to_radians();
-        zero_hall_offsets[1] =
-            hall_diff(hall_idx[1], 5) * 22.5_f32.to_radians() + 3.75_f32.to_radians();
-        zero_hall_offsets[2] =
-            hall_diff(hall_idx[2], 10) * 22.5_f32.to_radians() - 3.75_f32.to_radians();
+
+        zero_hall_offsets[0] = hall_diff(hall_idx[0], ORBITA3D_HALL_ZERO_IDX[0])
+            * 22.5_f32.to_radians()
+            + 11.25_f32.to_radians();
+
+        zero_hall_offsets[1] = hall_diff(hall_idx[1], ORBITA3D_HALL_ZERO_IDX[1])
+            * 22.5_f32.to_radians()
+            + 3.75_f32.to_radians();
+
+        zero_hall_offsets[2] = hall_diff(hall_idx[2], ORBITA3D_HALL_ZERO_IDX[2])
+            * 22.5_f32.to_radians()
+            - 3.75_f32.to_radians();
 
         let mut found_turn: [i16; N] = [0; N];
 
