@@ -261,7 +261,8 @@ where
     pub ppr: f32,
     pub adc_resolution: f32,
     pub adc_vm_offset: f32,
-    pub adc_temp_offset: f32,
+    pub adc_board_temp_offset: f32,
+    pub adc_motor_temp_offset: f32,
 }
 
 impl<'d, T, P, EnablePin> Foc<'d, T, P, EnablePin>
@@ -292,7 +293,8 @@ where
             ppr: PPR_PER_ELECTRICAL_REVOLUTION,
             adc_resolution: ADC_RESOLUTION,
             adc_vm_offset: ADC_OFFSET,
-            adc_temp_offset: ADC_OFFSET,
+            adc_board_temp_offset: ADC_OFFSET,
+            adc_motor_temp_offset: ADC_OFFSET,
         }
     }
 
@@ -370,7 +372,7 @@ where
     }
 
     #[cfg(feature = "beta")]
-    fn adc_to_temperature(&self, adc_raw: u32) -> Result<f32, IOError> {
+    fn adc_to_board_temperature(&self, adc_raw: u32) -> Result<f32, IOError> {
         // datasheet BOB: https://www.mouser.fr/datasheet/2/281/r44e-522712.pdf  (NCP18XH103F03RB)
         // ADC is operated in a single ended mode it measures the voltage from 0 to 2.5V
         // the 10k NTC is supplied with 3.3V and pulled down to ground with two 4.7k resistor
@@ -378,7 +380,7 @@ where
         // the temperature reading is very bad on TMC4761 for low temperatures especially
         // but for higher temperatures it is quite accurate (above 60°C) - good for security
         // - empirically tested
-        let volt = (adc_raw as f32 - self.adc_temp_offset as f32) / 65535.0 * 5.0;
+        let volt = (adc_raw as f32 - self.adc_board_temp_offset as f32) / 65535.0 * 5.0;
         let r_div: f32 = 4700.0;
         let beta: f32 = 3455.0;
         let room_temp_inv: f32 = 1.0 / 298.15; //[K]
@@ -398,10 +400,10 @@ where
         }
     }
     #[cfg(feature = "gamma")]
-    fn adc_to_temperature(&self, adc_raw: u32) -> Result<f32, IOError> {
+    fn adc_to_board_temperature(&self, adc_raw: u32) -> Result<f32, IOError> {
         // NTCS0603E3103FMT 10k
         // https://www.vishay.com/docs/29056/ntcs0603e3t.pdf
-        let volt = (adc_raw as f32 - self.adc_temp_offset as f32) / 65535.0 * 5.0;
+        let volt = (adc_raw as f32 - self.adc_board_temp_offset as f32) / 65535.0 * 5.0;
         let r_div: f32 = 4700.0;
         let beta: f32 = 3610.0;
         let room_temp_inv: f32 = 1.0 / 298.15; //[K]
@@ -423,11 +425,53 @@ where
     }
 
     pub fn tmc4671_get_board_temperature(&mut self) -> Result<(f32), embassy_stm32::spi::Error> {
+        // make tmc4671 ouput ADC_AENC_UX_RAW & ADC_AGPI_B_RAW on ADC_RAW_DATA
         self.tmc4671_write_register(Tmc4671Registers::ADC_RAW_ADDR as u8, 0x2)?;
-
+        // read the ADC_AGPI_B_RAW value (last 16 bits)
         match self.tmc4671_get_u32(Tmc4671Registers::ADC_RAW_DATA as u8) {
             Ok(raw) => {
-                match self.adc_to_temperature((raw & 0xffff) as u32) {
+                match self.adc_to_board_temperature((raw & 0xffff) as u32) {
+                    Ok(temp) => Ok(temp),
+                    Err(e) => Err(embassy_stm32::spi::Error::Framing), // send the math error as a framing error
+                }
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    fn adc_to_motor_temperature(&self, adc_raw: u32) -> Result<f32, IOError> {
+        // NTC 5k
+        // Formula: https://www.giangrandi.org/electronics/ntc/ntc.shtml
+        let volt = (adc_raw as f32 - self.adc_motor_temp_offset as f32) / 65535.0 * 5.0;
+        let r_div: f32 = 4700.0;
+        let beta: f32 = 3425.0;
+        let room_temp_inv: f32 = 1.0 / 298.15; //[K]
+        let r_t: f32 = r_div * ((3.3 / volt) - 1.0); // estimated resistance of the NTC
+        let r_25: f32 = 5000.0;
+        let t: f32 = 1.0 / (((libm::log((r_t / r_25) as f64) as f32) / beta) + room_temp_inv);
+
+
+        info!("raw value: {}, offset: {} volt:{}",adc_raw, self.adc_motor_temp_offset, volt);
+
+        match t {
+            t if t.is_nan() => Err(IOError::InvalidData),
+            _ => {
+                let mut t_celsius = (t as f32) - 273.15;
+                // a seemingly constant linear error
+                // empirically tested correction
+                // https://www.notion.so/pollen-robotics/Overtemperature-protection-91d2e7de1c5e4745a34cd67209dca090?pvs=4
+                // t_celsius = (t_celsius - 1.75297) / 1.0987;
+                Ok(t_celsius) // final conversion to Celsius
+            }
+        }
+    }
+    pub fn tmc4671_get_motor_temperature(&mut self) -> Result<(f32), embassy_stm32::spi::Error> {
+        // make tmc4671 ouput ADC_AGPI_A_RAW & ADC_VM_RAW on ADC_RAW_DATA
+        self.tmc4671_write_register(Tmc4671Registers::ADC_RAW_ADDR as u8, 0x1)?;
+        // read the ADC_AGPI_A_RAW value (first 16 bits)
+        match self.tmc4671_get_u32(Tmc4671Registers::ADC_RAW_DATA as u8) {
+            Ok(raw) => {
+                match self.adc_to_motor_temperature((raw >> 16) as u32) {
                     Ok(temp) => Ok(temp),
                     Err(e) => Err(embassy_stm32::spi::Error::Framing), // send the math error as a framing error
                 }
@@ -437,7 +481,9 @@ where
     }
 
     pub fn tmc4671_get_bus_voltage(&mut self) -> Result<(f32), embassy_stm32::spi::Error> {
+        // make tmc4671 ouput ADC_AGPI_A_RAW & ADC_VM_RAW on ADC_RAW_DATA
         self.tmc4671_write_register(Tmc4671Registers::ADC_RAW_ADDR as u8, 0x1)?;
+        // read the ADC_VM_RAW value (last 16 bits)
         match self.tmc4671_get_u32(Tmc4671Registers::ADC_RAW_DATA as u8) {
             Ok(raw) => {
                 let adc_raw = (raw & 0xffff) as f32; // extract the raw value
@@ -466,16 +512,17 @@ where
         samples: u32,
     ) -> Result<(), embassy_stm32::spi::Error> {
         // calibrate the adc for temperature sensing
-        // set the 0 voltage to the AGPI_B and ADC_VM
+        // set the 0 voltage to the AGPI_A, AGPI_B and ADC_VM
         // the center should be at VDD/2 (0x5) as the ADCs measure -2.5 to 2.5V
-        self.tmc4671_checked_write(Tmc4671Registers::DS_ANALOG_INPUT_STAGE_CFG as u8, 0x54500)?;
-        self.adc_temp_offset = 0.0;
+        self.tmc4671_checked_write(Tmc4671Registers::DS_ANALOG_INPUT_STAGE_CFG as u8, 0x55500)?;
+        self.adc_board_temp_offset = 0.0;
+        self.adc_motor_temp_offset = 0.0;
         self.adc_vm_offset = 0.0;
         for i in 0..samples {
             // read AGPI_B for temperature
             self.tmc4671_checked_write(Tmc4671Registers::ADC_RAW_ADDR as u8, 0x2)?;
             match self.tmc4671_read_register(Tmc4671Registers::ADC_RAW_DATA as u8) {
-                Ok(raw) => self.adc_temp_offset += (raw & 0xffff) as f32,
+                Ok(raw) => self.adc_board_temp_offset += (raw & 0xffff) as f32,
                 Err(e) => {
                     error!("!!! Error SPI {:?}!!!", e);
                 }
@@ -488,14 +535,29 @@ where
                     error!("!!! Error SPI {:?}!!!", e);
                 }
             }
+
+            
+            // read AGPI_A for motor temperature
+            self.tmc4671_checked_write(Tmc4671Registers::ADC_RAW_ADDR as u8, 0x1)?;
+            match self.tmc4671_read_register(Tmc4671Registers::ADC_RAW_DATA as u8) {
+                Ok(raw) => self.adc_motor_temp_offset += (raw >> 16) as f32,
+                Err(e) => {
+                    error!("!!! Error SPI {:?}!!!", e);
+                }
+            }
+
         }
-        self.adc_temp_offset /= samples as f32;
+        self.adc_board_temp_offset /= samples as f32;
+        self.adc_motor_temp_offset /= samples as f32;
         self.adc_vm_offset /= samples as f32;
         debug!(
-            "General purpose ADC offsets calibrated temperature: {}, DC bus voltage {}",
-            self.adc_temp_offset, self.adc_vm_offset
+            "General purpose ADC offsets calibrated temperature: {}, {},  DC bus voltage {}",
+            self.adc_board_temp_offset, self.adc_motor_temp_offset, self.adc_vm_offset
         );
-        // start measuring with ADC_VM and AGPI_B again
+        // start measuring with ADC_VM and AGPI_A, AGPI_B again
+        // by setting the INP vs. GND mode (0x4)
+        // measures the voltage from 0 to 2.5V 
+        // - actually it's between -2.5 to 2.5V, but we are only interested in the positive part
         self.tmc4671_checked_write(Tmc4671Registers::DS_ANALOG_INPUT_STAGE_CFG as u8, 0x44400)?;
 
         Ok(())

@@ -1253,7 +1253,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                     };
                     // find the max temperature
                     max_board_temp = t.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-                    debug!("Board temperature: {:?}", t);
+                    info!("Board temperature: {:?}", t);
                 }
                 Err(e) => {
                     error_led = true;
@@ -1268,13 +1268,13 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                 match motor_temperature_sensor.read_temperature() {
                     Ok(t) => {
                         {
-                            SHARED_MEMORY.lock().await.set_motor_temperature(t)
+                            SHARED_MEMORY.lock().await.set_motor_temperature([t; config::N_AXIS]);
                         };
                         if max_motor_temp < t {
                             // check if the motor temperature is the highest
                             max_motor_temp = t;
                         }
-                        debug!("Motor temperature: {:?}", t);
+                        info!("Motor temperature: {:?}", t);
                     }
                     Err(e) => {
                         error_led = true;
@@ -1282,6 +1282,26 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                     }
                 }
             }
+
+            // perform checks on the actuator to determine the error state
+            // let mut max_motor_temp = 0.0;
+            // get temperature
+            match actuator.get_motor_temperature() {
+                Ok(t) => {
+                    // save the temperatures
+                    {
+                        SHARED_MEMORY.lock().await.set_motor_temperature(t)
+                    };
+                    // find the max temperature
+                    // max_board_temp = t.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+                    info!("TMC motor temperature: {:?}", t);
+                }
+                Err(e) => {
+                    error_led = true;
+                    error!("Board temperature reading error {:?}", e);
+                }
+            }
+
 
             // verify the board and motor temperature
             if max_board_temp > config::MAX_BOARD_TEMP || max_motor_temp > config::MAX_MOTOR_TEMP {

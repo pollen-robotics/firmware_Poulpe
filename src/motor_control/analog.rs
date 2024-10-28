@@ -4,6 +4,8 @@ use embassy_stm32::peripherals as p;
 use embassy_time::{Delay, Timer};
 use libm::log;
 
+use defmt::*;
+
 use crate::motor_control::motors_io::IOError;
 
 pub struct AnalogInputConfig<T, P>
@@ -60,6 +62,8 @@ where
         let r_25: f32 = 5000.0;
 
         let mut t: f32 = 1.0 / (((log((r_t / r_25) as f64) as f32) / beta) + room_temp_inv);
+
+        info!("Temperature: {}, volt: {}", t, voltage);
 
         match t {
             t if t.is_nan() => Err(IOError::InvalidData),

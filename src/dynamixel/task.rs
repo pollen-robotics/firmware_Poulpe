@@ -186,12 +186,12 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin, id:
                             DynamixelRegister::Temperature => {
                                 let board_values =
                                     { SHARED_MEMORY.lock().await.get_board_temperature() };
-                                let motor_value =
+                                let motor_values =
                                     { SHARED_MEMORY.lock().await.get_motor_temperature() };
                                 // concatenate the values
-                                let mut all_values = [0.0; config::N_AXIS + 1];
+                                let mut all_values = [0.0; 2*config::N_AXIS];
                                 all_values[0..(config::N_AXIS)].copy_from_slice(&board_values);
-                                all_values[config::N_AXIS] = motor_value;
+                                all_values[config::N_AXIS..].copy_from_slice(&motor_values);
                                 let value = conversion::float_to_bytes(all_values);
                                 let sp = StatusPacket::with_value(id, dxl_error, value);
                                 trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());

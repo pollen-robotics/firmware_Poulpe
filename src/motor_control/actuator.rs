@@ -577,11 +577,22 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
     */
     /////////////////////
 
-    // get temperature
+    // get the board temperature
     fn get_board_temperature(&mut self) -> Result<[f32; N]> {
         let mut res = [0.0; N];
         for (i, axis) in self.axes.iter_mut().enumerate() {
             res[i] = axis.get_board_temperature()?[0];
+        }
+
+        Ok(res)
+    }
+
+
+    // get the motor temperature
+    fn get_motor_temperature(&mut self) -> Result<[f32; N]> {
+        let mut res = [0.0; N];
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            res[i] = axis.get_motor_temperature()?[0];
         }
 
         Ok(res)

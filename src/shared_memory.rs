@@ -29,7 +29,7 @@ pub struct Memory<const N: usize> {
     position_pid_gains: [Pid; N],
 
     board_temperatures: [f32; N],
-    motor_temperature: f32,
+    motor_temperatures: [f32; N],
     bus_voltages: [f32; N],
 
     uq_ud_limit: [i16; N],
@@ -254,11 +254,11 @@ impl<const N: usize> SharedMemory<N> {
     pub fn set_board_temperature(&self, temp: [f32; N]) {
         self.inner.borrow_mut().board_temperatures = temp;
     }
-    pub fn get_motor_temperature(&self) -> f32 {
-        self.inner.borrow().motor_temperature
+    pub fn get_motor_temperature(&self) -> [f32; N] {
+        self.inner.borrow().motor_temperatures
     }
-    pub fn set_motor_temperature(&self, temp: f32) {
-        self.inner.borrow_mut().motor_temperature = temp;
+    pub fn set_motor_temperature(&self, temp: [f32; N]) {
+        self.inner.borrow_mut().motor_temperatures = temp;
     }
     pub fn get_bus_voltage(&self) -> [f32; N] {
         self.inner.borrow().bus_voltages
@@ -318,7 +318,7 @@ impl<const N: usize> SharedMemory<N> {
                 position_pid_gains: [Pid { p: 0, i: 0 }; N],
 
                 board_temperatures: [0.0; N],
-                motor_temperature: 0.0,
+                motor_temperatures: [0.0; N],
                 bus_voltages: [0.0; N],
 
                 uq_ud_limit: [0; N],
@@ -332,7 +332,7 @@ impl<const N: usize> SharedMemory<N> {
                 velocity_feedforward: [0.0; N],
 
                 error_led: false,
-                error_state: BoardStatus::Ok,
+                error_state: BoardStatus::Unknown,
             }),
         }
     }
@@ -387,7 +387,11 @@ impl<const N: usize> SharedMemory<N> {
             velocity_feedforward: actuator.get_velocity_feedforward().unwrap_or([0.0; N]),
 
             board_temperatures: actuator.get_board_temperature().unwrap_or([0.0; N]),
-            motor_temperature: 0.0,
+            #[cfg(feature = "beta")]
+            motor_temperatures: [0.0; N],
+            #[cfg(feature = "gamma")]
+            motor_temperatures: actuator.get_motor_temperature().unwrap_or([0.0; N]),
+
             bus_voltages: actuator.get_bus_voltage().unwrap_or([0.0; N]),
 
             #[cfg(feature = "orbita3d")]
@@ -396,7 +400,7 @@ impl<const N: usize> SharedMemory<N> {
             // #[cfg(feature = "orbita3d")]
             // hall_states: actuator.get_hall_states(),
             error_led: false,
-            error_state: BoardStatus::Ok,
+            error_state: BoardStatus::Unknown,
         };
     }
 

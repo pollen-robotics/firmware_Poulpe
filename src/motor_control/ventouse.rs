@@ -700,11 +700,21 @@ where
     */
     //////////////////////
 
-    // get temperature
+    // get the board temperature
     fn get_board_temperature(&mut self) -> Result<[f32; 1], IOError> {
         let temp = self
             .foc
             .tmc4671_get_board_temperature()
+            .map_err(IOError::SpiError)?;
+        Ok([temp as f32])
+    }
+
+
+    // get the motor temperature
+    fn get_motor_temperature(&mut self) -> Result<[f32; 1], IOError> {
+        let temp = self
+            .foc
+            .tmc4671_get_motor_temperature()
             .map_err(IOError::SpiError)?;
         Ok([temp as f32])
     }
@@ -1407,12 +1417,22 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
 
-    /// get the temperature of the motors
+    /// get the temperature of the boards
     fn get_board_temperature(&mut self) -> super::Result<[f32; 1]> {
         match self {
             VentouseKind::A(va) => va.get_board_temperature(),
             VentouseKind::B(vb) => vb.get_board_temperature(),
             VentouseKind::C(vc) => vc.get_board_temperature(),
+        }
+    }
+
+
+    /// get the temperature of the motors
+    fn get_motor_temperature(&mut self) -> super::Result<[f32; 1]> {
+        match self {
+            VentouseKind::A(va) => va.get_motor_temperature(),
+            VentouseKind::B(vb) => vb.get_motor_temperature(),
+            VentouseKind::C(vc) => vc.get_motor_temperature(),
         }
     }
 
