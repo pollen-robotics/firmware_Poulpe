@@ -763,6 +763,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                 sensor_values
             }
             Err(e) => {
+                init_error = BoardStatus::SensorError;
                 error!("Error reading axis sensors: {:?}", e);
                 #[cfg(not(feature = "ignore_errors"))]
                 continue 'init_loop; //  retry the init if there is an error
@@ -793,6 +794,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                 sensor_values
             }
             Err(e) => {
+                init_error = BoardStatus::SensorError;
                 error!("Error reading axis sensors: {:?}", e);
                 #[cfg(not(feature = "ignore_errors"))]
                 continue 'init_loop; //  retry the init if there is an error
