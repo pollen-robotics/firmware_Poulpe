@@ -324,11 +324,17 @@ async fn main(spawner: Spawner) {
             led_error.set_high();
         } else {
             led_error.set_low();
+            // Robots should dance, LED should blink.
+            led_hello.set_high();
         }
-        // Robots should dance, LED should blink.
-        led_hello.set_high();
         Timer::after(Duration::from_millis(500)).await;
-        led_hello.set_low();
+        if errorled {
+            led_error.set_high();
+        } else {
+            led_error.set_low();
+            // Robots should dance, LED should blink.
+            led_hello.set_low();
+        }
         Timer::after(Duration::from_millis(500)).await;
     }
 }
