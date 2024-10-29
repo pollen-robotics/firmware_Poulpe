@@ -1529,27 +1529,11 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
 
             // dispaly current state
             if board_state.is_error() {
-                error!("Board state: {:?}, Homing error: {:?}", board_state.get_status(), board_state.get_homing_error());
-                for i in 0..config::N_AXIS {
-                    // construct a nice mesage without Nones
-                    for e in board_state.get_motor_errors(i) {
-                        if e.is_some() {
-                            error!("Motor {} error: {:?}", i, e);
-                        }
-                    }
-                }
+                error!("Board state: {:?}", board_state);
             } else if board_state.is_warning() {
-                warn!("Board state: {:?}, Homing error: {:?}", board_state.get_status(),board_state.get_homing_error());
-                for i in 0..config::N_AXIS {
-                    // construct a nice mesage without Nones
-                    for e in board_state.get_motor_errors(i) {
-                        if e.is_some() {
-                            warn!("Motor {} error: {:?}", i, e);
-                        }
-                    }
-                }
+                warn!("Board state: {:?}", board_state);
             } else {
-                info!("Board state: {:?}", board_state.get_status());
+                info!("Board state: {:?}", board_state);
             }
 
             slow_timer = 1000;

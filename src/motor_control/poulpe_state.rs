@@ -60,7 +60,7 @@ pub enum HomingError {
 }
 
 
-#[derive(PartialEq, Clone, Copy, defmt::Format)]
+#[derive(PartialEq, Clone, Copy)]
 pub struct PoulpeState {
     pub status: u8,
     pub motor_errors: [u8; config::N_AXIS],
@@ -192,21 +192,21 @@ impl PoulpeState {
         }
     }
 
-    pub fn get_homing_error(&self) -> [HomingError; 8] {
-        let mut errors = [HomingError::None; 8];
+    pub fn get_homing_error(&self) -> [Option<HomingError>; 8] {
+        let mut errors = [None; 8];
         if self.homing_error == 0 {
-            errors[0] = HomingError::None;
+            errors[0] = Some(HomingError::None);
             return errors;
         }
         for i in 0..8 {
             errors[i] = match self.homing_error & (1 << i) {
-                0 => HomingError::None,
-                1 => HomingError::AxisSensorReadFail,
-                2 => HomingError::MotorMovementCheckFail,
-                4 => HomingError::AxisSensorAlignFail,
-                8 => HomingError::ZeroingFail,
-                16 => HomingError::IndexSearchFail,
-                _ => HomingError::None,
+                0 => None,
+                1 => Some(HomingError::AxisSensorReadFail),
+                2 => Some(HomingError::MotorMovementCheckFail),
+                4 => Some(HomingError::AxisSensorAlignFail),
+                8 => Some(HomingError::ZeroingFail),
+                16 => Some(HomingError::IndexSearchFail),
+                _ => None,
             };
         }
         return errors;
@@ -235,4 +235,29 @@ impl PoulpeState {
         return errors;
     }
 
+}
+
+// nice formatting for the PoulpeState
+impl defmt::Format for PoulpeState{
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(f, "PoulpeState {{\n status: {:?},\n motor_errors: [", self.get_status());
+        for i in 0..config::N_AXIS {
+            defmt::write!(f, "Motor:{} - [", i);
+            let errors = self.get_motor_errors(i);
+            for e in errors {
+                if let Some(error) = e {
+                    defmt::write!(f, "{:?}, ", error);
+                }
+            }
+            defmt::write!(f, "], ");
+        }
+        defmt::write!(f, "],\n homing_error: [");
+        let errors = self.get_homing_error();
+        for e in errors {
+            if let Some(error) = e {
+                defmt::write!(f, "{:?}, ", error);
+            }
+        }
+        defmt::write!(f, "]}}");
+    }
 }
