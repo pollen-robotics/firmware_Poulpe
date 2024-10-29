@@ -122,6 +122,14 @@ impl PoulpeState {
         self.status = BoardStatus::Operational as u8;
     }
 
+    pub fn set_error(&mut self) {
+        if self.status == BoardStatus::Init as u8 {
+            self.status = BoardStatus::InitError as u8;
+        } else {
+            self.status = BoardStatus::RuntimeError as u8;
+        }
+    }
+
     pub fn is_operational(&self) -> bool {
         self.status == BoardStatus::Operational as u8 || self.status == BoardStatus::OperationalWithWarning as u8
     }

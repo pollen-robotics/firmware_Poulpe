@@ -813,7 +813,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                 }
                 Err(e) => {
                     // error on init
-                    board_state.set_status(BoardStatus::InitError);
+                    board_state.set_error();
                     board_state.set_motor_error(motor_i, MotorError::ConfigFail);
                     error!("Actuator {:?} init error: {:?}", motor_i, e);
                 }
@@ -834,7 +834,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                 sensor_values
             }
             Err(e) => {
-                board_state.set_status(BoardStatus::InitError);
+                board_state.set_error();
                 board_state.set_homing_error(HomingError::AxisSensorReadFail);
                 error!("Error reading axis sensors: {:?}", e);
                 [0.0; config::N_AXIS] // use the default value if ignoring errors
@@ -857,7 +857,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                     info!("Motor {:?} check 1 ok", motor_i);
                 }
                 Err(e) => {
-                    board_state.set_status(BoardStatus::InitError);
+                    board_state.set_error();
                     board_state.set_homing_error(HomingError::MotorMovementCheckFail);
                     board_state.set_motor_error(motor_i, MotorError::MotorAlignFail);
                     error!("Motor {:?} check 1 error: {:?}", motor_i, e);
@@ -879,7 +879,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                 sensor_values
             }
             Err(e) => {
-                board_state.set_status(BoardStatus::InitError);
+                board_state.set_error();
                 board_state.set_homing_error(HomingError::AxisSensorReadFail);
                 error!("Error reading axis sensors: {:?}", e);
                 [0.0; config::N_AXIS] // use the default value if ignoring errors
@@ -904,7 +904,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                     info!("Motor {:?} check 2 ok", motor_i);
                 }
                 Err(e) => {
-                    board_state.set_status(BoardStatus::InitError);
+                    board_state.set_error();
                     board_state.set_homing_error(HomingError::MotorMovementCheckFail);
                     board_state.set_motor_error(motor_i, MotorError::MotorAlignFail);
                     error!("Motor {:?} check 2 error: {:?}", motor_i, e);
@@ -927,7 +927,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                     info!("Sensor {:?} align with motors check ok", motor_i);
                 }
                 false => {
-                    board_state.set_status(BoardStatus::InitError);
+                    board_state.set_error();
                     board_state.set_homing_error(HomingError::AxisSensorAlignFail);
                     board_state.set_motor_error(motor_i, MotorError::MotorAlignFail);
                     error!("Sesnor {:?} align with motors check error!", motor_i);
@@ -947,13 +947,13 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                     info!("Index search and homing successfull!");
                 }
                 e => {
-                    board_state.set_status(BoardStatus::InitError);
+                    board_state.set_error();
                     board_state.set_homing_error(e);
                     error!("Error finding index: {:?}", e);
                 }
             },
             Err(e) => {
-                board_state.set_status(BoardStatus::InitError);
+                board_state.set_error();
                 board_state.set_homing_error(HomingError::ZeroingFail);
                 error!("Error homing: {:?}", e);
             }
@@ -966,13 +966,13 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                     info!("Index search and homing successfull!");
                 }
                 e => {
-                    board_state.set_status(BoardStatus::InitError);
+                    board_state.set_error();
                     board_state.set_homing_error(e);
                     error!("Error finding index: {:?}", e);
                 }
             },
             Err(e) => {
-                board_state.set_status(BoardStatus::InitError);
+                board_state.set_error();
                 board_state.set_homing_error(HomingError::ZeroingFail);
                 error!("Error homing: {:?}", e);
             }
@@ -1419,7 +1419,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                     // catastrophic error
                     board_state.set_motor_error(i, MotorError::OverTemperatureBoard);
                     if board_state.is_operational() {
-                        board_state.set_status(BoardStatus::RuntimeError);
+                        board_state.set_error();
                     }
                     error!(
                         "Max allowed board temperature reached : {}C (max {}C)!",
@@ -1444,7 +1444,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                     // catastrophic error
                     board_state.set_motor_error(i, MotorError::OverTemperatureMotor);
                     if board_state.is_operational() {
-                        board_state.set_status(BoardStatus::RuntimeError);
+                        board_state.set_error();
                     }
                     error!(
                         "Max allowed motor temperature reached : {}C (max {}C)!",
@@ -1481,7 +1481,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                             // no recovery - the board needs to be restarted
                             board_state.set_motor_error(i, MotorError::LowBusVoltage);
                             if board_state.is_operational() {
-                                board_state.set_status(BoardStatus::RuntimeError);
+                                board_state.set_error();
                             }
                             error!(
                                 "Bus voltage {}V is too low (under {}V)!",
@@ -1505,7 +1505,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                 let communication_down_duration = last_communication_timestamp.elapsed().as_secs() as u32;
                 if (communication_down_duration > config::MAX_COMMUNICATION_DOWN_TIME) {
                     if board_state.is_operational() {
-                        board_state.set_status(BoardStatus::RuntimeError);
+                        board_state.set_error();
                     }
                     for i in 0..config::N_AXIS {
                         board_state.set_motor_error(i, MotorError::CommunicationFail);
