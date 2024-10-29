@@ -8,7 +8,7 @@ use crate::{
         self, conversion, packet::ParsingError, DynamixelRegister, InstructionPacketKind,
         StatusPacket,
     },
-    motor_control::{BoardStatus, Pid},
+    motor_control::{poulpe_state::PoulpeState, BoardStatus, Pid},
     SHARED_MEMORY,
 };
 
@@ -24,7 +24,7 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin, id:
         match dxl.read().await {
             Ok(packet) => {
                 debug!("Got packet: {:?}", packet);
-                dxl_error = { SHARED_MEMORY.lock().await.get_error_state() } as u8;
+                dxl_error = { SHARED_MEMORY.lock().await.get_poulpe_state() }.status as u8;
                 match packet {
                     InstructionPacketKind::Ping(_) => {
                         let sp = StatusPacket::ack(id, dxl_error);
@@ -43,7 +43,7 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin, id:
 
                         match reg {
                             DynamixelRegister::BoardState => {
-                                let value = { SHARED_MEMORY.lock().await.get_error_state() };
+                                let value = { SHARED_MEMORY.lock().await.get_poulpe_state() }.get_status();
                                 let sp = StatusPacket::with_value(id, dxl_error, [value as u8]);
                                 trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
                                 if let Some(e) = dxl.write(&sp).await.err() {
@@ -310,11 +310,10 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin, id:
                             // TODO: Can we match only on Write registers?
                             DynamixelRegister::BoardState => {
                                 let newstate = write_data_packet.data;
+                                let mut poulpe_state = PoulpeState::new();
+                                poulpe_state.status = newstate[0];
                                 {
-                                    SHARED_MEMORY
-                                        .lock()
-                                        .await
-                                        .set_error_state(BoardStatus::from_u8(newstate[0]));
+                                    SHARED_MEMORY.lock().await.set_poulpe_state(poulpe_state);
                                 }
                                 let sp = StatusPacket::ack(id, dxl_error);
                                 debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());

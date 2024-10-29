@@ -44,40 +44,16 @@ impl<'d, const N: usize> Actuator<'d, N> {
         }
     }
 
-    pub async fn init(&mut self) -> Result<()> {
-        let res = join::join_array(self.axes.each_mut().map(|v| v.init())).await;
-        // Ok(())
-        for r in res {
-            match r {
-                Ok(_) => {}
-                Err(e) => return Err(e),
-            }
-        }
-        Ok(())
+    pub async fn init(&mut self) -> [Result<()>; N] {
+        join::join_array(self.axes.each_mut().map(|v| v.init())).await
     }
 
     // check motors
-    pub async fn check_motors_1(&mut self) -> Result<()> {
-        let res = join::join_array(self.axes.each_mut().map(|v| v.check_motors_1())).await;
-
-        for r in res {
-            match r {
-                Ok(_) => {}
-                Err(e) => return Err(e),
-            }
-        }
-
-        Ok(())
+    pub async fn check_motors_1(&mut self) -> [Result<()>; N] {
+        join::join_array(self.axes.each_mut().map(|v| v.check_motors_1())).await
     }
-    pub async fn check_motors_2(&mut self) -> Result<()> {
-        let res = join::join_array(self.axes.each_mut().map(|v| v.check_motors_2())).await;
-        for r in res {
-            match r {
-                Ok(_) => {}
-                Err(e) => return Err(e),
-            }
-        }
-        Ok(())
+    pub async fn check_motors_2(&mut self) -> [Result<()>; N] {
+        join::join_array(self.axes.each_mut().map(|v| v.check_motors_2())).await
     }
 
     // pub fn get_ventouse(&mut self, v: char) -> Option<&mut dyn RawMotorsIO<1>> {

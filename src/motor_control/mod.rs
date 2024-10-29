@@ -15,5 +15,5 @@ pub mod analog;
 pub mod task;
 pub mod ventouse;
 
-pub mod board_state;
-pub use board_state::{HomingError, BoardStatus, MotorError};
+pub mod poulpe_state;
+pub use poulpe_state::{HomingError, BoardStatus, MotorError};

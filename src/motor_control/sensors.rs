@@ -295,7 +295,7 @@ where
                                                                              // error >>= 9;
         let _warning: bool = ((encoder_data & 0x0000000000000100) >> 8) != 0x1; // 8th bit, active low
         if error {
-            error!("Ring sensor error",);
+            // error!("Ring sensor error",);
             Err(IOError::InvalidData)
         } else {
             let crc: u8 = (encoder_data & 0x00000000000000ff) as u8; // 7-0 bits //TODO
@@ -303,7 +303,7 @@ where
             let calculated_crc = !CRC_SPI_97_64bit(datapacket);
 
             if calculated_crc != crc {
-                error!("Ring sensor CRC error. crc: {:#02x} computed: {:#02x} data: {:#x} datapacket: {:#x}", crc, calculated_crc, encoder_data, datapacket);
+                // error!("Ring sensor CRC error. crc: {:#02x} computed: {:#02x} data: {:#x} datapacket: {:#x}", crc, calculated_crc, encoder_data, datapacket);
                 Err(IOError::InvalidData)
             } else {
                 // debug!("CRC {:#02x} computed {:#02x} data {:#x} datapacket {:#x}", crc, calculated_crc, encoder_data, datapacket);

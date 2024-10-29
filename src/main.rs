@@ -319,19 +319,12 @@ async fn main(spawner: Spawner) {
 
     loop {
         let errorled = { SHARED_MEMORY.lock().await.get_error_led() };
-        let errorled = { SHARED_MEMORY.lock().await.get_error_led() };
 
         if errorled {
             led_error.set_high();
         } else {
             led_error.set_low();
         }
-        if errorled {
-            led_error.set_high();
-        } else {
-            led_error.set_low();
-        }
-
         // Robots should dance, LED should blink.
         led_hello.set_high();
         Timer::after(Duration::from_millis(500)).await;

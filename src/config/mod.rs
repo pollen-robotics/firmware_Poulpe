@@ -20,6 +20,10 @@ pub const MAX_BOARD_TEMP: f32 = 100.0;
 // minimal bus voltage - error state if below
 pub const MIN_BUS_VOLTAGE: f32 = 10.0;
 
+// maximal timeout that is allowed for communication with the motor controller
+// after this time, the communication is considered as failed and the operation is stopped
+pub const MAX_COMMUNICATION_DOWN_TIME: u32 = 3; // in sec
+
 // pub static DXL_ID: u8 = 42;
 
 pub type DynamixelUart = Uart<'static, p::USART1, p::DMA1_CH0, p::DMA1_CH1>;

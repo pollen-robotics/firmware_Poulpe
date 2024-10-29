@@ -504,7 +504,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
         }
     }
 
-    let mut state = { SHARED_MEMORY.lock().await.get_error_state() };
+    let mut poulpe_state = { SHARED_MEMORY.lock().await.get_poulpe_state() };
     let mut downsample_state_cnt: u32 = 0;
     loop {
         let t0 = Instant::now();
@@ -512,7 +512,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
         // let receive_commands = true;
         // #[cfg(not(feature = "ignore_errors"))]
         // let receive_commands = state == BoardStatus::Ok || state == BoardStatus::HighTemperatureState;
-        if state != BoardStatus::Init {
+        if !poulpe_state.is_init() {
             let mut torque_on = [false; config::N_AXIS];
             let mut target_position = [0.0; config::N_AXIS];
             let mut velocity_limits = [0.0; config::N_AXIS];
@@ -594,8 +594,8 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
             // write the state to the OrbitaStatus memory
             // lower frequency than the rest of the data
             // at 0.1Hz more or less
-            state = { SHARED_MEMORY.lock().await.get_error_state() };
-            let data: [u8; 2] = [state as u8, config::N_AXIS as u8];
+            poulpe_state = { SHARED_MEMORY.lock().await.get_poulpe_state() };
+            let data: [u8; 2] = [poulpe_state.status as u8, config::N_AXIS as u8];
             match lan9252
                 .write_bytes(&data, Lan9252Memory::OrbitaStatus)
                 .await

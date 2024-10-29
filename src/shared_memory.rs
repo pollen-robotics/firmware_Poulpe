@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 
 use crate::motor_control::{Actuator, Pid, RawMotorsIO, RawSensorsIO};
-use crate::{motor_control::foc::MotionMode, motor_control::BoardStatus};
+use crate::motor_control::{foc::MotionMode, poulpe_state::PoulpeState};
 use defmt::error;
 use defmt::Format;
 use embassy_time::Instant;
@@ -49,7 +49,7 @@ pub struct Memory<const N: usize> {
     // #[cfg(feature = "orbita3d")]
     // hall_states: u16,
     error_led: bool,
-    error_state: BoardStatus,
+    poulpe_state: PoulpeState,
 }
 
 #[derive(Format)]
@@ -143,11 +143,11 @@ impl<const N: usize> SharedMemory<N> {
         self.inner.borrow_mut().hardware_zeros = zeros;
     }
 
-    pub fn set_error_state(&self, state: BoardStatus) {
-        self.inner.borrow_mut().error_state = state;
+    pub fn set_poulpe_state(&self, state: PoulpeState) {
+        self.inner.borrow_mut().poulpe_state = state;
     }
-    pub fn get_error_state(&self) -> BoardStatus {
-        self.inner.borrow().error_state
+    pub fn get_poulpe_state(&self) -> PoulpeState {
+        self.inner.borrow().poulpe_state
     }
 
     pub fn set_error_led(&self, error: bool) {
@@ -332,7 +332,14 @@ impl<const N: usize> SharedMemory<N> {
                 velocity_feedforward: [0.0; N],
 
                 error_led: false,
-                error_state: BoardStatus::Ok,
+                poulpe_state: PoulpeState{
+                    status: 0,
+                    #[cfg(feature = "orbita3d")]
+                    motor_errors: [0; 3],
+                    #[cfg(feature = "orbita2d")]
+                    motor_errors: [0; 2],
+                    homing_error: 0,
+                },
             }),
         }
     }
@@ -396,7 +403,7 @@ impl<const N: usize> SharedMemory<N> {
             // #[cfg(feature = "orbita3d")]
             // hall_states: actuator.get_hall_states(),
             error_led: false,
-            error_state: BoardStatus::Ok,
+            poulpe_state: PoulpeState::new(),
         };
     }
 
