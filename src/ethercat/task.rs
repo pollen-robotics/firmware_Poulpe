@@ -595,7 +595,8 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
             // lower frequency than the rest of the data
             // at 0.1Hz more or less
             poulpe_state = { SHARED_MEMORY.lock().await.get_poulpe_state() };
-            let data: [u8; 2] = [poulpe_state.status as u8, config::N_AXIS as u8];
+            let mut data: [u8; 6] = [config::N_AXIS as u8; 6];
+            data[0..5].copy_from_slice(&poulpe_state.to_byte_array());
             match lan9252
                 .write_bytes(&data, Lan9252Memory::OrbitaStatus)
                 .await

@@ -335,10 +335,10 @@ impl<const N: usize> SharedMemory<N> {
                 poulpe_state: PoulpeState{
                     status: 0,
                     #[cfg(feature = "orbita3d")]
-                    motor_errors: [0; 3],
+                    motor_error_flags: [0; 3],
                     #[cfg(feature = "orbita2d")]
-                    motor_errors: [0; 2],
-                    homing_error: 0,
+                    motor_error_flags: [0; 2],
+                    homing_error_flags: 0,
                 },
             }),
         }
