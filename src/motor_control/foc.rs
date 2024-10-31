@@ -243,6 +243,27 @@ impl MotionMode {
             _ => None,
         }
     }
+
+    pub fn to_u8(&self) -> u8 {
+        match self {
+            MotionMode::Stopped => 0,
+            MotionMode::Torque => 1,
+            MotionMode::Velocity => 2,
+            MotionMode::Position => 3,
+            MotionMode::PrbsFlux => 4,
+            MotionMode::PrbsTorque => 5,
+            MotionMode::PrbsVelocity => 6,
+            MotionMode::PrbsPosition => 7,
+            MotionMode::UqUdExt => 8,
+            MotionMode::Reserved => 9,
+            MotionMode::AgpiATorque => 10,
+            MotionMode::AgpiAVelocity => 11,
+            MotionMode::AgpiAPosition => 12,
+            MotionMode::PmwITorque => 13,
+            MotionMode::PmwIVelocity => 14,
+            MotionMode::PmwIPosition => 15,
+        }
+    }
 }
 
 pub struct Foc<'d, T, P, EnablePin>

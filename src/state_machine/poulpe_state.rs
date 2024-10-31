@@ -1,24 +1,8 @@
 use crate::config;
+use crate::state_machine::cia402_state_machine::{CiA402StateMachine, CiA402State};
 
+use super::CiA402Command;
 
-// general board status and error codes
-// - the board is iniatlly in the unknown state
-// - then it goes to init state
-//   - if there is an error during init, it goes to init error state
-// - if everything is fine, it goes to operational state
-//   - if there is a warning, it goes to operational with warning state
-//   - if there is a runtime error, it goes to runtime error state
-// > the init error and runtime error states are not recoverable and the board needs to be reset
-#[derive(PartialEq, Clone, Copy, defmt::Format)]
-#[repr(u8)]
-pub enum BoardStatus {
-    Unknown = 0,
-    Init = 1,
-    InitError = 2,
-    Operational = 4,
-    OperationalWithWarning = 8,
-    RuntimeError = 16,
-}
 
 // Error codes for the motors, we will have one error code per motor
 // - None - no error
@@ -62,26 +46,28 @@ pub enum HomingErrorFlag {
 
 #[derive(PartialEq, Clone, Copy)]
 pub struct PoulpeState {
-    pub status: u8,
+    pub state_machine: CiA402StateMachine,
     pub motor_error_flags: [u8; config::N_AXIS],
     pub homing_error_flags: u8,
 }
 
 impl PoulpeState {
-    pub fn new() -> Self {
-        PoulpeState {
-            status: BoardStatus::Unknown as u8,
+    pub const fn default() -> Self {
+        Self {
+            state_machine: CiA402StateMachine::default(),
             motor_error_flags: [MotorErrorFlag::None as u8; config::N_AXIS],
             homing_error_flags: HomingErrorFlag::None as u8,
         }
     }
+}
 
-    pub fn set_status(&mut self, status: BoardStatus) {
-        self.status = status as u8;
-    }
-
-    pub fn set_status_u8(&mut self, status: u8) {
-        self.status = status as u8;
+impl PoulpeState {
+    pub fn new() -> Self {
+        PoulpeState {
+            state_machine: CiA402StateMachine::new(),
+            motor_error_flags: [MotorErrorFlag::None as u8; config::N_AXIS],
+            homing_error_flags: HomingErrorFlag::None as u8,
+        }
     }
 
     pub fn set_motor_error_flag(&mut self, axis: usize, error: MotorErrorFlag) {
@@ -116,58 +102,58 @@ impl PoulpeState {
     }
 
     pub fn set_init_state(&mut self) {
-        self.status = BoardStatus::Init as u8;
+        self.state_machine.set_state(CiA402State::NotReadyToSwitchOn);
     }
-    pub fn set_operational_state(&mut self) {
-        self.status = BoardStatus::Operational as u8;
+    pub fn notify_init_success(&mut self) {
+        self.state_machine.set_state(CiA402State::SwitchOnDisabled);
     }
 
-    pub fn set_error_state(&mut self) {
-        if self.status == BoardStatus::Init as u8 {
-            self.status = BoardStatus::InitError as u8;
+
+    pub fn set_fault_state(&mut self) {
+        if self.state_machine.state == CiA402State::NotReadyToSwitchOn || self.state_machine.state == CiA402State::Fault{
+            self.state_machine.set_state(CiA402State::Fault);
         } else {
-            self.status = BoardStatus::RuntimeError as u8;
+            self.state_machine.set_state(CiA402State::FaultReactionActive);
         }
     }
 
     pub fn set_warning_state(&mut self){
-        if self.status == BoardStatus::Operational as u8{
-            self.status = BoardStatus::OperationalWithWarning as u8;
-        }
+        self.state_machine.set_warning_state();
     }
 
     pub fn clear_warning_state(&mut self){
-        if self.status == BoardStatus::OperationalWithWarning as u8{
-            self.status = BoardStatus::Operational as u8;
-        }
+        self.state_machine.clear_warning_state();
     }
 
-    pub fn is_operational(&self) -> bool {
-        self.status == BoardStatus::Operational as u8 || self.status == BoardStatus::OperationalWithWarning as u8
+
+    pub fn is_preoperation_state(&self) -> bool {
+        self.state_machine.state == CiA402State::SwitchOnDisabled || 
+        self.state_machine.state == CiA402State::ReadyToSwitchOn || 
+        self.state_machine.state == CiA402State::SwitchedOn
+    }
+
+    pub fn is_operation_enabled(&self) -> bool {
+        self.state_machine.state == CiA402State::OperationEnabled
     }
 
     pub fn is_init(&self) -> bool {
-        self.status == BoardStatus::Init as u8
+        self.state_machine.state == CiA402State::NotReadyToSwitchOn
     }
 
-    pub fn is_init_error(&self) -> bool {
-        self.status == BoardStatus::InitError as u8
+    pub fn is_fault(&self) -> bool {
+        self.state_machine.state == CiA402State::Fault
     }
 
-    pub fn is_runtime_error(&self) -> bool {
-        self.status == BoardStatus::RuntimeError as u8
+    pub fn is_fault_reaction_state(&self) -> bool {
+        self.state_machine.state == CiA402State::FaultReactionActive
     }
 
-    pub fn is_error(&self) -> bool {
-        self.is_init_error() || self.is_runtime_error()
+    pub fn notify_fault_reaction_done(&mut self) {
+        self.state_machine.set_state(CiA402State::Fault);
     }
 
     pub fn is_warning(&self) -> bool {
-        self.status == BoardStatus::OperationalWithWarning as u8
-    }
-
-    pub fn is_unknown_state(&self) -> bool {
-        self.status == BoardStatus::Unknown as u8
+        self.state_machine.warning_active
     }
 
     pub fn is_motor_error(&self, axis: usize) -> bool {
@@ -195,32 +181,40 @@ impl PoulpeState {
         return error_code;
     }
 
+    pub fn error_flags_to_u8(&self) -> [u8; 4] {
+        let mut error_code = [0; 4];
+        error_code[0] = self.homing_error_flags;
+        for i in 0..config::N_AXIS {
+            error_code[i+1] = self.motor_error_flags[i];
+        }
+        return error_code;
+    }
+
     // create the u8 state for the status
-    pub fn status_to_u8(&self) -> u8 {
-        return self.status;
+    pub fn status_to_statusword(&self) -> [u8;2] {
+        if self.state_machine.warning_active {
+            // set the warning bit (bit 7)
+            return [0, self.state_machine.state as u8 | 0x80];
+        }else{
+            return [0, self.state_machine.state as u8];
+        }
+        
     }
 
     // convert the PoulpeState to a byte array
-    pub fn to_byte_array(&self) -> [u8; 5] {
-        let mut state = [0; 5];
-        state[0] = self.status;
-        state[1] = self.homing_error_flags;
+    pub fn to_byte_array(&self) -> [u8; 6] {
+        let mut state = [0; 6];
+        state[0] = 0;
+        state[1] = self.state_machine.state as u8;
+        state[2] = self.homing_error_flags;
         for i in 0..config::N_AXIS {
-            state[i+2] = self.motor_error_flags[i];
+            state[i+3] = self.motor_error_flags[i];
         }
         return state;
     }
     
-    pub fn get_status(&self) -> BoardStatus {
-        match self.status {
-            0 => BoardStatus::Unknown,
-            1 => BoardStatus::Init,
-            2 => BoardStatus::InitError,
-            4 => BoardStatus::Operational,
-            8 => BoardStatus::OperationalWithWarning,
-            16 => BoardStatus::RuntimeError,
-            _ => BoardStatus::Unknown,
-        }
+    pub fn get_state(&self) -> CiA402State {
+        self.state_machine.state 
     }
 
     pub fn get_homing_error_flags(&self) -> [Option<HomingErrorFlag>; 8] {
@@ -267,12 +261,17 @@ impl PoulpeState {
     }
 
 
+
+    pub fn process_command(&mut self, cmd: u16) {
+        self.state_machine.update_state_with_command(CiA402Command::from_u16(cmd));
+    }
+
 }
 
 // nice formatting for the PoulpeState
 impl defmt::Format for PoulpeState{
     fn format(&self, f: defmt::Formatter) {
-        defmt::write!(f, "PoulpeState {{\n status: {:?},\n motor_error_flags: [", self.get_status());
+        defmt::write!(f, "PoulpeState {{\n state: {:?}, warning: {:?}\n motor_error_flags: [", self.get_state(), self.is_warning());
         for i in 0..config::N_AXIS {
             defmt::write!(f, "Motor:{} - [", i);
             let errors = self.get_motor_errors_flags(i);

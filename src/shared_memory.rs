@@ -1,7 +1,9 @@
 use core::cell::RefCell;
 
 use crate::motor_control::{Actuator, Pid, RawMotorsIO, RawSensorsIO};
-use crate::motor_control::{foc::MotionMode, poulpe_state::PoulpeState};
+use crate::motor_control::foc::MotionMode;
+use crate::state_machine::cia402_state_machine::CiA402StateMachine;
+use crate::state_machine::poulpe_state::PoulpeState;
 use defmt::error;
 use defmt::Format;
 use embassy_time::Instant;
@@ -10,6 +12,7 @@ use embassy_time::Instant;
 pub struct Memory<const N: usize> {
     torque_on: [bool; N],
     control_mode: [MotionMode; N],
+    control_word: u16,
 
     current_position: [f32; N],
     current_velocity: [f32; N],
@@ -29,7 +32,7 @@ pub struct Memory<const N: usize> {
     position_pid_gains: [Pid; N],
 
     board_temperatures: [f32; N],
-    motor_temperature: f32,
+    motor_temperature: [f32; N],
     bus_voltages: [f32; N],
 
     uq_ud_limit: [i16; N],
@@ -71,6 +74,14 @@ impl<const N: usize> SharedMemory<N> {
     pub fn set_control_mode(&self, mode: [MotionMode; N]) {
         self.inner.borrow_mut().control_mode = mode;
     }
+
+    pub fn get_control_word(&self) -> u16 {
+        self.inner.borrow().control_word
+    }
+    pub fn set_control_word(&self, word: u16) {
+        self.inner.borrow_mut().control_word = word;
+    }
+
 
     pub fn get_current_position(&self) -> [f32; N] {
         self.inner.borrow().current_position
@@ -254,10 +265,10 @@ impl<const N: usize> SharedMemory<N> {
     pub fn set_board_temperature(&self, temp: [f32; N]) {
         self.inner.borrow_mut().board_temperatures = temp;
     }
-    pub fn get_motor_temperature(&self) -> f32 {
+    pub fn get_motor_temperature(&self) -> [f32; N] {
         self.inner.borrow().motor_temperature
     }
-    pub fn set_motor_temperature(&self, temp: f32) {
+    pub fn set_motor_temperature(&self, temp: [f32; N]) {
         self.inner.borrow_mut().motor_temperature = temp;
     }
     pub fn get_bus_voltage(&self) -> [f32; N] {
@@ -294,6 +305,7 @@ impl<const N: usize> SharedMemory<N> {
             inner: RefCell::new(Memory {
                 torque_on: [false; N],
                 control_mode: [MotionMode::Torque; N],
+                control_word: 0,
 
                 current_position: [0.0; N],
                 current_velocity: [0.0; N],
@@ -318,7 +330,7 @@ impl<const N: usize> SharedMemory<N> {
                 position_pid_gains: [Pid { p: 0, i: 0 }; N],
 
                 board_temperatures: [0.0; N],
-                motor_temperature: 0.0,
+                motor_temperature: [0.0; N],
                 bus_voltages: [0.0; N],
 
                 uq_ud_limit: [0; N],
@@ -332,14 +344,7 @@ impl<const N: usize> SharedMemory<N> {
                 velocity_feedforward: [0.0; N],
 
                 error_led: false,
-                poulpe_state: PoulpeState{
-                    status: 0,
-                    #[cfg(feature = "orbita3d")]
-                    motor_error_flags: [0; 3],
-                    #[cfg(feature = "orbita2d")]
-                    motor_error_flags: [0; 2],
-                    homing_error_flags: 0,
-                },
+                poulpe_state: PoulpeState::default(),
             }),
         }
     }
@@ -350,6 +355,7 @@ impl<const N: usize> SharedMemory<N> {
             control_mode: actuator
                 .get_control_mode()
                 .unwrap_or([MotionMode::Stopped; N]),
+            control_word: 0,
 
             current_position: actuator.get_current_position().unwrap_or([f32::NAN; N]),
             current_velocity: actuator.get_current_velocity().unwrap_or([f32::NAN; N]),
@@ -394,7 +400,7 @@ impl<const N: usize> SharedMemory<N> {
             velocity_feedforward: actuator.get_velocity_feedforward().unwrap_or([0.0; N]),
 
             board_temperatures: actuator.get_board_temperature().unwrap_or([0.0; N]),
-            motor_temperature: 0.0,
+            motor_temperature: [0.0; N],
             bus_voltages: actuator.get_bus_voltage().unwrap_or([0.0; N]),
 
             #[cfg(feature = "orbita3d")]

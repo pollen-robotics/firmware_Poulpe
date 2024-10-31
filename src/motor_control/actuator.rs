@@ -700,7 +700,7 @@ impl<'d, const N: usize> RawSensorsIO<N> for Actuator<'d, N> {
         for (i, sensor) in self.sensors.iter_mut().enumerate() {
             match sensor.get_axis_sensors() {
                 Ok(val) => res[i] = val[0],
-                Err(_) => res[i] = f32::NAN,
+                Err(e) => return Err(e),
             }
         }
 

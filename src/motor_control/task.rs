@@ -19,9 +19,10 @@ use modular_bitfield::error;
 
 const SPI_FREQ: u32 = 2_000_000;
 
+use crate::state_machine::CiA402State;
 use crate::{
     config::{self, ActuatorConfig, DonutHall},
-    motor_control::poulpe_state::{BoardStatus, HomingErrorFlag, MotorErrorFlag, PoulpeState},
+    state_machine::poulpe_state::{HomingErrorFlag, MotorErrorFlag, PoulpeState},
     motor_control::{
         analog::AnalogInput,
         sensors::{AD5047Sensor, I2cHallSensor, SensorKind},
@@ -62,9 +63,8 @@ macro_rules! verify_temperatures_and_update_state {
                 // stop everything if the board temperature is too high
                 // catastrophic error
                 $board_state.set_motor_error_flag(i, MotorErrorFlag::OverTemperatureBoard);
-                if $board_state.is_operational() {
-                    $board_state.set_error_state();
-                }
+                $board_state.set_fault_state();
+                {SHARED_MEMORY.lock().await.set_poulpe_state($board_state)};
                 error!(
                     "Max allowed board {} temperature exceeded : {}C (max {}C)!",
                     i, b, $max_board_temp
@@ -73,14 +73,13 @@ macro_rules! verify_temperatures_and_update_state {
                 // stop everything if the motor temperature is too high
                 // catastrophic error
                 $board_state.set_motor_error_flag(i, MotorErrorFlag::OverTemperatureMotor);
-                if $board_state.is_operational() {
-                    $board_state.set_error_state();
-                }
+                $board_state.set_fault_state();
+                {SHARED_MEMORY.lock().await.set_poulpe_state($board_state)};
                 error!(
                     "Max allowed motor {} temperature exceeded : {}C (max {}C)!",
                     i,m, $max_motor_temp
                 );
-            } else if $board_state.is_operational() {
+            } else if !$board_state.is_fault() {
                 if *b > $high_temp || *m > $high_temp {
                     // if the board temperature is high, set the warning state
                     $board_state.set_motor_error_flag(i, MotorErrorFlag::HighTemperatureWarning);
@@ -846,6 +845,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
 
     // set the hardware zeros
     actuator.set_hardware_zeros(hardware_zeros);
+    {SHARED_MEMORY.lock().await.set_hardware_zeros(hardware_zeros);};
 
     // trying to init the actuator
     // let mut init_error: BoardStatus = BoardStatus::Init;
@@ -877,14 +877,14 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                 }
                 Err(e) => {
                     // error on init
-                    board_state.set_error_state();
+                    board_state.set_fault_state();
                     board_state.set_motor_error_flag(motor_i, MotorErrorFlag::ConfigFail);
                     error!("Actuator {:?} init error: {:?}", motor_i, e);
                 }
             }
         });
         #[cfg(not(feature = "ignore_errors"))]
-        if board_state.is_error() {
+        if board_state.is_fault() {
             continue 'init_loop;
         }
 
@@ -898,7 +898,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                 sensor_values
             }
             Err(e) => {
-                board_state.set_error_state();
+                board_state.set_fault_state();
                 board_state.set_homing_error_flag(HomingErrorFlag::AxisSensorReadFail);
                 error!("Error reading axis sensors: {:?}", e);
                 [0.0; config::N_AXIS] // use the default value if ignoring errors
@@ -906,7 +906,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
         };
         // if there is an error, retry the init
         #[cfg(not(feature = "ignore_errors"))]
-        if board_state.is_error() {
+        if board_state.is_fault() {
             continue 'init_loop;
         }
 
@@ -921,7 +921,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                     info!("Motor {:?} check 1 ok", motor_i);
                 }
                 Err(e) => {
-                    board_state.set_error_state();
+                    board_state.set_fault_state();
                     board_state.set_homing_error_flag(HomingErrorFlag::MotorMovementCheckFail);
                     board_state.set_motor_error_flag(motor_i, MotorErrorFlag::MotorAlignFail);
                     error!("Motor {:?} check 1 error: {:?}", motor_i, e);
@@ -929,7 +929,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             });
         // if there is an error, retry the init
         #[cfg(not(feature = "ignore_errors"))]
-        if board_state.is_error() {
+        if board_state.is_fault() {
             continue 'init_loop;
         }
 
@@ -943,7 +943,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                 sensor_values
             }
             Err(e) => {
-                board_state.set_error_state();
+                board_state.set_fault_state();
                 board_state.set_homing_error_flag(HomingErrorFlag::AxisSensorReadFail);
                 board_state.set_homing_error_flag(HomingErrorFlag::MotorMovementCheckFail);
                 error!("Error reading axis sensors: {:?}", e);
@@ -952,7 +952,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
         };
         // if there is an error, retry the init
         #[cfg(not(feature = "ignore_errors"))]
-        if board_state.is_error() {
+        if board_state.is_fault() {
             continue 'init_loop;
         }
 
@@ -969,7 +969,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                     info!("Motor {:?} check 2 ok", motor_i);
                 }
                 Err(e) => {
-                    board_state.set_error_state();
+                    board_state.set_fault_state();
                     board_state.set_homing_error_flag(HomingErrorFlag::MotorMovementCheckFail);
                     board_state.set_motor_error_flag(motor_i, MotorErrorFlag::MotorAlignFail);
                     error!("Motor {:?} check 2 error: {:?}", motor_i, e);
@@ -977,7 +977,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             });
         // if there is an error, retry the init
         #[cfg(not(feature = "ignore_errors"))]
-        if board_state.is_error() {
+        if board_state.is_fault() {
             continue 'init_loop;
         }
 
@@ -992,7 +992,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                     info!("Sensor {:?} align with motors check ok", motor_i);
                 }
                 false => {
-                    board_state.set_error_state();
+                    board_state.set_fault_state();
                     board_state.set_homing_error_flag(HomingErrorFlag::AxisSensorAlignFail);
                     board_state.set_motor_error_flag(motor_i, MotorErrorFlag::MotorAlignFail);
                     error!("Sesnor {:?} align with motors check error!", motor_i);
@@ -1000,7 +1000,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             });
         // if there is an error, retry the init
         #[cfg(not(feature = "ignore_errors"))]
-        if board_state.is_error() {
+        if board_state.is_fault() {
             continue 'init_loop;
         }
 
@@ -1012,13 +1012,13 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                     info!("Index search and homing successfull!");
                 }
                 e => {
-                    board_state.set_error_state();
+                    board_state.set_fault_state();
                     board_state.set_homing_error_flag(e);
                     error!("Error finding index: {:?}", e);
                 }
             },
             Err(e) => {
-                board_state.set_error_state();
+                board_state.set_fault_state();
                 board_state.set_homing_error_flag(HomingErrorFlag::ZeroingFail);
                 error!("Error homing: {:?}", e);
             }
@@ -1031,20 +1031,20 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                     info!("Index search and homing successfull!");
                 }
                 e => {
-                    board_state.set_error_state();
+                    board_state.set_fault_state();
                     board_state.set_homing_error_flag(e);
                     error!("Error finding index: {:?}", e);
                 }
             },
             Err(e) => {
-                board_state.set_error_state();
+                board_state.set_fault_state();
                 board_state.set_homing_error_flag(HomingErrorFlag::ZeroingFail);
                 error!("Error homing: {:?}", e);
             }
         }
         // if there is an error, retry the init
         #[cfg(not(feature = "ignore_errors"))]
-        if board_state.is_error() {
+        if board_state.is_fault() {
             continue 'init_loop;
         }
 
@@ -1053,8 +1053,8 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
         actuator.set_torque([false, false]).unwrap();
 
         // if no error during init, we can break the loop
-        if !board_state.is_error() {
-            board_state.set_operational_state();
+        if !board_state.is_fault() {
+            board_state.notify_init_success();
             break 'init_loop;
         }
 
@@ -1063,10 +1063,10 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
     }
 
     // Print the error if there is one
-    if board_state.is_operational() {
-        info!("Init successfull!");
-    } else {
+    if board_state.is_fault() {
         error!("Error during init, stopping control loop!");
+    } else {
+        info!("Init successfull!");
     }
 
     let curpos = actuator.get_current_position().unwrap();
@@ -1098,7 +1098,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
     // Init SharedMemory with real values before actually running the control loop
     SHARED_MEMORY.lock().await.init(&mut actuator);
 
-    if board_state.is_error() {
+    if board_state.is_fault() {
         SHARED_MEMORY.lock().await.set_error_led(true);
     }
     // set the state of the system
@@ -1121,16 +1121,14 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
     let mut init_torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
     let mut init_target_position = { SHARED_MEMORY.lock().await.get_target_position() };
 
-    // a variable used in the error state
-    // if the error is not catastrophic, the joint will be stopped gently
-    // the velocity limit will be set to 10% of the max velocity
-    // the torque limit will be reduced to 0% over the course of 5 seconds
-    let mut error_safe_stopping_done = false;
+    // a variable used for the safe fault handling
+    let mut fault_response_counter = 5000; // 5000 loops at 1kHz = 5 seconds
+
 
     // actuator.set_torque([false,false]).unwrap();
     let mut error_led = false;
     let mut prev_error_led = false;
-    if board_state.is_error() {
+    if board_state.is_fault() {
         error_led = true;
         prev_error_led = true;
     }
@@ -1167,6 +1165,14 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
     // flag to track if the communication was down in the last loop
     let mut last_communication_timestamp = Instant::now();
 
+
+    #[cfg(feature = "dynamixel")]
+    {
+        // set the state to switched on directly if dynamixel is used
+        board_state.state_machine.set_state(CiA402State::SwitchedOn);
+    }
+
+
     loop {
         let t0 = Instant::now();
         // reset the communication problem flag
@@ -1184,58 +1190,68 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             // warn!("ELAPSED 1 {:?}",t0.elapsed().as_micros());
         }
 
+        // initialise the torque on variable to the value in the previous loop
         let mut torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
         let mut board_state = { SHARED_MEMORY.lock().await.get_poulpe_state() };
 
+
+        #[cfg(feature = "ethercat")]
+        {
+            // process the commands
+            let control_word = { SHARED_MEMORY.lock().await.get_control_word() };
+            board_state.process_command(control_word);// if we are in the init state, we can only go to the switch on state
+            if board_state.is_operation_enabled(){
+                torque_on = [true;  config::N_AXIS];
+            }else{
+                torque_on = [false;  config::N_AXIS];
+            }
+        }
+
+        // verify that the board state is not in an error state
         #[cfg(not(feature = "ignore_errors"))] // if errors are ignored the operation continues
         {
-            if board_state.is_init_error() {
+            if board_state.is_fault() {
                 // if there was an init error the operation stops and cannot restart
                 torque_on = [false; config::N_AXIS];
                 {
                     SHARED_MEMORY.lock().await.set_torque_on(torque_on)
                 };
-            } else if board_state.is_runtime_error() {
+            } else if board_state.is_fault_reaction_state() {
                 // if there was a bus voltage error the operation stops but gently
-                if !error_safe_stopping_done {
-                    let stopping_velocity_limit = [0.1; config::N_AXIS];
-                    {
-                        SHARED_MEMORY
-                            .lock()
-                            .await
-                            .set_velocity_limit(stopping_velocity_limit)
-                    };
+                let stopping_velocity_limit = [0.1; config::N_AXIS];
+                {
+                    SHARED_MEMORY
+                        .lock()
+                        .await
+                        .set_velocity_limit(stopping_velocity_limit)
+                };
 
-                    // reduce the torque limit to 0 (from 1) over 5 seconds
-                    // this runs at 1kHz so it will take 5000 iterations
-                    let mut home_torque_limit =
-                        { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
-                    home_torque_limit.iter_mut().for_each(
-                        |t| *t -= 0.0002, // 1/5000 = 0.0002 (5 seconds at 1kHz)
-                    );
-                    // if the torque limit is under 5% (0.05), the operation stops
-                    if home_torque_limit.iter().all(|t| *t < 0.05) {
-                        torque_on = [false; config::N_AXIS];
-                        {
-                            SHARED_MEMORY.lock().await.set_torque_on(torque_on)
-                        };
-                        // set the error state to the original error
-                        error_safe_stopping_done = true;
-                    } else {
-                        // if the torque limit is not under 5%, set the new torque limit
-                        SHARED_MEMORY
-                            .lock()
-                            .await
-                            .set_torque_flux_limit(home_torque_limit)
-                    };
-                } else {
-                    // if the joint is stopped, set prevent it from being restarted
-                    // this is a safety feature to avoid the joint to start again
+                // reduce the torque limit to 0 (from 1) over 5 seconds
+                // this runs at 1kHz so it will take 5000 iterations
+                let mut home_torque_limit =
+                    { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
+                home_torque_limit.iter_mut().for_each(
+                    |t| *t -= 0.0002, // 1/5000 = 0.0002 (5 seconds at 1kHz)
+                );
+                // update the fault response counter
+                fault_response_counter -= 1;
+                // if the torque limit is under 5% (0.05), the operation stops
+                if home_torque_limit.iter().all(|t| *t < 0.05) || fault_response_counter <= 0 {
                     torque_on = [false; config::N_AXIS];
                     {
                         SHARED_MEMORY.lock().await.set_torque_on(torque_on)
                     };
-                }
+                    info!("torque limit under 5%, stopping operation, {:?}", home_torque_limit);
+                    // notify that the fault handling is done
+                    // this will set the state to fault
+                    board_state.notify_fault_reaction_done();
+                } else {
+                    // if the torque limit is not under 5%, set the new torque limit
+                    SHARED_MEMORY
+                        .lock()
+                        .await
+                        .set_torque_flux_limit(home_torque_limit)
+                };
             }
         }
 
@@ -1380,8 +1396,8 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             }
             Err(_e) => {
                 // removed because of too much spamming
-                // loop_communication_error=true;
-                // error!("Axis sensors error");
+                loop_communication_error=true;
+                error!("Axis sensors error");
             }
         }
 
@@ -1451,7 +1467,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                     };
                     // find the max temperature
                     board_temp = t;
-                    debug!("Board temperature: {:?}", t);
+                    info!("Board temperature: {:?}", t);
                 }
                 Err(e) => {
                     loop_communication_error = true;
@@ -1465,11 +1481,11 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                 // read the motor temperature
                 match motor_temperature_sensor.read_temperature() {
                     Ok(t) => {
-                        {
-                            SHARED_MEMORY.lock().await.set_motor_temperature(t)
-                        };
                         motor_temp = [t; config::N_AXIS];
-                        debug!("Motor temperature: {:?}", t);
+                        {
+                            SHARED_MEMORY.lock().await.set_motor_temperature(motor_temp)
+                        };
+                        info!("Motor temperature: {:?}", t);
                     }
                     Err(e) => {
                         loop_communication_error = true;
@@ -1505,9 +1521,8 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                             // catastrophic error
                             // no recovery - the board needs to be restarted
                             board_state.set_motor_error_flag(i, MotorErrorFlag::LowBusVoltage);
-                            if board_state.is_operational() {
-                                board_state.set_error_state();
-                            }
+                            board_state.set_fault_state();
+                            {SHARED_MEMORY.lock().await.set_poulpe_state(board_state)};
                             error!(
                                 "Bus voltage {}V is too low (under {}V)!",
                                 bus_volt,
@@ -1529,9 +1544,8 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             if communication_down {
                 let communication_down_duration = last_communication_timestamp.elapsed().as_secs() as u32;
                 if (communication_down_duration > config::MAX_COMMUNICATION_DOWN_TIME) {
-                    if board_state.is_operational() {
-                        board_state.set_error_state();
-                    }
+                    board_state.set_fault_state();
+                    { SHARED_MEMORY.lock().await.set_poulpe_state(board_state) };
                     for i in 0..config::N_AXIS {
                         board_state.set_motor_error_flag(i, MotorErrorFlag::CommunicationFail);
                     }
@@ -1544,16 +1558,12 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             }
 
             // set the error led to active
-            if board_state.is_error() {
+            if board_state.is_fault() {
                 error_led = true;
             }
 
-            {
-                SHARED_MEMORY.lock().await.set_poulpe_state(board_state)
-            };
-
             // dispaly current state
-            if board_state.is_error() {
+            if board_state.is_fault() {
                 error!("Board state: {:?}", board_state);
             } else if board_state.is_warning() {
                 warn!("Board state: {:?}", board_state);
@@ -1565,6 +1575,10 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
         } else {
             slow_timer -= 1;
         }
+
+        {
+            SHARED_MEMORY.lock().await.set_poulpe_state(board_state)
+        };
 
         // verify if there was a communication problem in this loop
         notify_communication_status!(

@@ -24,6 +24,7 @@ mod dynamixel;
 mod ethercat;
 mod motor_control;
 mod shared_memory;
+mod state_machine;
 
 use crate::config::{
     AD5047Config, AD5047ConfigBot, AD5047ConfigMid, AD5047ConfigTop, ActuatorConfig, AksimConfig,

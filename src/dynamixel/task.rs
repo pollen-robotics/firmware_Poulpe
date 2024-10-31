@@ -8,7 +8,8 @@ use crate::{
         self, conversion, packet::ParsingError, DynamixelRegister, InstructionPacketKind,
         StatusPacket,
     },
-    motor_control::{poulpe_state::PoulpeState, BoardStatus, Pid},
+    motor_control::Pid,
+    state_machine::poulpe_state::PoulpeState,
     SHARED_MEMORY,
 };
 
@@ -24,7 +25,7 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin, id:
         match dxl.read().await {
             Ok(packet) => {
                 debug!("Got packet: {:?}", packet);
-                dxl_error = { SHARED_MEMORY.lock().await.get_poulpe_state() }.status as u8;
+                dxl_error = { SHARED_MEMORY.lock().await.get_poulpe_state() }.get_state() as u8;
                 match packet {
                     InstructionPacketKind::Ping(_) => {
                         let sp = StatusPacket::ack(id, dxl_error);
@@ -43,7 +44,7 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin, id:
 
                         match reg {
                             DynamixelRegister::BoardState => {
-                                let value = { SHARED_MEMORY.lock().await.get_poulpe_state() }.get_status();
+                                let value = { SHARED_MEMORY.lock().await.get_poulpe_state() }.get_state();
                                 let sp = StatusPacket::with_value(id, dxl_error, [value as u8]);
                                 trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
                                 if let Some(e) = dxl.write(&sp).await.err() {
@@ -189,9 +190,9 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin, id:
                                 let motor_value =
                                     { SHARED_MEMORY.lock().await.get_motor_temperature() };
                                 // concatenate the values
-                                let mut all_values = [0.0; config::N_AXIS + 1];
+                                let mut all_values = [0.0; 2*config::N_AXIS];
                                 all_values[0..(config::N_AXIS)].copy_from_slice(&board_values);
-                                all_values[config::N_AXIS] = motor_value;
+                                all_values[config::N_AXIS..].copy_from_slice(&motor_value);
                                 let value = conversion::float_to_bytes(all_values);
                                 let sp = StatusPacket::with_value(id, dxl_error, value);
                                 trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
@@ -308,19 +309,19 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin, id:
 
                         match reg {
                             // TODO: Can we match only on Write registers?
-                            DynamixelRegister::BoardState => {
-                                let newstate = write_data_packet.data;
-                                let mut poulpe_state = PoulpeState::new();
-                                poulpe_state.status = newstate[0];
-                                {
-                                    SHARED_MEMORY.lock().await.set_poulpe_state(poulpe_state);
-                                }
-                                let sp = StatusPacket::ack(id, dxl_error);
-                                debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
-                                if let Some(e) = dxl.write(&sp).await.err() {
-                                    error!("Error: {:?}", e);
-                                }
-                            }
+                            // DynamixelRegister::BoardState => {
+                            //     let newstate = write_data_packet.data;
+                            //     let mut poulpe_state = PoulpeState::new();
+                            //     poulpe_state.status = newstate[0];
+                            //     {
+                            //         SHARED_MEMORY.lock().await.set_poulpe_state(poulpe_state);
+                            //     }
+                            //     let sp = StatusPacket::ack(id, dxl_error);
+                            //     debug!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
+                            //     if let Some(e) = dxl.write(&sp).await.err() {
+                            //         error!("Error: {:?}", e);
+                            //     }
+                            // }
 
                             DynamixelRegister::TorqueEnable => {
                                 match conversion::bytes_to_bool(write_data_packet.data) {

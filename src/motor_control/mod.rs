@@ -14,6 +14,3 @@ pub use sensors_io::RawSensorsIO;
 pub mod analog;
 pub mod task;
 pub mod ventouse;
-
-pub mod poulpe_state;
-pub use poulpe_state::{HomingErrorFlag, BoardStatus, MotorErrorFlag};
