@@ -12,7 +12,7 @@ use super::CiA402Command;
 // - OverTemperature - error due to the temperature being too high
 // - OverCurrent - error due to the current being too high
 // - LowBusVoltage - error due to the bus voltage being too low
-// - CommunicationFail - error due to communication failure with the motor driver
+// - DriverFault - error due to a fault in the driver
 #[derive(PartialEq, Clone, Copy, defmt::Format)]
 #[repr(u8)]
 pub enum MotorErrorFlag {
@@ -24,14 +24,17 @@ pub enum MotorErrorFlag {
     OverTemperatureBoard = 16,
     OverCurrent = 32,
     LowBusVoltage = 64,
-    CommunicationFail = 128
+    DriverFault = 128,
 }
 
 // Error codes for the homing procedure
 // - None - no error
 // - AxisSensorReadFail - error during the reading of the axis sensor
+// - MotorMovementCheckFail - error during the check of the motor movement
+// - AxisSensorAlignFail - error during the alignment of the axis sensor
 // - ZeroingFail - error during the zeroing of the axis positions
 // - IndexSearchFail - error during the search of the index (only orbita3d)
+// - CommunicationFail - error due to communication failure with the motor driver
 #[derive(PartialEq, Clone, Copy, defmt::Format)]
 #[repr(u8)]
 pub enum HomingErrorFlag {
@@ -41,6 +44,7 @@ pub enum HomingErrorFlag {
     AxisSensorAlignFail = 4,
     ZeroingFail = 8,
     IndexSearchFail = 16,
+    CommunicationFail = 32,
 }
 
 
@@ -110,6 +114,10 @@ impl PoulpeState {
 
 
     pub fn set_fault_state(&mut self) {
+        #[cfg(feature = "ignore_errors")]
+        {
+            return;
+        }
         if self.state_machine.state == CiA402State::NotReadyToSwitchOn || self.state_machine.state == CiA402State::Fault{
             self.state_machine.set_state(CiA402State::Fault);
         } else {
@@ -194,9 +202,9 @@ impl PoulpeState {
     pub fn status_to_statusword(&self) -> [u8;2] {
         if self.state_machine.warning_active {
             // set the warning bit (bit 7)
-            return [0, self.state_machine.state as u8 | 0x80];
+            return [self.state_machine.state as u8 | 0x80, 0 ];
         }else{
-            return [0, self.state_machine.state as u8];
+            return [self.state_machine.state as u8, 0];
         }
         
     }
@@ -231,6 +239,7 @@ impl PoulpeState {
                 4 => Some(HomingErrorFlag::AxisSensorAlignFail),
                 8 => Some(HomingErrorFlag::ZeroingFail),
                 16 => Some(HomingErrorFlag::IndexSearchFail),
+                32 => Some(HomingErrorFlag::CommunicationFail),
                 _ => None,
             };
         }
@@ -253,7 +262,7 @@ impl PoulpeState {
                 16 => Some(MotorErrorFlag::OverTemperatureBoard),
                 32 => Some(MotorErrorFlag::OverCurrent),
                 64 => Some(MotorErrorFlag::LowBusVoltage),
-                128 => Some(MotorErrorFlag::CommunicationFail),
+                128 => Some(MotorErrorFlag::DriverFault),
                 _ => None,
             };
         }
@@ -271,7 +280,13 @@ impl PoulpeState {
 // nice formatting for the PoulpeState
 impl defmt::Format for PoulpeState{
     fn format(&self, f: defmt::Formatter) {
-        defmt::write!(f, "PoulpeState {{\n state: {:?}, warning: {:?}\n motor_error_flags: [", self.get_state(), self.is_warning());
+        defmt::write!(f, "PoulpeState {{\n state: {:?},warning: {:?}\n status_bits:[", self.get_state(), self.is_warning());
+        for bit in self.state_machine.get_status_bits().iter() {
+            if let Some(status_bit) = bit {
+                defmt::write!(f, "{:?}, ", status_bit);
+            }
+        }
+        defmt::write!(f, "]\n motor_error_flags: [");
         for i in 0..config::N_AXIS {
             defmt::write!(f, "Motor:{} - [", i);
             let errors = self.get_motor_errors_flags(i);

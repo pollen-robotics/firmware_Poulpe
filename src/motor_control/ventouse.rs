@@ -27,7 +27,7 @@ where
     pub kind: char,
 }
 
-pub struct VentouseConfig<T, SCK, MOSI, MISO, FocCs, FocEnb, DrvCs>
+pub struct VentouseConfig<T, SCK, MOSI, MISO, FocCs, FocEnb, DrvCs, DrvStatus>
 where
     T: spi::Instance,
     SCK: spi::SckPin<T>,
@@ -36,6 +36,7 @@ where
     FocCs: Pin,
     FocEnb: Pin,
     DrvCs: Pin,
+    DrvStatus: Pin,
 {
     pub peri: T,
     pub sck: SCK,
@@ -46,6 +47,7 @@ where
     pub foc_enable: FocEnb,
 
     pub driver_cs: DrvCs,
+    pub driver_status_pin: DrvStatus,
 }
 
 impl<'d, T, FocP, FocEnb, Drv> Ventouse<'d, T, FocP, FocEnb, Drv>
@@ -629,6 +631,15 @@ where
 
     fn get_velocity_limit_max(&mut self) -> Result<[f32; 1], IOError> {
         Ok([self.foc.brushless_motor_config.velocity_limit_max() as f32])
+    }
+
+    // check the driver state and verify its in the error state
+    fn get_driver_state(&mut self) -> super::Result<[(); 1]> {
+        let enabled = self.foc.enable.is_set_high();
+        match self.driver.check_status(enabled) {
+            Ok(status) => Ok([()]),
+            Err(e) => Err(IOError::DriverError),
+        }
     }
     /*
     /// Get the absolute uq_ud limit of the motors
@@ -1315,6 +1326,15 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
             VentouseKind::A(va) => va.get_velocity_limit_max(),
             VentouseKind::B(vb) => vb.get_velocity_limit_max(),
             VentouseKind::C(vc) => vc.get_velocity_limit_max(),
+        }
+    }
+
+
+    fn get_driver_state(&mut self) -> super::Result<[(); 1]> {
+        match self {
+            VentouseKind::A(va) => va.get_driver_state(),
+            VentouseKind::B(vb) => vb.get_driver_state(),
+            VentouseKind::C(vc) => vc.get_driver_state(),
         }
     }
 

@@ -79,24 +79,24 @@ macro_rules! verify_temperatures_and_update_state {
                     "Max allowed motor {} temperature exceeded : {}C (max {}C)!",
                     i,m, $max_motor_temp
                 );
-            } else if !$board_state.is_fault() {
-                if *b > $high_temp || *m > $high_temp {
-                    // if the board temperature is high, set the warning state
-                    $board_state.set_motor_error_flag(i, MotorErrorFlag::HighTemperatureWarning);
-                    $board_state.set_warning_state();
-                    warn!(
-                        "Axis {} Temperature (motor: {}C, board: {}C) is very high (above {}C degrees)!",
-                        i, m, b, $high_temp
-                    );
-                } else if $board_state.check_motor_error_flag(i, MotorErrorFlag::HighTemperatureWarning){
-                    // if the motor or the board temperature is back to normal, clear the warning state
-                    $board_state.clear_motor_error_flag(i, MotorErrorFlag::HighTemperatureWarning);   
-                    info!(
-                        "Axis {} Temperature (motor: {}C, board: {}C) is back to normal!",
-                        i, m, b
-                    );                 
-                }
+            // } else if !$board_state.is_fault() {
+            }else if *b > $high_temp || *m > $high_temp {
+                // if the board temperature is high, set the warning state
+                $board_state.set_motor_error_flag(i, MotorErrorFlag::HighTemperatureWarning);
+                $board_state.set_warning_state();
+                warn!(
+                    "Axis {} Temperature (motor: {}C, board: {}C) is very high (above {}C degrees)!",
+                    i, m, b, $high_temp
+                );
+            } else if $board_state.check_motor_error_flag(i, MotorErrorFlag::HighTemperatureWarning){
+                // if the motor or the board temperature is back to normal, clear the warning state
+                $board_state.clear_motor_error_flag(i, MotorErrorFlag::HighTemperatureWarning);   
+                info!(
+                    "Axis {} Temperature (motor: {}C, board: {}C) is back to normal!",
+                    i, m, b
+                );                 
             }
+            // }
         }
     };
 }
@@ -588,9 +588,9 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             driver_spi_config,
         );
         #[cfg(feature = "gamma")]
-        let driver = DriverDRV8316::new(driver_spi);
+        let driver = DriverDRV8316::new(driver_spi, config.a.driver_status_pin);
         #[cfg(feature = "beta")]
-        let driver = DriverTMC6200::new(driver_spi);
+        let driver = DriverTMC6200::new(driver_spi, config.a.driver_status_pin);
         let ventouse_a = Ventouse::new(foc, driver);
         VentouseKind::A(ventouse_a)
     };
@@ -717,9 +717,9 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
         );
 
         #[cfg(all(feature = "orbita3d", feature = "gamma"))]
-        let driver = DriverDRV8316::new(driver_spi);
+        let driver = DriverDRV8316::new(driver_spi, config.b.driver_status_pin);
         #[cfg(any(feature = "beta", all(feature = "orbita2d", feature = "gamma")))]
-        let driver = DriverTMC6200::new(driver_spi);
+        let driver = DriverTMC6200::new(driver_spi, config.b.driver_status_pin);
 
         let ventouse_b = Ventouse::new(foc, driver);
         VentouseKind::B(ventouse_b)
@@ -768,9 +768,9 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
         );
 
         #[cfg(all(feature = "orbita3d", feature = "gamma"))]
-        let driver = DriverDRV8316::new(driver_spi);
+        let driver = DriverDRV8316::new(driver_spi, config.c.driver_status_pin);
         #[cfg(any(feature = "beta", all(feature = "orbita2d", feature = "gamma")))]
-        let driver = DriverTMC6200::new(driver_spi);
+        let driver = DriverTMC6200::new(driver_spi, config.c.driver_status_pin);
 
         let ventouse_c = Ventouse::new(foc, driver);
         VentouseKind::C(ventouse_c)
@@ -1170,6 +1170,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
     {
         // set the state to switched on directly if dynamixel is used
         board_state.state_machine.set_state(CiA402State::SwitchedOn);
+        { SHARED_MEMORY.lock().await.set_poulpe_state(board_state) };
     }
 
 
@@ -1407,6 +1408,61 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             prev_error_led = error_led;
         }
 
+
+
+        // get dc bus voltage
+        match actuator.get_bus_voltage() {
+            Ok(v) => {
+                {
+                    SHARED_MEMORY.lock().await.set_bus_voltage(v)
+                };
+
+                for (i, bus_volt) in v.iter().enumerate() {
+                    if *bus_volt < config::MIN_BUS_VOLTAGE {
+                        // stop everything if the bus voltage is too low
+                        // catastrophic error
+                        // no recovery - the board needs to be restarted
+                        board_state.set_motor_error_flag(i, MotorErrorFlag::LowBusVoltage);
+                        board_state.set_fault_state();
+                        {SHARED_MEMORY.lock().await.set_poulpe_state(board_state)};
+                        error!(
+                            "Bus voltage {}V is too low (under {}V)!",
+                            bus_volt,
+                            config::MIN_BUS_VOLTAGE
+                        );
+                    }
+                }
+                debug!("Bus voltage: {:?}", v);
+            }
+            Err(e) => {
+                loop_communication_error = true;
+                error!("Bus voltage reading error {:?}", e);
+            }
+        }
+        
+        // check the driver states 
+        // if driver in fault state stop the operation
+        let driver_states = actuator.check_driver_states();
+        driver_states.iter().enumerate().for_each(|(i, driver_state)| {
+            match driver_state {
+                Ok(driver_state) => {
+                    debug!("Driver state: OK");
+                }
+                Err(e) => {
+                    // this is a catastrophic error
+                    // the driver state is not read correctly
+                    // the operation needs to stop
+                    board_state.set_fault_state();
+                    board_state.set_motor_error_flag(i, MotorErrorFlag::DriverFault);
+
+                    loop_communication_error = true;
+                    error!("Driver state reading error {:?}", e);
+                }
+            }
+        });
+        {SHARED_MEMORY.lock().await.set_poulpe_state(board_state)};
+        
+
         // running the second (slow) task at slower rate (1Hz)
         if slow_timer == 0 {
             // update the flux pid gains
@@ -1508,36 +1564,6 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                 config::HIGH_TEMP               // high temperature 
             );
 
-            // get dc bus voltage
-            match actuator.get_bus_voltage() {
-                Ok(v) => {
-                    {
-                        SHARED_MEMORY.lock().await.set_bus_voltage(v)
-                    };
-
-                    for (i, bus_volt) in v.iter().enumerate() {
-                        if *bus_volt < config::MIN_BUS_VOLTAGE {
-                            // stop everything if the bus voltage is too low
-                            // catastrophic error
-                            // no recovery - the board needs to be restarted
-                            board_state.set_motor_error_flag(i, MotorErrorFlag::LowBusVoltage);
-                            board_state.set_fault_state();
-                            {SHARED_MEMORY.lock().await.set_poulpe_state(board_state)};
-                            error!(
-                                "Bus voltage {}V is too low (under {}V)!",
-                                bus_volt,
-                                config::MIN_BUS_VOLTAGE
-                            );
-                        }
-                    }
-                    debug!("Bus voltage: {:?}", v);
-                }
-                Err(e) => {
-                    loop_communication_error = true;
-                    error!("Bus voltage reading error {:?}", e);
-                }
-            }
-
             // verify that the communication is working
             // - check if the communication was down and how long it was down
             // - if it's down for more than max allowed time, stop the operation
@@ -1546,9 +1572,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                 if (communication_down_duration > config::MAX_COMMUNICATION_DOWN_TIME) {
                     board_state.set_fault_state();
                     { SHARED_MEMORY.lock().await.set_poulpe_state(board_state) };
-                    for i in 0..config::N_AXIS {
-                        board_state.set_motor_error_flag(i, MotorErrorFlag::CommunicationFail);
-                    }
+                    board_state.set_homing_error_flag(HomingErrorFlag::CommunicationFail);
                     error!(
                         "Communication error for {} secs ( max allowed {} secs), stopping operation!",
                         communication_down_duration,

@@ -1,3 +1,5 @@
+use core::array;
+
 use embassy_futures::join;
 
 use super::foc::MotionMode;
@@ -55,7 +57,6 @@ impl<'d, const N: usize> Actuator<'d, N> {
     pub async fn check_motors_2(&mut self) -> [Result<()>; N] {
         join::join_array(self.axes.each_mut().map(|v| v.check_motors_2())).await
     }
-
     // pub fn get_ventouse(&mut self, v: char) -> Option<&mut dyn RawMotorsIO<1>> {
     //     match v {
     //         'A' => self.axes[0].get_ventouse('A'),
@@ -64,6 +65,18 @@ impl<'d, const N: usize> Actuator<'d, N> {
     //         _ => None,
     //     }
     // }
+
+
+
+    // check the state of each
+    pub fn check_driver_states(&mut self) -> [Result<()>; N] {
+        array::from_fn(|i| {
+            match self.axes[i].get_driver_state() {
+                Ok(_) => Ok(()),
+                Err(_) => Err(IOError::DriverError),
+            }
+        })
+    }
 
     pub fn get_axis(&mut self, idx: usize) -> &mut dyn RawMotorsIO<1> {
         &mut self.axes[idx]
@@ -292,6 +305,9 @@ fn find_position_with_hall(
 
     (best, best_idx as i16 - (offset.len() / 2) as i16)
 }
+
+
+
 
 // TODO: make this generic (how?)
 impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
@@ -552,6 +568,17 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
     }
     */
     /////////////////////
+
+
+    // get the driver states
+    fn get_driver_state(&mut self) -> Result<[(); N]> {
+        let mut res = [(); N];
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            res[i] = axis.get_driver_state()?[0];
+        }
+
+        Ok(res)
+    }
 
     // get temperature
     fn get_board_temperature(&mut self) -> Result<[f32; N]> {

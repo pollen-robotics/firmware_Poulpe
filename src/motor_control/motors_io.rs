@@ -15,6 +15,7 @@ pub enum IOError {
     InvalidData,
     Unavailable,
     InitError,
+    DriverError,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Format)]
@@ -79,6 +80,9 @@ pub trait RawMotorsIO<const N: usize> {
     fn get_velocity_limit(&mut self) -> Result<[f32; N]>;
     /// Set the velocity limit of the motors (in radians per second)
     fn set_velocity_limit(&mut self, limit: [f32; N]) -> Result<()>;
+
+
+    fn get_driver_state(&mut self) -> Result<[(); N]>;
 
     /*
     /// Get uq/ud limit

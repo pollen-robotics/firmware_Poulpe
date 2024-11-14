@@ -1,7 +1,7 @@
 use defmt::*;
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_stm32::dma::NoDma;
-use embassy_stm32::gpio::{Output, Pin};
+use embassy_stm32::gpio::{Output, Input, Pin};
 use embassy_stm32::spi::{Instance, Spi};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embedded_hal_1::spi::SpiDevice;
@@ -13,34 +13,41 @@ use embassy_stm32::spi;
 pub enum DriverError {
     SpiError(spi::Error),
     ConfigError,
+    FaultState,
 }
 
 pub trait Driver {
     fn configure(&mut self) -> Result<(), DriverError>;
+    fn check_status(&mut self, is_enabled: bool) -> Result<(), DriverError>;
 }
 
-pub struct DriverTMC6200<'d, T, P>
+pub struct DriverTMC6200<'d, T, EnablePin, StatusPin>
 where
     T: Instance,
-    P: Pin,
+    EnablePin: Pin,
+    StatusPin: Pin,
 {
-    spi: SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'static, T, NoDma, NoDma>, Output<'static, P>>,
+    spi: SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'static, T, NoDma, NoDma>, Output<'static, EnablePin>>,
+    pub(crate) status_pin: Input<'static, StatusPin>,
 }
 
-impl<'d, T, P> DriverTMC6200<'d, T, P>
+impl<'d, T, EnablePin, StatusPin> DriverTMC6200<'d, T, EnablePin, StatusPin>
 where
     T: Instance,
-    P: Pin,
+    EnablePin: Pin,
+    StatusPin: Pin,
 {
     pub fn new(
         spi: SpiDeviceWithConfig<
             'd,
             NoopRawMutex,
             Spi<'static, T, NoDma, NoDma>,
-            Output<'static, P>,
+            Output<'static, EnablePin>,
         >,
+        status_pin: StatusPin,
     ) -> Self {
-        Self { spi }
+        let mut status_pin = Input::new(status_pin, embassy_stm32::gpio::Pull::None);
+        Self { spi, status_pin }
     }
 
     pub fn checked_write(&mut self, reg: u8, data_w: u32) -> Result<(), embassy_stm32::spi::Error> {
@@ -104,10 +111,11 @@ where
     }
 }
 
-impl<'d, T, P> Driver for DriverTMC6200<'d, T, P>
+impl<'d, T, EnablePin, StatusPin> Driver for DriverTMC6200<'d, T, EnablePin, StatusPin>
 where
     T: Instance,
-    P: Pin,
+    EnablePin: Pin,
+    StatusPin: Pin,
 {
     fn configure(&mut self) -> Result<(), DriverError> {
         let mut ret_err = false;
@@ -146,30 +154,47 @@ where
             return Ok(());
         }
     }
+
+    fn check_status(&mut self, _is_enabled: bool) -> Result<(), DriverError> {
+        // if not gamma, then return Ok
+        #[cfg(not(feature = "gamma"))]
+        { return Ok(()); }
+        // high on error
+        if self.status_pin.is_low() {
+            return Ok(());
+        } else {
+            return Err(DriverError::FaultState);
+        }
+    }
 }
 
-pub struct DriverDRV8316<'d, T, P>
+pub struct DriverDRV8316<'d, T, EnablePin, StatusPin>
 where
     T: Instance,
-    P: Pin,
+    EnablePin: Pin,
+    StatusPin: Pin,
 {
-    spi: SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'static, T, NoDma, NoDma>, Output<'static, P>>,
+    spi: SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'static, T, NoDma, NoDma>, Output<'static, EnablePin>>,
+    pub(crate) status_pin: Input<'static, StatusPin>,
 }
 
-impl<'d, T, P> DriverDRV8316<'d, T, P>
+impl<'d, T, EnablePin, StatusPin> DriverDRV8316<'d, T, EnablePin,StatusPin>
 where
     T: Instance,
-    P: Pin,
+    EnablePin: Pin,
+    StatusPin: Pin,
 {
     pub fn new(
         spi: SpiDeviceWithConfig<
             'd,
             NoopRawMutex,
             Spi<'static, T, NoDma, NoDma>,
-            Output<'static, P>,
+            Output<'static, EnablePin>,
         >,
+        status_pin: StatusPin,
     ) -> Self {
-        Self { spi }
+        let mut status_pin = Input::new(status_pin, embassy_stm32::gpio::Pull::None);
+        Self { spi, status_pin }
     }
 
     pub fn checked_write(&mut self, reg: u8, data_w: u8) -> Result<(), embassy_stm32::spi::Error> {
@@ -238,10 +263,11 @@ where
     }
 }
 
-impl<'d, T, P> Driver for DriverDRV8316<'d, T, P>
+impl<'d, T, EnablePin, StatusPin> Driver for DriverDRV8316<'d, T, EnablePin, StatusPin>
 where
     T: Instance,
-    P: Pin,
+    EnablePin: Pin,
+    StatusPin: Pin,
 {
     fn configure(&mut self) -> Result<(), DriverError> {
         let mut ret_err = false;
@@ -292,5 +318,20 @@ where
         } else {
             return Ok(());
         }
+    }
+
+    fn check_status(&mut self, is_enabled: bool) -> Result<(), DriverError> {
+        // low on error (DRV8316)
+        if self.status_pin.is_high() {
+            return Ok(());
+        } else {
+            // only error if driver is enabled
+            if is_enabled {
+                return Err(DriverError::FaultState);
+            } else {
+                // if not enabled, then it is not an error
+                return Ok(());
+            }
+       }
     }
 }

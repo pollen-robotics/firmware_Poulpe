@@ -148,7 +148,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                 }
             }
             // info!("Motors - Torque on: {:?}, Target: {:?}",  torque_on, target_position);
-            {
+            if !poulpe_state.is_fault() && !poulpe_state.is_fault_reaction_state() {
                 let shared_memory = SHARED_MEMORY.lock().await;
                 shared_memory.set_control_word(control_word);
                 // shared_memory.set_torque_on(torque_on);

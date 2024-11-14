@@ -178,6 +178,7 @@ async fn main(spawner: Spawner) {
             foc_cs: p.PA3,
             foc_enable: p.PC0,
             driver_cs: p.PA2,
+            driver_status_pin: p.PA1,
         },
         b: VentouseConfig {
             peri: p.SPI4,
@@ -187,6 +188,7 @@ async fn main(spawner: Spawner) {
             foc_cs: p.PE3,
             foc_enable: p.PE0,
             driver_cs: p.PC15,
+            driver_status_pin: p.PC14,
         },
         c: VentouseConfig {
             peri: p.SPI6,
@@ -196,6 +198,7 @@ async fn main(spawner: Spawner) {
             foc_cs: p.PD7,
             foc_enable: p.PD5,
             driver_cs: p.PD6,
+            driver_status_pin: p.PD3,
         },
 
         ad5047top: AD5047ConfigTop { cs: p.PA4 },
@@ -223,6 +226,7 @@ async fn main(spawner: Spawner) {
             foc_cs: p.PE3,
             foc_enable: p.PE0,
             driver_cs: p.PC15,
+            driver_status_pin: p.PC14,
         },
         c: VentouseConfig {
             peri: p.SPI6,
@@ -232,6 +236,7 @@ async fn main(spawner: Spawner) {
             foc_cs: p.PD7,
             foc_enable: p.PD5,
             driver_cs: p.PD6,
+            driver_status_pin: p.PD3,
         },
 
         aksim: AksimConfig { cs: p.PA15 },

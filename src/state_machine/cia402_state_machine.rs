@@ -29,10 +29,55 @@ pub enum CiA402State {
     ReadyToSwitchOn =       0b00100001, // init sucess + switch off received - (more or less saying that the EtherCAT is connected)
     SwitchedOn =            0b00100011, // init sucess + switch on received 
                                         //  - in our case we send operation enabled and switch on at the same time, so we dont really use this state
-    OperationEnabled =      0b00100111, // switched on + enable operation received
+    OperationEnabled =      0b00110111, // switched on + enable operation received
     QuickStopActive =       0b00000111, // quick stop procedure going to Switch_on_disabled state ( we don't use quick stop )
-    FaultReactionActive =   0b00001111, // fault reaction going to Fault state
+    FaultReactionActive =   0b00011111, // fault reaction going to Fault state
     Fault =                 0b00001000, // fault state
+}
+
+#[derive(Debug, PartialEq, Clone, Copy, defmt::Format)]
+#[repr(u8)]
+pub enum CiA402StatusBit {
+    ReadyToSwitchOn = 0,
+    SwitchedOn = 1,
+    OperationEnabled = 2,
+    Fault = 3,
+    VoltageEnabled = 4,
+    QuickStop = 5,
+    SwitchedOnDisabled = 6,
+    Warning = 7,
+    Reserved8 = 8,
+    Remote = 9,
+    OperatingModeSpecific10 = 10,
+    InternalLimitActive = 11,
+    OperatingModeSpecific12 = 12,
+    OperatingModeSpecific13 = 13,
+    Reserved14 = 14,
+    PositionReferencedToHomePosition = 15,
+}
+
+impl CiA402StatusBit{
+    pub fn from_bit(bit: u8) -> CiA402StatusBit {
+        match bit {
+            0 => CiA402StatusBit::ReadyToSwitchOn,
+            1 => CiA402StatusBit::SwitchedOn,
+            2 => CiA402StatusBit::OperationEnabled,
+            3 => CiA402StatusBit::Fault,
+            4 => CiA402StatusBit::VoltageEnabled,
+            5 => CiA402StatusBit::QuickStop,
+            6 => CiA402StatusBit::SwitchedOnDisabled,
+            7 => CiA402StatusBit::Warning,
+            8 => CiA402StatusBit::Reserved8,
+            9 => CiA402StatusBit::Remote,
+            10 => CiA402StatusBit::OperatingModeSpecific10,
+            11 => CiA402StatusBit::InternalLimitActive,
+            12 => CiA402StatusBit::OperatingModeSpecific12,
+            13 => CiA402StatusBit::OperatingModeSpecific13,
+            14 => CiA402StatusBit::Reserved14,
+            15 => CiA402StatusBit::PositionReferencedToHomePosition,
+            _ => CiA402StatusBit::Reserved14,
+        }
+    }
 }
 
 // Cia 402 state machine implementaiton for poulpe
@@ -165,5 +210,17 @@ impl CiA402StateMachine {
     pub fn set_state(&mut self, state: CiA402State) {
         self.state = state;
     }
+
+    pub fn get_status_bits(&self) -> [Option<CiA402StatusBit>; 8] {
+        let mut status_bits = [None; 8];
+        let status_word = self.state as u16;
+        for i in 0..8 {
+            if status_word & (1 << i) != 0 {
+                status_bits[i] = Some(CiA402StatusBit::from_bit(i as u8));
+            }
+        }
+        status_bits
+    }
+        
 
 }
