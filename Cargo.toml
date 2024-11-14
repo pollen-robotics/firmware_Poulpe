@@ -28,8 +28,10 @@ orbita2d_gamma = ["orbita2d", "gamma", "ec45", "velocity_feedforward", "cmd_filt
 orbita3d_gamma = ["orbita3d", "gamma", "ecx22", "velocity_feedforward", "cmd_filter", "gearbox_output", "use_flash", "dynamixel"]#, "ethercat"]
 
 
+## config for motor test bench
 bench_config = ["orbita2d","gamma", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output", "ignore_errors","bench"]
 
+# flag for motor test bench config
 bench = []
 
 # default = ["orbita2d_gamma"]
