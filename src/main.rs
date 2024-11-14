@@ -248,7 +248,13 @@ async fn main(spawner: Spawner) {
         },
     };
 
+    #[cfg(not(feature = "bench"))]
     unwrap!(spawner.spawn(motor_control::task::control_loop(
+        actuator_config,
+        hardware_zeros
+    )));
+    #[cfg(feature = "bench")]
+    unwrap!(spawner.spawn(motor_control::bench::control_loop(
         actuator_config,
         hardware_zeros
     )));

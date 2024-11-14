@@ -25,7 +25,12 @@ license = "MIT OR Apache-2.0"
 
 
 orbita2d_gamma = ["orbita2d", "gamma", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" , "use_flash", "ethercat"]
-orbita3d_gamma = ["orbita3d", "gamma", "ecx22", "velocity_feedforward", "cmd_filter", "gearbox_output", "use_flash", "ethercat"]
+orbita3d_gamma = ["orbita3d", "gamma", "ecx22", "velocity_feedforward", "cmd_filter", "gearbox_output", "use_flash", "dynamixel"]#, "ethercat"]
+
+
+bench_config = ["orbita2d","gamma", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output", "ignore_errors","bench"]
+
+bench = []
 
 # default = ["orbita2d_gamma"]
 orbita2d = []
@@ -154,8 +159,6 @@ static_cell = { version = "=1.1", features = ["nightly"]}
 paste = "1.0.14"
 modular-bitfield = "0.11.2"
 biquad = "0.4.1"
-
-
 
 [dev-dependencies]
 defmt = "0.3"

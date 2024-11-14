@@ -14,3 +14,4 @@ pub use sensors_io::RawSensorsIO;
 pub mod analog;
 pub mod task;
 pub mod ventouse;
+pub mod bench;

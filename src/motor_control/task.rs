@@ -869,6 +869,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
         block_for(Duration::from_millis(config::DXL_ID as u64 * 10));
         // configure the motors of the actuator
         let res_init = actuator.init().await;
+
         // verify that the motors are correctly configured
         res_init.iter().enumerate().for_each(|(motor_i, res)| {
             match res {
