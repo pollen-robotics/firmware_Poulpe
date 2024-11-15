@@ -14,7 +14,7 @@ use super::CiA402Command;
 // - LowBusVoltage - error due to the bus voltage being too low
 // - DriverFault - error due to a fault in the driver
 #[derive(PartialEq, Clone, Copy, defmt::Format)]
-#[repr(u8)]
+#[repr(u16)]
 pub enum MotorErrorFlag {
     None = 0,
     ConfigFail = 1,
@@ -36,7 +36,7 @@ pub enum MotorErrorFlag {
 // - IndexSearchFail - error during the search of the index (only orbita3d)
 // - CommunicationFail - error due to communication failure with the motor driver
 #[derive(PartialEq, Clone, Copy, defmt::Format)]
-#[repr(u8)]
+#[repr(u16)]
 pub enum HomingErrorFlag {
     None = 0,
     AxisSensorReadFail = 1,
@@ -51,16 +51,16 @@ pub enum HomingErrorFlag {
 #[derive(PartialEq, Clone, Copy)]
 pub struct PoulpeState {
     pub state_machine: CiA402StateMachine,
-    pub motor_error_flags: [u8; config::N_AXIS],
-    pub homing_error_flags: u8,
+    pub motor_error_flags: [u16; config::N_AXIS],
+    pub homing_error_flags: u16,
 }
 
 impl PoulpeState {
     pub const fn default() -> Self {
         Self {
             state_machine: CiA402StateMachine::default(),
-            motor_error_flags: [MotorErrorFlag::None as u8; config::N_AXIS],
-            homing_error_flags: HomingErrorFlag::None as u8,
+            motor_error_flags: [MotorErrorFlag::None as u16; config::N_AXIS],
+            homing_error_flags: HomingErrorFlag::None as u16,
         }
     }
 }
@@ -69,27 +69,27 @@ impl PoulpeState {
     pub fn new() -> Self {
         PoulpeState {
             state_machine: CiA402StateMachine::new(),
-            motor_error_flags: [MotorErrorFlag::None as u8; config::N_AXIS],
-            homing_error_flags: HomingErrorFlag::None as u8,
+            motor_error_flags: [MotorErrorFlag::None as u16; config::N_AXIS],
+            homing_error_flags: HomingErrorFlag::None as u16,
         }
     }
 
     pub fn set_motor_error_flag(&mut self, axis: usize, error: MotorErrorFlag) {
-        self.motor_error_flags[axis] |= error as u8;
+        self.motor_error_flags[axis] |= error as u16;
     }
 
     pub fn set_homing_error_flag(&mut self, error: HomingErrorFlag) {
-        self.homing_error_flags |= error as u8;
+        self.homing_error_flags |= error as u16;
     }
 
     pub fn clear_motor_error_flags(&mut self) {
         for i in 0..config::N_AXIS {
-            self.motor_error_flags[i] = MotorErrorFlag::None as u8;
+            self.motor_error_flags[i] = MotorErrorFlag::None as u16;
         }
     }
 
     pub fn clear_homing_error_flags(&mut self) {
-        self.homing_error_flags = HomingErrorFlag::None as u8;
+        self.homing_error_flags = HomingErrorFlag::None as u16;
     }
 
     pub fn clear_errors(&mut self) {
@@ -98,11 +98,11 @@ impl PoulpeState {
     }
 
     pub fn clear_motor_error_flag(&mut self, axis: usize, error: MotorErrorFlag) {
-        self.motor_error_flags[axis] &= !(error as u8);
+        self.motor_error_flags[axis] &= !(error as u16);
     }
 
     pub fn clear_homing_error_flag(&mut self, error: HomingErrorFlag) {
-        self.homing_error_flags &= !(error as u8);
+        self.homing_error_flags &= !(error as u16);
     }
 
     pub fn set_init_state(&mut self) {
@@ -165,73 +165,53 @@ impl PoulpeState {
     }
 
     pub fn is_motor_error(&self, axis: usize) -> bool {
-        self.motor_error_flags[axis] != MotorErrorFlag::None as u8
+        self.motor_error_flags[axis] != MotorErrorFlag::None as u16
     }
 
     pub fn is_homing_error(&self) -> bool {
-        self.homing_error_flags != HomingErrorFlag::None as u8
+        self.homing_error_flags != HomingErrorFlag::None as u16
     }
 
     pub fn check_motor_error_flag(&self, axis: usize, error: MotorErrorFlag) -> bool {
-        (self.motor_error_flags[axis] & (error as u8)) == (error as u8)
+        (self.motor_error_flags[axis] & (error as u16)) == (error as u16)
     }
         
     pub fn check_homing_error_flag(&self, error: HomingErrorFlag) -> bool {
-        (self.homing_error_flags & (error as u8)) == (error as u8)
+        (self.homing_error_flags & (error as u16)) == (error as u16)
     }
 
-    // create a u32 with the bitmap of homing and motor errors
-    pub fn error_flags_to_u32(&self) -> u32 {
-        let mut error_code = self.homing_error_flags as u32;
+
+    pub fn error_flags_to_byte_array(&self) -> [u8; 2+2*config::N_AXIS] {
+        let mut error_flags = [0; 2+2*config::N_AXIS];
+        error_flags[0..2].copy_from_slice(&self.homing_error_flags.to_le_bytes());
         for i in 0..config::N_AXIS {
-            error_code |= (self.motor_error_flags[i] as u32) << i*8 ;
+            error_flags[2 + i*2..2 + i*2 + 2].copy_from_slice(&self.motor_error_flags[i].to_le_bytes());
         }
-        return error_code;
+        return error_flags;
     }
 
-    pub fn error_flags_to_u8(&self) -> [u8; 4] {
-        let mut error_code = [0; 4];
-        error_code[0] = self.homing_error_flags;
-        for i in 0..config::N_AXIS {
-            error_code[i+1] = self.motor_error_flags[i];
-        }
-        return error_code;
-    }
-
-    // create the u8 state for the status
-    pub fn status_to_statusword(&self) -> [u8;2] {
+    // create the u16 state for the status
+    pub fn status_to_statusword_byte_array(&self) -> [u8; 2] {
         if self.state_machine.warning_active {
             // set the warning bit (bit 7)
-            return [self.state_machine.state as u8 | 0x80, 0 ];
+            return (self.state_machine.state as u16 | 0x80).to_le_bytes();
         }else{
-            return [self.state_machine.state as u8, 0];
+            return (self.state_machine.state as u16).to_le_bytes();
         }
         
-    }
-
-    // convert the PoulpeState to a byte array
-    pub fn to_byte_array(&self) -> [u8; 6] {
-        let mut state = [0; 6];
-        state[0] = 0;
-        state[1] = self.state_machine.state as u8;
-        state[2] = self.homing_error_flags;
-        for i in 0..config::N_AXIS {
-            state[i+3] = self.motor_error_flags[i];
-        }
-        return state;
     }
     
     pub fn get_state(&self) -> CiA402State {
         self.state_machine.state 
     }
 
-    pub fn get_homing_error_flags(&self) -> [Option<HomingErrorFlag>; 8] {
-        let mut errors = [None; 8];
+    pub fn get_homing_error_flags(&self) -> [Option<HomingErrorFlag>; 16] {
+        let mut errors = [None; 16];
         if self.homing_error_flags == 0 {
             errors[0] = Some(HomingErrorFlag::None);
             return errors;
         }
-        for i in 0..8 {
+        for i in 0..16 {
             errors[i] = match self.homing_error_flags & (1 << i) {
                 0 => None,
                 1 => Some(HomingErrorFlag::AxisSensorReadFail),
@@ -246,13 +226,13 @@ impl PoulpeState {
         return errors;
     }
 
-    pub fn get_motor_errors_flags(&self, axis: usize) -> [Option<MotorErrorFlag>; 8] {
-        let mut errors = [None; 8];
+    pub fn get_motor_errors_flags(&self, axis: usize) -> [Option<MotorErrorFlag>; 16] {
+        let mut errors = [None; 16];
         if self.motor_error_flags[axis] == 0{
             errors[0] = Some(MotorErrorFlag::None);
             return errors;
         }
-        for i in 0..8 {
+        for i in 0..16 {
             errors[i] = match self.motor_error_flags[axis] & (1 << i) {
                 0 => None,
                 1 => Some(MotorErrorFlag::ConfigFail),

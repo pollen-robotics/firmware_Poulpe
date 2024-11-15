@@ -1174,8 +1174,9 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
     }
 
 
+    let mut t0 = Instant::now();
     loop {
-        let t0 = Instant::now();
+        let t_loop = Instant::now();
         // reset the communication problem flag
         loop_communication_error = false;
 
@@ -1595,6 +1596,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                 info!("Board state: {:?}", board_state);
             }
 
+
             slow_timer = 1000;
         } else {
             slow_timer -= 1;
@@ -1611,8 +1613,9 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             last_communication_timestamp
         );
 
-        // let elapsed=t0.elapsed().as_micros();
-        // info!("Motor control loop elapsed: {} us",elapsed);
+        let elapsed=t_loop.elapsed().as_micros();
+        // info!("Motor control loop elapsed time: {}us \t time between loops: {}us",elapsed, t0.elapsed().as_micros());
+        // t0 = Instant::now();
         // Timer::after(Duration::from_micros(1000-elapsed)).await;
         // Timer::after(Duration::from_millis(1)).await;
         ticker.next().await;

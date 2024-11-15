@@ -16,6 +16,8 @@ use embassy_time::{Duration, Instant, Timer};
 use crate::state_machine::poulpe_state::{PoulpeState};
 use crate::ethercat::lan9252::{Lan9252, Lan9252Registers, WDOG_STATUS, AL_STATUS};
 
+use embassy_time::Ticker;
+
 // the addresses of the motors in the LAN9252 memory
 pub enum Lan9252Memory {
     OrbitaIn = 0x1000, // default write address 0x1000
@@ -99,10 +101,13 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
         }
     }
 
+    let mut ticker = Ticker::every(Duration::from_micros(1000));
+
     let mut poulpe_state = { SHARED_MEMORY.lock().await.get_poulpe_state() };
     let mut downsample_state_cnt: u32 = 0;
+    let mut t0 = Instant::now();
     loop {
-        let t0 = Instant::now();
+        let t_loop = Instant::now();
         // #[cfg(feature = "ignore_errors")]
         // let receive_commands = true;
         // #[cfg(not(feature = "ignore_errors"))]
@@ -184,7 +189,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
             //  - If it would be more than 64 bytes, we would need to split the write in two parts    
             let mut data: [u8; 3 + 16 * N_AXIS] = [0; 3 + 16 * N_AXIS];
             // statusword
-            data[0..2].copy_from_slice(&poulpe_state.status_to_statusword());
+            data[0..2].copy_from_slice(&poulpe_state.status_to_statusword_byte_array());
             // mode of operation
             data[2] = control_mode[0].to_u8();
             // actual values
@@ -228,14 +233,17 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
             poulpe_state = { SHARED_MEMORY.lock().await.get_poulpe_state() };
             let board_temperture = { SHARED_MEMORY.lock().await.get_board_temperature() };
             let motor_temperture = { SHARED_MEMORY.lock().await.get_motor_temperature() };
-            let mut data: [u8; 5+3*N_AXIS*4] = [N_AXIS as u8; 5+3*N_AXIS*4];
-            data[0..4].copy_from_slice(&poulpe_state.error_flags_to_u8());
-            data[4] = N_AXIS as u8;
+            let mut data =  [0 as u8; 2 + 2*N_AXIS + 1 + 3*N_AXIS*4];
+            let error_flags = poulpe_state.error_flags_to_byte_array();
+            let mut nb_bytes = error_flags.len(); // number of bytes for the error flags
+            data[0..nb_bytes].copy_from_slice(&error_flags);
+            data[nb_bytes] = N_AXIS as u8;
             let axis_zeros = { SHARED_MEMORY.lock().await.get_hardware_zeros() };
+            nb_bytes += 1;
             for i in 0..N_AXIS {
-                data[5+i*4..9+i*4].copy_from_slice(&axis_zeros[i].to_le_bytes());
-                data[5+N_AXIS*4+i*4..9+N_AXIS*4+i*4].copy_from_slice(&board_temperture[i].to_le_bytes());
-                data[5+2*N_AXIS*4+i*4..9+2*N_AXIS*4+i*4].copy_from_slice(&motor_temperture[i].to_le_bytes());
+                data[nb_bytes + i*4..nb_bytes + 4 + i*4].copy_from_slice(&axis_zeros[i].to_le_bytes());
+                data[nb_bytes + N_AXIS*4 + i*4..nb_bytes + 4 + N_AXIS*4 + i*4].copy_from_slice(&board_temperture[i].to_le_bytes());
+                data[nb_bytes + 2*N_AXIS*4 + i*4..nb_bytes + 4 + 2*N_AXIS*4 + i*4].copy_from_slice(&motor_temperture[i].to_le_bytes());
             }
 
             match lan9252
@@ -247,11 +255,13 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                     error!("Write data error! {:?}", e)
                 }
             }
-            Timer::after(Duration::from_micros(1)).await;
+            ticker.next().await;
+            // Timer::after(Duration::from_micros(1)).await;
             downsample_state_cnt = 0;
         }
         // Timer::after(Duration::from_millis(1)).await;
-        debug!("Ethercat loop time: {:?}us", t0.elapsed().as_micros());
+        // info!("Ethercat loop elapsed time: {}us \t time between loops: {}us",t_loop.elapsed().as_micros(), t0.elapsed().as_micros());
+        // t0 = Instant::now();
         downsample_state_cnt += 1;
     }
 }
