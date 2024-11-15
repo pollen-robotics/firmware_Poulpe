@@ -18,7 +18,9 @@ use embassy_stm32::{i2c, Config as stm32_config};
 use embassy_stm32::{spi, Config};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_time::{block_for, Duration, Timer};
+use embassy_time::{block_for, Duration, Ticker, Timer};
+use rand_core::le;
+use state_machine::poulpe_state;
 mod config;
 mod dynamixel;
 mod ethercat;
@@ -323,24 +325,71 @@ async fn main(spawner: Spawner) {
     led_error.set_low(); //TODO
     led_hello.set_low();
 
-    loop {
-        let errorled = { SHARED_MEMORY.lock().await.get_error_led() };
+    
+    // the blinking is happening each 500ms
+    // this number of blinks indicates the state of the board
+    // as well as the color of the blinking
+    //
+    // state            | green         | red 
+    // -----------------|---------------|------
+    // init             | blinks        | blinks 
+    // preop            | solid         | off
+    // preop  + warning | solid         | blinks
+    // op               | solid         | off
+    // op  + warning    | solid         | blinks
+    // fault            | off           | solid
+    // fault_reaction   | off           | blinks
+    //
+    // TODO implement the blinking patterns to indicate different error states
+    
+    enum LedState{
+        Off,
+        Solid,
+        Blink
+    }
 
-        if errorled {
-            led_error.set_high();
-        } else {
-            led_error.set_low();
-            // Robots should dance, LED should blink.
-            led_hello.set_high();
+    let mut red = LedState::Off; // 0 = off, 1 = solid, 2 = blink
+    let mut green = LedState::Off; // 0 = off, 1 = solid, 2 = blink
+
+
+    loop {
+
+        let poulpe_state = { SHARED_MEMORY.lock().await.get_poulpe_state() };
+
+        if poulpe_state.is_fault() {
+            red = LedState::Solid;
+            green = LedState::Off;
+        }else if poulpe_state.is_fault_reaction_state() {
+            red = LedState::Blink;
+            green = LedState::Off;
+        }else if poulpe_state.is_init(){
+            red = LedState::Blink;
+            green = LedState::Blink;
+        }else if poulpe_state.is_preoperation_state() ||  poulpe_state.is_operation_enabled() {
+            if poulpe_state.is_warning(){
+                red = LedState::Blink;
+                green = LedState::Solid;
+            }else{
+                red = LedState::Off;
+                green = LedState::Solid;
+            }
+        }else{
+            red = LedState::Off;
+            green = LedState::Off;
         }
-        Timer::after(Duration::from_millis(500)).await;
-        if errorled {
-            led_error.set_high();
-        } else {
-            led_error.set_low();
-            // Robots should dance, LED should blink.
-            led_hello.set_low();
+
+        match red {
+            LedState::Off => led_error.set_low(),
+            LedState::Solid => led_error.set_high(),
+            LedState::Blink => led_error.toggle(),
         }
+
+        match green {
+            LedState::Off => led_hello.set_low(),
+            LedState::Solid => led_hello.set_high(),
+            LedState::Blink => led_hello.toggle(),
+        }
+
         Timer::after(Duration::from_millis(500)).await;
     }
 }
