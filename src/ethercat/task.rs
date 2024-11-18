@@ -5,18 +5,21 @@ use crate::{
 use core::{cell::RefCell, default, mem::take};
 use defmt::{debug, error, info, trace, warn};
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
+use embassy_stm32::spi;
 use embassy_stm32::{
     dma::NoDma,
     gpio::{Level, Output, Speed},
 };
-use embassy_stm32::{spi};
 
+use crate::ethercat::lan9252::{Lan9252, Lan9252Registers, AL_STATUS, WDOG_STATUS};
+use crate::state_machine::poulpe_state::PoulpeState;
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex};
 use embassy_time::{Duration, Instant, Timer};
-use crate::state_machine::poulpe_state::{PoulpeState};
-use crate::ethercat::lan9252::{Lan9252, Lan9252Registers, WDOG_STATUS, AL_STATUS};
 
 use embassy_time::Ticker;
+
+use crate::motor_control::foc::MotionMode;
+use crate::state_machine::cia402_registers::CiA402ModeOfOperation;
 
 // the addresses of the motors in the LAN9252 memory
 pub enum Lan9252Memory {
@@ -94,7 +97,10 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
     // to avoid old data being read
     debug!("Reinitialise the OrbitaIn memory!");
     let data = [0; 1 + 12 * N_AXIS];
-    match lan9252.write_bytes(&data, Lan9252Memory::OrbitaIn as u16).await {
+    match lan9252
+        .write_bytes(&data, Lan9252Memory::OrbitaIn as u16)
+        .await
+    {
         Ok(_) => {}
         Err(e) => {
             error!("Write data error! {:?}", e)
@@ -113,8 +119,8 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
         // #[cfg(not(feature = "ignore_errors"))]
         // let receive_commands = state == BoardStatus::Ok || state == BoardStatus::HighTemperatureState;
         if !poulpe_state.is_init() {
-            let mut control_word : u16 = 0;
-            let mut mode_of_operation: u8 = 0;
+            let mut control_word: u16 = 0;
+            let mut mode_of_operation: CiA402ModeOfOperation = CiA402ModeOfOperation::NoMode;
             let mut target_position = [0.0; N_AXIS];
             let mut target_velocity = [0.0; N_AXIS]; // not used
             let mut target_torque = [0.0; N_AXIS]; // not used
@@ -129,23 +135,41 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                     control_word = u16::from_le_bytes(data[0..2].try_into().unwrap());
                     // info!("Control word: {:#x}", control_word);
                     // then the mode of operation
-                    mode_of_operation = data[2];
+                    mode_of_operation = CiA402ModeOfOperation::from_u8(data[2]);
 
-                    // then the next N_AXIS f32 are the 
+                    // then the next N_AXIS f32 are the
                     // target positions (3 - N_AXIS*4+3
                     // then the target velocity (N_AXIS*4+3 - 2*N_AXIS*4+3)
                     // then the velocity limits (2*N_AXIS*4+3 - 3*N_AXIS*4+3)
                     // then the target torque (3*N_AXIS*4+3 - 4*N_AXIS*4+3)
                     // then the torque limits (4*N_AXIS*4+3 - 5*N_AXIS*4+3)
-                    // NOTE: 
+                    // NOTE:
                     //  - max length (for orbita3d) is 3 + 20*3 = 63Bytes
-                    //  - If it would be more than 64 bytes, we would need to split the read in two parts 
+                    //  - If it would be more than 64 bytes, we would need to split the read in two parts
                     for i in 0..N_AXIS {
-                        target_position[i] = f32::from_le_bytes(data[3 + i * 4..3 + (i + 1) * 4].try_into().unwrap());
-                        target_velocity[i] = f32::from_le_bytes(data[3 + N_AXIS * 4 + i * 4..3 + N_AXIS * 4 + (i + 1) * 4].try_into().unwrap());
-                        velocity_limits[i] = f32::from_le_bytes(data[3 + 2 * N_AXIS * 4 + i * 4..3 + 2 * N_AXIS * 4 + (i + 1) * 4].try_into().unwrap());
-                        target_torque[i] = f32::from_le_bytes(data[3 + 3 * N_AXIS * 4 + i * 4..3 + 3 * N_AXIS * 4 + (i + 1) * 4].try_into().unwrap());
-                        torque_limits[i] = f32::from_le_bytes(data[3 + 4 * N_AXIS * 4 + i * 4..3 + 4 * N_AXIS * 4 + (i + 1) * 4].try_into().unwrap());
+                        target_position[i] = f32::from_le_bytes(
+                            data[3 + i * 4..3 + (i + 1) * 4].try_into().unwrap(),
+                        );
+                        target_velocity[i] = f32::from_le_bytes(
+                            data[3 + N_AXIS * 4 + i * 4..3 + N_AXIS * 4 + (i + 1) * 4]
+                                .try_into()
+                                .unwrap(),
+                        );
+                        velocity_limits[i] = f32::from_le_bytes(
+                            data[3 + 2 * N_AXIS * 4 + i * 4..3 + 2 * N_AXIS * 4 + (i + 1) * 4]
+                                .try_into()
+                                .unwrap(),
+                        );
+                        target_torque[i] = f32::from_le_bytes(
+                            data[3 + 3 * N_AXIS * 4 + i * 4..3 + 3 * N_AXIS * 4 + (i + 1) * 4]
+                                .try_into()
+                                .unwrap(),
+                        );
+                        torque_limits[i] = f32::from_le_bytes(
+                            data[3 + 4 * N_AXIS * 4 + i * 4..3 + 4 * N_AXIS * 4 + (i + 1) * 4]
+                                .try_into()
+                                .unwrap(),
+                        );
                     }
                 }
                 Err(e) => {
@@ -156,8 +180,13 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
             if !poulpe_state.is_fault() && !poulpe_state.is_fault_reaction_state() {
                 let shared_memory = SHARED_MEMORY.lock().await;
                 shared_memory.set_control_word(control_word);
-                // shared_memory.set_torque_on(torque_on);
-                // shared_memory.set_control_mode(mode_of_operation);
+                // motion mode not used for now!!!
+                #[cfg(feature = "allow_mode_change")]
+                {
+                    shared_memory.set_control_mode(CiA402ModeOfOperation::to_tmc4671_mode(
+                        &mode_of_operation,
+                    ));
+                }
                 shared_memory.set_target_position(target_position);
                 shared_memory.set_target_velocity(target_velocity);
                 shared_memory.set_target_torque(target_torque);
@@ -184,22 +213,29 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
             // 5. actual_torque (N_AXIS * 4 bytes)
             // 6. axis sensors (N_AXIS * 4 bytes)
 
-            // NOTE: 
+            // NOTE:
             //  - max length (for orbita3d) is 3 + 16*3 = 51Bytes
-            //  - If it would be more than 64 bytes, we would need to split the write in two parts    
+            //  - If it would be more than 64 bytes, we would need to split the write in two parts
             let mut data: [u8; 3 + 16 * N_AXIS] = [0; 3 + 16 * N_AXIS];
             // statusword
             data[0..2].copy_from_slice(&poulpe_state.status_to_statusword_byte_array());
             // mode of operation
-            data[2] = control_mode[0].to_u8();
+            data[2] = CiA402ModeOfOperation::from_tmc4671_mode(control_mode).to_u8();
             // actual values
             for n in 0..N_AXIS {
-                data[3 + n * 4..3 + (n + 1) * 4].copy_from_slice(&current_position[n].to_le_bytes());
-                data[3 + N_AXIS * 4 + n * 4..3 + N_AXIS * 4 + (n + 1) * 4].copy_from_slice(&current_velocity[n].to_le_bytes());
-                data[3 + 2 * N_AXIS * 4 + n * 4..3 + 2 * N_AXIS * 4 + (n + 1) * 4].copy_from_slice(&current_torque[n].to_le_bytes());
-                data[3 + 3 * N_AXIS * 4 + n * 4..3 + 3 * N_AXIS * 4 + (n + 1) * 4].copy_from_slice(&axis_sensors[n].to_le_bytes());
+                data[3 + n * 4..3 + (n + 1) * 4]
+                    .copy_from_slice(&current_position[n].to_le_bytes());
+                data[3 + N_AXIS * 4 + n * 4..3 + N_AXIS * 4 + (n + 1) * 4]
+                    .copy_from_slice(&current_velocity[n].to_le_bytes());
+                data[3 + 2 * N_AXIS * 4 + n * 4..3 + 2 * N_AXIS * 4 + (n + 1) * 4]
+                    .copy_from_slice(&current_torque[n].to_le_bytes());
+                data[3 + 3 * N_AXIS * 4 + n * 4..3 + 3 * N_AXIS * 4 + (n + 1) * 4]
+                    .copy_from_slice(&axis_sensors[n].to_le_bytes());
             }
-            match lan9252.write_bytes(&data, Lan9252Memory::OrbitaOut  as u16).await {
+            match lan9252
+                .write_bytes(&data, Lan9252Memory::OrbitaOut as u16)
+                .await
+            {
                 Ok(_) => {}
                 Err(e) => {
                     error!("Write data error! {:?}", e)
@@ -233,7 +269,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
             poulpe_state = { SHARED_MEMORY.lock().await.get_poulpe_state() };
             let board_temperture = { SHARED_MEMORY.lock().await.get_board_temperature() };
             let motor_temperture = { SHARED_MEMORY.lock().await.get_motor_temperature() };
-            let mut data =  [0 as u8; 2 + 2*N_AXIS + 1 + 3*N_AXIS*4];
+            let mut data = [0 as u8; 2 + 2 * N_AXIS + 1 + 3 * N_AXIS * 4];
             let error_flags = poulpe_state.error_flags_to_byte_array();
             let mut nb_bytes = error_flags.len(); // number of bytes for the error flags
             data[0..nb_bytes].copy_from_slice(&error_flags);
@@ -241,9 +277,12 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
             let axis_zeros = { SHARED_MEMORY.lock().await.get_hardware_zeros() };
             nb_bytes += 1;
             for i in 0..N_AXIS {
-                data[nb_bytes + i*4..nb_bytes + 4 + i*4].copy_from_slice(&axis_zeros[i].to_le_bytes());
-                data[nb_bytes + N_AXIS*4 + i*4..nb_bytes + 4 + N_AXIS*4 + i*4].copy_from_slice(&board_temperture[i].to_le_bytes());
-                data[nb_bytes + 2*N_AXIS*4 + i*4..nb_bytes + 4 + 2*N_AXIS*4 + i*4].copy_from_slice(&motor_temperture[i].to_le_bytes());
+                data[nb_bytes + i * 4..nb_bytes + 4 + i * 4]
+                    .copy_from_slice(&axis_zeros[i].to_le_bytes());
+                data[nb_bytes + N_AXIS * 4 + i * 4..nb_bytes + 4 + N_AXIS * 4 + i * 4]
+                    .copy_from_slice(&board_temperture[i].to_le_bytes());
+                data[nb_bytes + 2 * N_AXIS * 4 + i * 4..nb_bytes + 4 + 2 * N_AXIS * 4 + i * 4]
+                    .copy_from_slice(&motor_temperture[i].to_le_bytes());
             }
 
             match lan9252

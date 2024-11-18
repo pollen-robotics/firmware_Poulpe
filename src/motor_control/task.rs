@@ -19,15 +19,16 @@ use modular_bitfield::error;
 
 const SPI_FREQ: u32 = 2_000_000;
 
+use crate::motor_control::foc::MotionMode;
 use crate::state_machine::CiA402State;
 use crate::{
     config::{self, ActuatorConfig, DonutHall},
-    state_machine::poulpe_state::{HomingErrorFlag, MotorErrorFlag, PoulpeState},
     motor_control::{
         analog::AnalogInput,
         sensors::{AD5047Sensor, I2cHallSensor, SensorKind},
         RawSensorsIO,
     },
+    state_machine::poulpe_state::{HomingErrorFlag, MotorErrorFlag, PoulpeState},
     IrqsI2c, SHARED_MEMORY,
 };
 
@@ -39,7 +40,6 @@ use super::{
 };
 
 use super::driver::{DriverDRV8316, DriverTMC6200};
-
 
 // this macro checks the temperatures of the motors and the boards
 // if the temperature is too high, set the error state
@@ -55,7 +55,7 @@ macro_rules! verify_temperatures_and_update_state {
         $max_motor_temp: expr,
         $high_temp: expr
 
-    ) => {// clear the warning state, it will be set in the next checks if true 
+    ) => {// clear the warning state, it will be set in the next checks if true
         $board_state.clear_warning_state();
         // check the temperatures and set the error state if needed
         for (i, (b, m)) in $board_temp.iter().zip($motor_temp.iter()).enumerate() {
@@ -90,17 +90,16 @@ macro_rules! verify_temperatures_and_update_state {
                 );
             } else if $board_state.check_motor_error_flag(i, MotorErrorFlag::HighTemperatureWarning){
                 // if the motor or the board temperature is back to normal, clear the warning state
-                $board_state.clear_motor_error_flag(i, MotorErrorFlag::HighTemperatureWarning);   
+                $board_state.clear_motor_error_flag(i, MotorErrorFlag::HighTemperatureWarning);
                 info!(
                     "Axis {} Temperature (motor: {}C, board: {}C) is back to normal!",
                     i, m, b
-                );                 
+                );
             }
             // }
         }
     };
 }
-
 
 // macro updating the commuinication error status
 // if the error is true, set the communication error flag and the timestamp
@@ -118,7 +117,7 @@ macro_rules! notify_communication_status {
             if !$communication_down {
                 $last_communication_timestamp = now;
             }
-        } 
+        }
         $communication_down = $error;
     };
 }
@@ -845,7 +844,12 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
 
     // set the hardware zeros
     actuator.set_hardware_zeros(hardware_zeros);
-    {SHARED_MEMORY.lock().await.set_hardware_zeros(hardware_zeros);};
+    {
+        SHARED_MEMORY
+            .lock()
+            .await
+            .set_hardware_zeros(hardware_zeros);
+    };
 
     // trying to init the actuator
     // let mut init_error: BoardStatus = BoardStatus::Init;
@@ -1118,12 +1122,13 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
     let mut init_torquefluxlimit_max = { SHARED_MEMORY.lock().await.get_torque_flux_limit_max() };
     let mut init_velocitylimit_max = { SHARED_MEMORY.lock().await.get_velocity_limit_max() };
 
+    let mut init_control_mode = { SHARED_MEMORY.lock().await.get_control_mode() };
+
     let mut init_torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
     let mut init_target_position = { SHARED_MEMORY.lock().await.get_target_position() };
 
     // a variable used for the safe fault handling
     let mut fault_response_counter = 5000; // 5000 loops at 1kHz = 5 seconds
-
 
     // actuator.set_torque([false,false]).unwrap();
     let mut error_led = false;
@@ -1165,14 +1170,22 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
     // flag to track if the communication was down in the last loop
     let mut last_communication_timestamp = Instant::now();
 
-
     #[cfg(feature = "dynamixel")]
     {
         // set the state to switched on directly if dynamixel is used
         board_state.state_machine.set_state(CiA402State::SwitchedOn);
-        { SHARED_MEMORY.lock().await.set_poulpe_state(board_state) };
+        {
+            SHARED_MEMORY.lock().await.set_poulpe_state(board_state)
+        };
     }
 
+    // set inital control mode to positon
+    {
+        SHARED_MEMORY
+            .lock()
+            .await
+            .set_control_mode(MotionMode::Position)
+    };
 
     let mut t0 = Instant::now();
     loop {
@@ -1196,16 +1209,15 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
         let mut torque_on = { SHARED_MEMORY.lock().await.get_torque_on() };
         let mut board_state = { SHARED_MEMORY.lock().await.get_poulpe_state() };
 
-
         #[cfg(feature = "ethercat")]
         {
             // process the commands
             let control_word = { SHARED_MEMORY.lock().await.get_control_word() };
-            board_state.process_command(control_word);// if we are in the init state, we can only go to the switch on state
-            if board_state.is_operation_enabled(){
-                torque_on = [true;  config::N_AXIS];
-            }else{
-                torque_on = [false;  config::N_AXIS];
+            board_state.process_command(control_word); // if we are in the init state, we can only go to the switch on state
+            if board_state.is_operation_enabled() {
+                torque_on = [true; config::N_AXIS];
+            } else {
+                torque_on = [false; config::N_AXIS];
             }
         }
 
@@ -1230,8 +1242,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
 
                 // reduce the torque limit to 0 (from 1) over 5 seconds
                 // this runs at 1kHz so it will take 5000 iterations
-                let mut home_torque_limit =
-                    { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
+                let mut home_torque_limit = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
                 home_torque_limit.iter_mut().for_each(
                     |t| *t -= 0.0002, // 1/5000 = 0.0002 (5 seconds at 1kHz)
                 );
@@ -1243,7 +1254,10 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                     {
                         SHARED_MEMORY.lock().await.set_torque_on(torque_on)
                     };
-                    info!("torque limit under 5%, stopping operation, {:?}", home_torque_limit);
+                    info!(
+                        "torque limit under 5%, stopping operation, {:?}",
+                        home_torque_limit
+                    );
                     // notify that the fault handling is done
                     // this will set the state to fault
                     board_state.notify_fault_reaction_done();
@@ -1266,31 +1280,109 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             init_torque_on = torque_on;
         }
 
-        //Unfiltered
-        #[cfg(not(feature = "cmd_filter"))]
-        let target = { SHARED_MEMORY.lock().await.get_target_position() };
+        let control_mode = { SHARED_MEMORY.lock().await.get_control_mode() };
+        #[cfg(feature = "allow_mode_change")]
+        {
+            if init_control_mode.to_u8() != control_mode.to_u8() {
+                actuator.set_control_mode(control_mode).unwrap_or_else(|e| {
+                    error!("Error setting control mode: {:?}", e);
+                    loop_communication_error = true;
+                });
+                init_control_mode = control_mode;
+            }
+        }
 
-        //Filtered
-        #[cfg(feature = "cmd_filter")]
-        let target = {
-            let mut t = { SHARED_MEMORY.lock().await.get_target_position() };
-            t.iter_mut().enumerate().for_each(|(i, t)| {
-                if !torque_on[i] {
-                    //Trick to make the filter converge => reset target
-                    for _ in 0..1000 {
-                        cmd_filter[i].run(*t);
+        match control_mode {
+            MotionMode::Position => {
+                //Unfiltered
+                #[cfg(not(feature = "cmd_filter"))]
+                let target = { SHARED_MEMORY.lock().await.get_target_position() };
+
+                //Filtered
+                #[cfg(feature = "cmd_filter")]
+                let target = {
+                    let mut t = { SHARED_MEMORY.lock().await.get_target_position() };
+                    t.iter_mut().enumerate().for_each(|(i, t)| {
+                        if !torque_on[i] {
+                            //Trick to make the filter converge => reset target
+                            for _ in 0..1000 {
+                                cmd_filter[i].run(*t);
+                            }
+                        }
+                        *t = cmd_filter[i].run(*t)
+                    });
+                    t
+                };
+
+                // add the feedforward control to the velocity loop
+                #[cfg(feature = "velocity_feedforward")]
+                {
+                    // velocity feedforward from shared memory
+                    let mut velocity_ff = { SHARED_MEMORY.lock().await.get_velocity_feedforward() };
+
+                    // get velocity feedforward timestamp
+                    let velocity_ff_timestamp = {
+                        SHARED_MEMORY
+                            .lock()
+                            .await
+                            .get_velocity_feedforward_timestamp()
+                    };
+                    // check if the velocity feedforward value has been set and is it too old (older than 200ms)
+                    match velocity_ff_timestamp {
+                        Some(timestamp) => {
+                            if timestamp.elapsed().as_millis() > 200 {
+                                velocity_ff = [0.0; config::N_AXIS];
+                            }
+                        }
+                        None => {
+                            velocity_ff = [0.0; config::N_AXIS];
+                        }
                     }
+
+                    // filter the velocity feedforward
+                    velocity_ff
+                        .iter_mut()
+                        .enumerate()
+                        .for_each(|(i, v)| *v = vel_ff_filter[i].run(*v));
+                    // set the velocity feedforward
+                    actuator
+                        .set_velocity_feedforward(velocity_ff)
+                        .unwrap_or_else(|e| {
+                            error!("Error setting velocity feedforward: {:?}", e);
+                            loop_communication_error = true;
+                        });
                 }
-                *t = cmd_filter[i].run(*t)
-            });
-            t
-        };
+
+                // set the target position (filtered or not)
+                actuator.set_target_position(target).unwrap_or_else(|e| {
+                    error!("Error setting target pos: {:?}", e);
+                    loop_communication_error = true;
+                });
+            }
+            MotionMode::Torque => {
+                let target = { SHARED_MEMORY.lock().await.get_target_torque() };
+                // set target torque
+                actuator.set_target_torque(target).unwrap_or_else(|e| {
+                    error!("Error setting target torque: {:?}", e);
+                    loop_communication_error = true;
+                });
+            }
+            MotionMode::Velocity => {
+                let target = { SHARED_MEMORY.lock().await.get_target_velocity() };
+                // set target velocity
+                actuator.set_target_velocity(target).unwrap_or_else(|e| {
+                    error!("Error setting target velocity: {:?}", e);
+                    loop_communication_error = true;
+                });
+            }
+            _ => {}
+        }
 
         // set the target position (filtered or not)
-        actuator.set_target_position(target).unwrap_or_else(|e| {
-            error!("Error setting target pos: {:?}", e);
-            loop_communication_error = true;
-        });
+        // actuator.set_target_position(target).unwrap_or_else(|e| {
+        //     error!("Error setting target pos: {:?}", e);
+        //     loop_communication_error = true;
+        // });
 
         // Update torque-flux limits
         update_limit_setting!(
@@ -1317,45 +1409,6 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             "Setting velocitylimit: {:?} => {:?} (max={:?})", // onchange log message
             "Error setting velocity limit: {:?}"              // error message
         );
-
-        // add the feedforward control to the velocity loop
-        #[cfg(feature = "velocity_feedforward")]
-        {
-            // velocity feedforward from shared memory
-            let mut velocity_ff = { SHARED_MEMORY.lock().await.get_velocity_feedforward() };
-
-            // get velocity feedforward timestamp
-            let velocity_ff_timestamp = {
-                SHARED_MEMORY
-                    .lock()
-                    .await
-                    .get_velocity_feedforward_timestamp()
-            };
-            // check if the velocity feedforward value has been set and is it too old (older than 200ms)
-            match velocity_ff_timestamp {
-                Some(timestamp) => {
-                    if timestamp.elapsed().as_millis() > 200 {
-                        velocity_ff = [0.0; config::N_AXIS];
-                    }
-                }
-                None => {
-                    velocity_ff = [0.0; config::N_AXIS];
-                }
-            }
-
-            // filter the velocity feedforward
-            velocity_ff
-                .iter_mut()
-                .enumerate()
-                .for_each(|(i, v)| *v = vel_ff_filter[i].run(*v));
-            // set the velocity feedforward
-            actuator
-                .set_velocity_feedforward(velocity_ff)
-                .unwrap_or_else(|e| {
-                    error!("Error setting velocity feedforward: {:?}", e);
-                    loop_communication_error = true;
-                });
-        }
 
         // read the real-time values
 
@@ -1398,7 +1451,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             }
             Err(_e) => {
                 // removed because of too much spamming
-                loop_communication_error=true;
+                loop_communication_error = true;
                 error!("Axis sensors error");
             }
         }
@@ -1408,8 +1461,6 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             SHARED_MEMORY.lock().await.set_error_led(error_led);
             prev_error_led = error_led;
         }
-
-
 
         // get dc bus voltage
         match actuator.get_bus_voltage() {
@@ -1425,7 +1476,9 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                         // no recovery - the board needs to be restarted
                         board_state.set_motor_error_flag(i, MotorErrorFlag::LowBusVoltage);
                         board_state.set_fault_state();
-                        {SHARED_MEMORY.lock().await.set_poulpe_state(board_state)};
+                        {
+                            SHARED_MEMORY.lock().await.set_poulpe_state(board_state)
+                        };
                         error!(
                             "Bus voltage {}V is too low (under {}V)!",
                             bus_volt,
@@ -1440,29 +1493,33 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                 error!("Bus voltage reading error {:?}", e);
             }
         }
-        
-        // check the driver states 
+
+        // check the driver states
         // if driver in fault state stop the operation
         let driver_states = actuator.check_driver_states();
-        driver_states.iter().enumerate().for_each(|(i, driver_state)| {
-            match driver_state {
-                Ok(driver_state) => {
-                    debug!("Driver state: OK");
-                }
-                Err(e) => {
-                    // this is a catastrophic error
-                    // the driver state is not read correctly
-                    // the operation needs to stop
-                    board_state.set_fault_state();
-                    board_state.set_motor_error_flag(i, MotorErrorFlag::DriverFault);
+        driver_states
+            .iter()
+            .enumerate()
+            .for_each(|(i, driver_state)| {
+                match driver_state {
+                    Ok(driver_state) => {
+                        debug!("Driver state: OK");
+                    }
+                    Err(e) => {
+                        // this is a catastrophic error
+                        // the driver state is not read correctly
+                        // the operation needs to stop
+                        board_state.set_fault_state();
+                        board_state.set_motor_error_flag(i, MotorErrorFlag::DriverFault);
 
-                    loop_communication_error = true;
-                    error!("Driver state reading error {:?}", e);
+                        loop_communication_error = true;
+                        error!("Driver state reading error {:?}", e);
+                    }
                 }
-            }
-        });
-        {SHARED_MEMORY.lock().await.set_poulpe_state(board_state)};
-        
+            });
+        {
+            SHARED_MEMORY.lock().await.set_poulpe_state(board_state)
+        };
 
         // running the second (slow) task at slower rate (1Hz)
         if slow_timer == 0 {
@@ -1553,26 +1610,29 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
 
             // check the temperatures and set the error state if needed
             // this function will set the error state if the temperature is too high
-            // it will set the warning state if the temperature is high 
+            // it will set the warning state if the temperature is high
             // it will update (set/reset) the necessary flags as well
             // it outputs the errorr and warning messages
             verify_temperatures_and_update_state!(
-                board_state,                    // board state
-                board_temp,                     // board temperature
-                motor_temp,                     // motor temperature
-                config::MAX_BOARD_TEMP,         // max board temperature
-                config::MAX_MOTOR_TEMP,         // max motor temperature
-                config::HIGH_TEMP               // high temperature 
+                board_state,            // board state
+                board_temp,             // board temperature
+                motor_temp,             // motor temperature
+                config::MAX_BOARD_TEMP, // max board temperature
+                config::MAX_MOTOR_TEMP, // max motor temperature
+                config::HIGH_TEMP       // high temperature
             );
 
             // verify that the communication is working
             // - check if the communication was down and how long it was down
             // - if it's down for more than max allowed time, stop the operation
             if communication_down {
-                let communication_down_duration = last_communication_timestamp.elapsed().as_secs() as u32;
+                let communication_down_duration =
+                    last_communication_timestamp.elapsed().as_secs() as u32;
                 if (communication_down_duration > config::MAX_COMMUNICATION_DOWN_TIME) {
                     board_state.set_fault_state();
-                    { SHARED_MEMORY.lock().await.set_poulpe_state(board_state) };
+                    {
+                        SHARED_MEMORY.lock().await.set_poulpe_state(board_state)
+                    };
                     board_state.set_homing_error_flag(HomingErrorFlag::CommunicationFail);
                     error!(
                         "Communication error for {} secs ( max allowed {} secs), stopping operation!",
@@ -1596,7 +1656,6 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                 info!("Board state: {:?}", board_state);
             }
 
-
             slow_timer = 1000;
         } else {
             slow_timer -= 1;
@@ -1613,7 +1672,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             last_communication_timestamp
         );
 
-        let elapsed=t_loop.elapsed().as_micros();
+        let elapsed = t_loop.elapsed().as_micros();
         // info!("Motor control loop elapsed time: {}us \t time between loops: {}us",elapsed, t0.elapsed().as_micros());
         // t0 = Instant::now();
         // Timer::after(Duration::from_micros(1000-elapsed)).await;

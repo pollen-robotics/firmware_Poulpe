@@ -9,23 +9,23 @@ license = "MIT OR Apache-2.0"
 
 ###### old
 ## ec60 based orbita 2d + beta hardware
-# default = ["orbita2d", "beta", "ec60", "velocity_feedforward","cmd_filter", "axis_output", "use_flash"]
+# default = ["orbita2d", "beta", "ec60", "cmd_filter", "axis_output", "use_flash"]
 
 ###### beta
 ## orbita 2d (genric boards with poulpe + 2x BOB)
-# default = ["orbita2d", "beta", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" , "use_flash"]
+# default = ["orbita2d", "beta", "ec45",  "cmd_filter", "gearbox_output" , "use_flash"]
 ## orbita 3d (genric boards with poulpe + 3x BOB)
-# default = ["orbita3d", "beta", "ecx22", "velocity_feedforward","cmd_filter","gearbox_output", "use_flash"]
+# default = ["orbita3d", "beta", "ecx22", ,"cmd_filter","gearbox_output", "use_flash"]
 
 ####### gamma
 ## orbita 2d (gamma elec)
-# default = ["orbita2d", "gamma", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" , "use_flash"]
+# default = ["orbita2d", "gamma", "ec45", "cmd_filter", "gearbox_output" , "use_flash"]
 ## orbita 3d (gamma elec)
-# default = ["orbita3d", "gamma", "ecx22", "velocity_feedforward", "cmd_filter", "gearbox_output", "use_flash"]
+# default = ["orbita3d", "gamma", "ecx22",  "cmd_filter", "gearbox_output", "use_flash"]
 
 
-orbita2d_gamma = ["orbita2d", "gamma", "ec45", "velocity_feedforward", "cmd_filter", "gearbox_output" , "use_flash", "ethercat"]
-orbita3d_gamma = ["orbita3d", "gamma", "ecx22", "velocity_feedforward", "cmd_filter", "gearbox_output", "use_flash", "ethercat"]
+orbita2d_gamma = ["orbita2d", "gamma", "ec45", "cmd_filter", "gearbox_output" , "use_flash", "ethercat"]
+orbita3d_gamma = ["orbita3d", "gamma", "ecx22", "cmd_filter", "gearbox_output", "use_flash", "ethercat"]
 
 # default = ["orbita2d_gamma"]
 orbita2d = []
@@ -68,6 +68,9 @@ orbita3d_zero_pre_dvt =[]
 # chosing the communication protocol
 ethercat = []
 dynamixel = []
+
+# allow mode of operation to be changed by the user
+allow_mode_change = []
 
 [dependencies]
 # rustypot = "0.4.2"

@@ -1,7 +1,7 @@
 use defmt::*;
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_stm32::dma::NoDma;
-use embassy_stm32::gpio::{Output, Input, Pin};
+use embassy_stm32::gpio::{Input, Output, Pin};
 use embassy_stm32::spi::{Instance, Spi};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embedded_hal_1::spi::SpiDevice;
@@ -27,7 +27,12 @@ where
     EnablePin: Pin,
     StatusPin: Pin,
 {
-    spi: SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'static, T, NoDma, NoDma>, Output<'static, EnablePin>>,
+    spi: SpiDeviceWithConfig<
+        'd,
+        NoopRawMutex,
+        Spi<'static, T, NoDma, NoDma>,
+        Output<'static, EnablePin>,
+    >,
     pub(crate) status_pin: Input<'static, StatusPin>,
 }
 
@@ -158,7 +163,9 @@ where
     fn check_status(&mut self, _is_enabled: bool) -> Result<(), DriverError> {
         // if not gamma, then return Ok
         #[cfg(not(feature = "gamma"))]
-        { return Ok(()); }
+        {
+            return Ok(());
+        }
         // high on error
         if self.status_pin.is_low() {
             return Ok(());
@@ -174,11 +181,16 @@ where
     EnablePin: Pin,
     StatusPin: Pin,
 {
-    spi: SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'static, T, NoDma, NoDma>, Output<'static, EnablePin>>,
+    spi: SpiDeviceWithConfig<
+        'd,
+        NoopRawMutex,
+        Spi<'static, T, NoDma, NoDma>,
+        Output<'static, EnablePin>,
+    >,
     pub(crate) status_pin: Input<'static, StatusPin>,
 }
 
-impl<'d, T, EnablePin, StatusPin> DriverDRV8316<'d, T, EnablePin,StatusPin>
+impl<'d, T, EnablePin, StatusPin> DriverDRV8316<'d, T, EnablePin, StatusPin>
 where
     T: Instance,
     EnablePin: Pin,
@@ -332,6 +344,6 @@ where
                 // if not enabled, then it is not an error
                 return Ok(());
             }
-       }
+        }
     }
 }

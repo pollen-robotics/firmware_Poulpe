@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 
-use crate::motor_control::{Actuator, Pid, RawMotorsIO, RawSensorsIO};
 use crate::motor_control::foc::MotionMode;
+use crate::motor_control::{Actuator, Pid, RawMotorsIO, RawSensorsIO};
 use crate::state_machine::cia402_state_machine::CiA402StateMachine;
 use crate::state_machine::poulpe_state::PoulpeState;
 use defmt::error;
@@ -11,7 +11,7 @@ use embassy_time::Instant;
 #[derive(Clone, Format)]
 pub struct Memory<const N: usize> {
     torque_on: [bool; N],
-    control_mode: [MotionMode; N],
+    control_mode: MotionMode,
     control_word: u16,
 
     current_position: [f32; N],
@@ -68,10 +68,10 @@ impl<const N: usize> SharedMemory<N> {
         self.inner.borrow_mut().torque_on = on;
     }
 
-    pub fn get_control_mode(&self) -> [MotionMode; N] {
+    pub fn get_control_mode(&self) -> MotionMode {
         self.inner.borrow().control_mode
     }
-    pub fn set_control_mode(&self, mode: [MotionMode; N]) {
+    pub fn set_control_mode(&self, mode: MotionMode) {
         self.inner.borrow_mut().control_mode = mode;
     }
 
@@ -81,7 +81,6 @@ impl<const N: usize> SharedMemory<N> {
     pub fn set_control_word(&self, word: u16) {
         self.inner.borrow_mut().control_word = word;
     }
-
 
     pub fn get_current_position(&self) -> [f32; N] {
         self.inner.borrow().current_position
@@ -304,7 +303,7 @@ impl<const N: usize> SharedMemory<N> {
         Self {
             inner: RefCell::new(Memory {
                 torque_on: [false; N],
-                control_mode: [MotionMode::Torque; N],
+                control_mode: MotionMode::Torque,
                 control_word: 0,
 
                 current_position: [0.0; N],
@@ -352,9 +351,10 @@ impl<const N: usize> SharedMemory<N> {
     pub fn init(&self, actuator: &mut Actuator<N>) {
         *self.inner.borrow_mut() = Memory {
             torque_on: actuator.is_torque_on().unwrap_or([false; N]),
-            control_mode: actuator
-                .get_control_mode()
-                .unwrap_or([MotionMode::Stopped; N]),
+            control_mode: match actuator.get_control_mode() {
+                Ok(mode) => mode[0],
+                Err(_) => MotionMode::Stopped,
+            },
             control_word: 0,
 
             current_position: actuator.get_current_position().unwrap_or([f32::NAN; N]),

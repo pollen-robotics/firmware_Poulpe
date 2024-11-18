@@ -325,14 +325,13 @@ async fn main(spawner: Spawner) {
     led_error.set_low(); //TODO
     led_hello.set_low();
 
-    
     // the blinking is happening each 500ms
     // this number of blinks indicates the state of the board
     // as well as the color of the blinking
     //
-    // state            | green         | red 
+    // state            | green         | red
     // -----------------|---------------|------
-    // init             | blinks        | blinks 
+    // init             | blinks        | blinks
     // preop            | solid         | off
     // preop  + warning | solid         | blinks
     // op               | solid         | off
@@ -341,39 +340,37 @@ async fn main(spawner: Spawner) {
     // fault_reaction   | off           | blinks
     //
     // TODO implement the blinking patterns to indicate different error states
-    
-    enum LedState{
+
+    enum LedState {
         Off,
         Solid,
-        Blink
+        Blink,
     }
 
     let mut red = LedState::Off; // 0 = off, 1 = solid, 2 = blink
     let mut green = LedState::Off; // 0 = off, 1 = solid, 2 = blink
 
-
     loop {
-
         let poulpe_state = { SHARED_MEMORY.lock().await.get_poulpe_state() };
 
         if poulpe_state.is_fault() {
             red = LedState::Solid;
             green = LedState::Off;
-        }else if poulpe_state.is_fault_reaction_state() {
+        } else if poulpe_state.is_fault_reaction_state() {
             red = LedState::Blink;
             green = LedState::Off;
-        }else if poulpe_state.is_init(){
+        } else if poulpe_state.is_init() {
             red = LedState::Blink;
             green = LedState::Blink;
-        }else if poulpe_state.is_preoperation_state() ||  poulpe_state.is_operation_enabled() {
-            if poulpe_state.is_warning(){
+        } else if poulpe_state.is_preoperation_state() || poulpe_state.is_operation_enabled() {
+            if poulpe_state.is_warning() {
                 red = LedState::Blink;
                 green = LedState::Solid;
-            }else{
+            } else {
                 red = LedState::Off;
                 green = LedState::Solid;
             }
-        }else{
+        } else {
             red = LedState::Off;
             green = LedState::Off;
         }

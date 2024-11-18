@@ -1,8 +1,7 @@
 use crate::config;
-use crate::state_machine::cia402_state_machine::{CiA402StateMachine, CiA402State};
+use crate::state_machine::cia402_state_machine::{CiA402State, CiA402StateMachine};
 
 use super::CiA402Command;
-
 
 // Error codes for the motors, we will have one error code per motor
 // - None - no error
@@ -46,7 +45,6 @@ pub enum HomingErrorFlag {
     IndexSearchFail = 16,
     CommunicationFail = 32,
 }
-
 
 #[derive(PartialEq, Clone, Copy)]
 pub struct PoulpeState {
@@ -106,38 +104,40 @@ impl PoulpeState {
     }
 
     pub fn set_init_state(&mut self) {
-        self.state_machine.set_state(CiA402State::NotReadyToSwitchOn);
+        self.state_machine
+            .set_state(CiA402State::NotReadyToSwitchOn);
     }
     pub fn notify_init_success(&mut self) {
         self.state_machine.set_state(CiA402State::SwitchOnDisabled);
     }
-
 
     pub fn set_fault_state(&mut self) {
         #[cfg(feature = "ignore_errors")]
         {
             return;
         }
-        if self.state_machine.state == CiA402State::NotReadyToSwitchOn || self.state_machine.state == CiA402State::Fault{
+        if self.state_machine.state == CiA402State::NotReadyToSwitchOn
+            || self.state_machine.state == CiA402State::Fault
+        {
             self.state_machine.set_state(CiA402State::Fault);
         } else {
-            self.state_machine.set_state(CiA402State::FaultReactionActive);
+            self.state_machine
+                .set_state(CiA402State::FaultReactionActive);
         }
     }
 
-    pub fn set_warning_state(&mut self){
+    pub fn set_warning_state(&mut self) {
         self.state_machine.set_warning_state();
     }
 
-    pub fn clear_warning_state(&mut self){
+    pub fn clear_warning_state(&mut self) {
         self.state_machine.clear_warning_state();
     }
 
-
     pub fn is_preoperation_state(&self) -> bool {
-        self.state_machine.state == CiA402State::SwitchOnDisabled || 
-        self.state_machine.state == CiA402State::ReadyToSwitchOn || 
-        self.state_machine.state == CiA402State::SwitchedOn
+        self.state_machine.state == CiA402State::SwitchOnDisabled
+            || self.state_machine.state == CiA402State::ReadyToSwitchOn
+            || self.state_machine.state == CiA402State::SwitchedOn
     }
 
     pub fn is_operation_enabled(&self) -> bool {
@@ -175,17 +175,17 @@ impl PoulpeState {
     pub fn check_motor_error_flag(&self, axis: usize, error: MotorErrorFlag) -> bool {
         (self.motor_error_flags[axis] & (error as u16)) == (error as u16)
     }
-        
+
     pub fn check_homing_error_flag(&self, error: HomingErrorFlag) -> bool {
         (self.homing_error_flags & (error as u16)) == (error as u16)
     }
 
-
-    pub fn error_flags_to_byte_array(&self) -> [u8; 2+2*config::N_AXIS] {
-        let mut error_flags = [0; 2+2*config::N_AXIS];
+    pub fn error_flags_to_byte_array(&self) -> [u8; 2 + 2 * config::N_AXIS] {
+        let mut error_flags = [0; 2 + 2 * config::N_AXIS];
         error_flags[0..2].copy_from_slice(&self.homing_error_flags.to_le_bytes());
         for i in 0..config::N_AXIS {
-            error_flags[2 + i*2..2 + i*2 + 2].copy_from_slice(&self.motor_error_flags[i].to_le_bytes());
+            error_flags[2 + i * 2..2 + i * 2 + 2]
+                .copy_from_slice(&self.motor_error_flags[i].to_le_bytes());
         }
         return error_flags;
     }
@@ -195,14 +195,13 @@ impl PoulpeState {
         if self.state_machine.warning_active {
             // set the warning bit (bit 7)
             return (self.state_machine.state as u16 | 0x80).to_le_bytes();
-        }else{
+        } else {
             return (self.state_machine.state as u16).to_le_bytes();
         }
-        
     }
-    
+
     pub fn get_state(&self) -> CiA402State {
-        self.state_machine.state 
+        self.state_machine.state
     }
 
     pub fn get_homing_error_flags(&self) -> [Option<HomingErrorFlag>; 16] {
@@ -228,7 +227,7 @@ impl PoulpeState {
 
     pub fn get_motor_errors_flags(&self, axis: usize) -> [Option<MotorErrorFlag>; 16] {
         let mut errors = [None; 16];
-        if self.motor_error_flags[axis] == 0{
+        if self.motor_error_flags[axis] == 0 {
             errors[0] = Some(MotorErrorFlag::None);
             return errors;
         }
@@ -249,18 +248,21 @@ impl PoulpeState {
         return errors;
     }
 
-
-
     pub fn process_command(&mut self, cmd: u16) {
-        self.state_machine.update_state_with_command(CiA402Command::from_u16(cmd));
+        self.state_machine
+            .update_state_with_command(CiA402Command::from_u16(cmd));
     }
-
 }
 
 // nice formatting for the PoulpeState
-impl defmt::Format for PoulpeState{
+impl defmt::Format for PoulpeState {
     fn format(&self, f: defmt::Formatter) {
-        defmt::write!(f, "PoulpeState {{\n state: {:?},warning: {:?}\n status_bits:[", self.get_state(), self.is_warning());
+        defmt::write!(
+            f,
+            "PoulpeState {{\n state: {:?},warning: {:?}\n status_bits:[",
+            self.get_state(),
+            self.is_warning()
+        );
         for bit in self.state_machine.get_status_bits().iter() {
             if let Some(status_bit) = bit {
                 defmt::write!(f, "{:?}, ", status_bit);

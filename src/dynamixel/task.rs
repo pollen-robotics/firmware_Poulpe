@@ -44,7 +44,8 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin, id:
 
                         match reg {
                             DynamixelRegister::BoardState => {
-                                let value = { SHARED_MEMORY.lock().await.get_poulpe_state() }.get_state();
+                                let value =
+                                    { SHARED_MEMORY.lock().await.get_poulpe_state() }.get_state();
                                 let sp = StatusPacket::with_value(id, dxl_error, [value as u8]);
                                 trace!("Sending status packet: {:?} {:#x}", sp, sp.to_bytes());
                                 if let Some(e) = dxl.write(&sp).await.err() {
@@ -190,7 +191,7 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin, id:
                                 let motor_value =
                                     { SHARED_MEMORY.lock().await.get_motor_temperature() };
                                 // concatenate the values
-                                let mut all_values = [0.0; 2*config::N_AXIS];
+                                let mut all_values = [0.0; 2 * config::N_AXIS];
                                 all_values[0..(config::N_AXIS)].copy_from_slice(&board_values);
                                 all_values[config::N_AXIS..].copy_from_slice(&motor_value);
                                 let value = conversion::float_to_bytes(all_values);
@@ -322,7 +323,6 @@ pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin, id:
                             //         error!("Error: {:?}", e);
                             //     }
                             // }
-
                             DynamixelRegister::TorqueEnable => {
                                 match conversion::bytes_to_bool(write_data_packet.data) {
                                     Ok(torque_on) => {

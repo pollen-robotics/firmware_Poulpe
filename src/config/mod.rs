@@ -44,27 +44,35 @@ use crate::motor_control::driver::{DriverDRV8316, DriverTMC6200};
 
 // Ventouse A
 #[cfg(any(feature = "beta", all(feature = "orbita2d", feature = "gamma")))] // any beta or 2d gamma
-pub type VentouseA<'d> = Ventouse<'d, p::SPI1, p::PA3, p::PC0, DriverTMC6200<'d, p::SPI1, p::PA2, p::PA1>>;
+pub type VentouseA<'d> =
+    Ventouse<'d, p::SPI1, p::PA3, p::PC0, DriverTMC6200<'d, p::SPI1, p::PA2, p::PA1>>;
 #[cfg(any(all(feature = "gamma", feature = "orbita3d")))] // 3d gamma
-pub type VentouseA<'d> = Ventouse<'d, p::SPI1, p::PA3, p::PC0, DriverDRV8316<'d, p::SPI1, p::PA2, p::PA1>>;
+pub type VentouseA<'d> =
+    Ventouse<'d, p::SPI1, p::PA3, p::PC0, DriverDRV8316<'d, p::SPI1, p::PA2, p::PA1>>;
 
 // Ventouse B
 #[cfg(any(feature = "beta", all(feature = "orbita2d", feature = "gamma")))] // any beta or 2d gamma
-pub type VentouseB<'d> = Ventouse<'d, p::SPI4, p::PE3, p::PE0, DriverTMC6200<'d, p::SPI4, p::PC15, p::PC14>>;
+pub type VentouseB<'d> =
+    Ventouse<'d, p::SPI4, p::PE3, p::PE0, DriverTMC6200<'d, p::SPI4, p::PC15, p::PC14>>;
 #[cfg(any(all(feature = "gamma", feature = "orbita3d")))] // 3d gamma
-pub type VentouseB<'d> = Ventouse<'d, p::SPI4, p::PE3, p::PE0, DriverDRV8316<'d, p::SPI4, p::PC15, p::PC14>>;
+pub type VentouseB<'d> =
+    Ventouse<'d, p::SPI4, p::PE3, p::PE0, DriverDRV8316<'d, p::SPI4, p::PC15, p::PC14>>;
 
 // Ventouse C
 #[cfg(any(feature = "beta", all(feature = "orbita2d", feature = "gamma")))] // any beta or 2d gamma
-pub type VentouseC<'d> = Ventouse<'d, p::SPI6, p::PD7, p::PD5, DriverTMC6200<'d, p::SPI6, p::PD6, p::PD3>>;
+pub type VentouseC<'d> =
+    Ventouse<'d, p::SPI6, p::PD7, p::PD5, DriverTMC6200<'d, p::SPI6, p::PD6, p::PD3>>;
 #[cfg(any(all(feature = "gamma", feature = "orbita3d")))] // 3d gamma
-pub type VentouseC<'d> = Ventouse<'d, p::SPI6, p::PD7, p::PD5, DriverDRV8316<'d, p::SPI6, p::PD6, p::PD3>>;
+pub type VentouseC<'d> =
+    Ventouse<'d, p::SPI6, p::PD7, p::PD5, DriverDRV8316<'d, p::SPI6, p::PD6, p::PD3>>;
 
 #[cfg(feature = "orbita3d")]
-pub type VentouseAConfig = VentouseConfig<p::SPI1, p::PA5, p::PA7, p::PA6, p::PA3, p::PC0, p::PA2, p::PA1>;
+pub type VentouseAConfig =
+    VentouseConfig<p::SPI1, p::PA5, p::PA7, p::PA6, p::PA3, p::PC0, p::PA2, p::PA1>;
 pub type VentouseBConfig =
     VentouseConfig<p::SPI4, p::PE12, p::PE6, p::PE5, p::PE3, p::PE0, p::PC15, p::PC14>;
-pub type VentouseCConfig = VentouseConfig<p::SPI6, p::PB3, p::PB5, p::PB4, p::PD7, p::PD5, p::PD6, p::PD3>;
+pub type VentouseCConfig =
+    VentouseConfig<p::SPI6, p::PB3, p::PB5, p::PB4, p::PD7, p::PD5, p::PD6, p::PD3>;
 
 pub type AksimConfig = SensorConfig<p::PA15>;
 pub type AD5047Config = SensorConfig<p::PE4>;

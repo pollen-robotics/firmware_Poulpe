@@ -1329,7 +1329,6 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
         }
     }
 
-
     fn get_driver_state(&mut self) -> super::Result<[(); 1]> {
         match self {
             VentouseKind::A(va) => va.get_driver_state(),

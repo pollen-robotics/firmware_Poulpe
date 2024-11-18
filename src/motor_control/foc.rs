@@ -222,7 +222,7 @@ pub enum MotionMode {
 }
 
 impl MotionMode {
-    fn from_u8(val: u8) -> Option<MotionMode> {
+    pub fn from_u8(val: u8) -> Option<MotionMode> {
         match val {
             0 => Some(MotionMode::Stopped),
             1 => Some(MotionMode::Torque),

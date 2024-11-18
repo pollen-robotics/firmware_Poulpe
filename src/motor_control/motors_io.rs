@@ -81,7 +81,6 @@ pub trait RawMotorsIO<const N: usize> {
     /// Set the velocity limit of the motors (in radians per second)
     fn set_velocity_limit(&mut self, limit: [f32; N]) -> Result<()>;
 
-
     fn get_driver_state(&mut self) -> Result<[(); N]>;
 
     /*

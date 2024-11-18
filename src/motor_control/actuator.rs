@@ -66,15 +66,11 @@ impl<'d, const N: usize> Actuator<'d, N> {
     //     }
     // }
 
-
-
     // check the state of each
     pub fn check_driver_states(&mut self) -> [Result<()>; N] {
-        array::from_fn(|i| {
-            match self.axes[i].get_driver_state() {
-                Ok(_) => Ok(()),
-                Err(_) => Err(IOError::DriverError),
-            }
+        array::from_fn(|i| match self.axes[i].get_driver_state() {
+            Ok(_) => Ok(()),
+            Err(_) => Err(IOError::DriverError),
         })
     }
 
@@ -305,9 +301,6 @@ fn find_position_with_hall(
 
     (best, best_idx as i16 - (offset.len() / 2) as i16)
 }
-
-
-
 
 // TODO: make this generic (how?)
 impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
@@ -568,7 +561,6 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
     }
     */
     /////////////////////
-
 
     // get the driver states
     fn get_driver_state(&mut self) -> Result<[(); N]> {
