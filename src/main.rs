@@ -6,7 +6,6 @@
 #![feature(async_fn_in_trait)]
 #![feature(array_methods)]
 
-use config::flash;
 use defmt::{error, info, unwrap};
 use embassy_executor::Spawner;
 use embassy_stm32::dma::NoDma;
@@ -16,55 +15,32 @@ use embassy_stm32::usart::Config as usart_config;
 use embassy_stm32::{bind_interrupts, peripherals, usart};
 use embassy_stm32::{i2c, Config as stm32_config};
 use embassy_stm32::{spi, Config};
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use embassy_sync::mutex::Mutex;
 use embassy_time::{block_for, Duration, Ticker, Timer};
 use rand_core::le;
-use state_machine::poulpe_state;
-mod config;
-mod dynamixel;
-mod ethercat;
-mod motor_control;
-mod shared_memory;
-mod state_machine;
 
-use crate::config::{
-    AD5047Config, AD5047ConfigBot, AD5047ConfigMid, AD5047ConfigTop, ActuatorConfig, AksimConfig,
-    LAN9252Config,
+use firmware_poulpe::config::{
+    AD5047Config, AD5047ConfigBot, AD5047ConfigMid, AD5047ConfigTop, ActuatorConfig, AksimConfig, LAN9252Config, LTC4332CenterConfig, LTC4332DonutConfig, LTC4332RingConfig
 };
-use crate::ethercat::EthercatConfig;
-use crate::motor_control::sensors::I2cHallConfig;
-use crate::motor_control::ventouse::VentouseConfig;
-use crate::shared_memory::SharedMemory;
+use firmware_poulpe::{
+    config::{self, CurrentSensing, BrushlessMotor},
+    utils,
+    motor_control,
+    dynamixel,
+    ethercat,
+    utils::flash,
+    state_machine::poulpe_state,
+    ethercat::EthercatConfig,
+    sensors::sensors::I2cHallConfig,
+    motor_control::ventouse::VentouseConfig,
+    SHARED_MEMORY,
+};
+
 
 #[cfg(feature = "use_flash")]
-use crate::config::flash::{FlashData, FlashManager};
-#[cfg(not(feature = "no_temperture_sensor"))]
-use crate::config::TemperatureSensorConfig;
+use firmware_poulpe::utils::flash::{FlashData, FlashManager};
+#[cfg(not(feature = "no_temperature_sensor"))]
+use firmware_poulpe::config::TemperatureSensingConfig;
 
-use {defmt_rtt as _, panic_probe as _};
-
-bind_interrupts!(struct Irqs {
-    USART1 => usart::InterruptHandler<peripherals::USART1>;
-});
-bind_interrupts!(struct IrqsI2c {
-    I2C1_EV => i2c::InterruptHandler<peripherals::I2C1>;
-});
-// TODO: Use a NoopMutex instead of a real mutex?
-static SHARED_MEMORY: Mutex<ThreadModeRawMutex, SharedMemory<{ config::N_AXIS }>> =
-    Mutex::new(SharedMemory::default());
-
-// same panicking *behavior* as `panic-probe` but doesn't print a panic message
-// this prevents the panic message being printed *twice* when `defmt::panic` is invoked
-#[defmt::panic_handler]
-fn panic() -> ! {
-    cortex_m::asm::udf()
-}
-pub fn exit() -> ! {
-    loop {
-        cortex_m::asm::bkpt();
-    }
-}
 
 // from build.rs
 // include!(concat!(env!("OUT_DIR"), "/constants.rs"));
@@ -76,6 +52,30 @@ async fn main(spawner: Spawner) {
     info!("Poulpe: Orbita 3D");
     #[cfg(feature = "orbita2d")]
     info!("Poulpe: Orbita 2D");
+
+    #[cfg(feature ="pvt")]
+    info!("Verison: PVT");
+    #[cfg(feature ="beta")]
+    info!("Verison: Beta");
+    #[cfg(feature ="gamma")]
+    info!("Verison: Gamma");
+
+    #[cfg(feature = "ec45")]
+    info!("Motors: EC45");
+    #[cfg(feature = "ec60")]
+    info!("Motors: EC60");
+    #[cfg(feature = "ecx22")]
+    info!("Motors: ECX22");
+
+    #[cfg(feature = "ethercat")]
+    info!("Communication: EtherCAT");
+    #[cfg(feature = "dynamixel")]
+    info!("Communication: Dynamixel");
+    #[cfg(not(any(
+        feature = "ethercat",
+        feature = "dynamixel",
+    )))]
+    warn!("No communication enabled");
 
     info!("Git commit: {:?}", config::GIT_HASH); //TODO: read access from a dxl msg?
                                                  // info!("Hardware_zeros: {:?}", config::HARDWARE_ZEROS); // For Orbita3d firmware zero
@@ -181,6 +181,11 @@ async fn main(spawner: Spawner) {
             foc_enable: p.PC0,
             driver_cs: p.PA2,
             driver_status_pin: p.PA1,
+            motor_config: BrushlessMotor::ecx22(),
+            #[cfg(feature = "beta")]
+            current_sense_config: CurrentSensing::ventouse_bob(), // current sense for the TMC BOB board
+            #[cfg(any(feature = "gamma", feature="pvt"))]
+            current_sense_config: CurrentSensing::ventouse_3d(), // current sense for gamma elec ventouse 2d
         },
         b: VentouseConfig {
             peri: p.SPI4,
@@ -191,6 +196,11 @@ async fn main(spawner: Spawner) {
             foc_enable: p.PE0,
             driver_cs: p.PC15,
             driver_status_pin: p.PC14,
+            motor_config: BrushlessMotor::ecx22(),
+            #[cfg(feature = "beta")]
+            current_sense_config: CurrentSensing::ventouse_bob(), // current sense for the TMC BOB board
+            #[cfg(any(feature = "gamma", feature="pvt"))]
+            current_sense_config: CurrentSensing::ventouse_3d(), // current sense for gamma elec ventouse 2d
         },
         c: VentouseConfig {
             peri: p.SPI6,
@@ -201,15 +211,27 @@ async fn main(spawner: Spawner) {
             foc_enable: p.PD5,
             driver_cs: p.PD6,
             driver_status_pin: p.PD3,
+            motor_config: BrushlessMotor::ecx22(),
+            #[cfg(feature = "beta")]
+            current_sense_config: CurrentSensing::ventouse_bob(), // current sense for the TMC BOB board
+            #[cfg(any(feature = "gamma", feature="pvt"))]
+            current_sense_config: CurrentSensing::ventouse_3d(), // current sense for gamma elec ventouse 2d
         },
 
         ad5047top: AD5047ConfigTop { cs: p.PA4 },
         ad5047mid: AD5047ConfigMid { cs: p.PE4 },
         ad5047bot: AD5047ConfigBot { cs: p.PA15 },
-        #[cfg(not(feature = "no_temperture_sensor"))]
-        temperature_sensor: TemperatureSensorConfig {
+        #[cfg(all(not(feature = "no_temperature_sensor"), feature = "pvt"))]
+        temperature_sensing: TemperatureSensingConfig {
             adc: p.ADC1,
-            pin: p.PB1,
+            pin1: p.PB1,
+            pin2: p.PC5,
+            pin3: p.PB0,
+        },
+        #[cfg(all(not(feature = "no_temperature_sensor"), not(feature = "pvt")))]
+        temperature_sensing: TemperatureSensingConfig {
+            adc: p.ADC1,
+            pin1: p.PB1,
         },
 
         donut_hall: I2cHallConfig {
@@ -217,6 +239,8 @@ async fn main(spawner: Spawner) {
             scl: p.PB6,
             sda: p.PB7,
         },
+        #[cfg(feature="pvt")]
+        ltc4332donut: LTC4332DonutConfig{ cs: p.PA12 },
     };
     #[cfg(feature = "orbita2d")]
     let actuator_config = ActuatorConfig {
@@ -229,6 +253,14 @@ async fn main(spawner: Spawner) {
             foc_enable: p.PE0,
             driver_cs: p.PC15,
             driver_status_pin: p.PC14,
+            #[cfg(feature = "ec45")]
+            motor_config: BrushlessMotor::ec45(),
+            #[cfg(feature = "ec60")]
+            otor_config: BrushlessMotor::ec60(),
+            #[cfg(feature = "beta")]
+            current_sense_config: CurrentSensing::ventouse_bob(), // current sense for the TMC BOB board
+            #[cfg(any(feature = "gamma", feature="pvt"))]
+            current_sense_config: CurrentSensing::ventouse_2d(), // current sense for gamma elec ventouse 2d
         },
         c: VentouseConfig {
             peri: p.SPI6,
@@ -239,15 +271,33 @@ async fn main(spawner: Spawner) {
             foc_enable: p.PD5,
             driver_cs: p.PD6,
             driver_status_pin: p.PD3,
+            #[cfg(feature = "ec45")]
+            motor_config: BrushlessMotor::ec45(),
+            #[cfg(feature = "ec60")]
+            otor_config: BrushlessMotor::ec60(),
+            #[cfg(feature = "beta")]
+            current_sense_config: CurrentSensing::ventouse_bob(), // current sense for the TMC BOB board
+            #[cfg(any(feature = "gamma", feature="pvt"))]
+            current_sense_config: CurrentSensing::ventouse_2d(), // current sense for gamma elec ventouse 2d
         },
 
         aksim: AksimConfig { cs: p.PA15 },
         ad5047: AD5047Config { cs: p.PE4 },
-        #[cfg(not(feature = "no_temperture_sensor"))]
-        temperature_sensor: TemperatureSensorConfig {
+        #[cfg(all(not(feature = "no_temperature_sensor"), feature = "pvt"))]
+        temperature_sensing: TemperatureSensingConfig {
             adc: p.ADC1,
-            pin: p.PB1,
+            pin1: p.PC5,
+            pin2: p.PB0,
         },
+        #[cfg(all(not(feature = "no_temperature_sensor"), not(feature = "pvt")))]
+        temperature_sensing: TemperatureSensingConfig {
+            adc: p.ADC1,
+            pin1: p.PB1,
+        },
+        #[cfg(feature="pvt")]
+        ltc4332center: LTC4332CenterConfig{ cs: p.PB9 },
+        #[cfg(feature="pvt")]
+        ltc4332ring: LTC4332RingConfig{ cs: p.PD1 },
     };
 
     unwrap!(spawner.spawn(motor_control::task::control_loop(

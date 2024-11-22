@@ -6,15 +6,7 @@ use embassy_stm32::spi::{Instance, Spi};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embedded_hal_1::spi::SpiDevice;
 
-use defmt::Format;
-use embassy_stm32::spi;
-
-#[derive(Debug, Format)]
-pub enum DriverError {
-    SpiError(spi::Error),
-    ConfigError,
-    FaultState,
-}
+use crate::utils::errors::DriverError;
 
 pub trait Driver {
     fn configure(&mut self) -> Result<(), DriverError>;
@@ -162,7 +154,7 @@ where
 
     fn check_status(&mut self, _is_enabled: bool) -> Result<(), DriverError> {
         // if not gamma, then return Ok
-        #[cfg(not(feature = "gamma"))]
+        #[cfg(any(feature = "gamma", feature="pvt"))]
         {
             return Ok(());
         }

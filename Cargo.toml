@@ -3,6 +3,7 @@ edition = "2021"
 name = "firmware_poulpe"
 version = "0.1.0"
 license = "MIT OR Apache-2.0"
+default-run = "firmware_poulpe" # Refers to src/main.rs by default
 
 [features]
 ### orbita specifig config
@@ -16,16 +17,21 @@ license = "MIT OR Apache-2.0"
 # default = ["orbita2d", "beta", "ec45",  "cmd_filter", "gearbox_output" , "use_flash"]
 ## orbita 3d (genric boards with poulpe + 3x BOB)
 # default = ["orbita3d", "beta", "ecx22", ,"cmd_filter","gearbox_output", "use_flash"]
+orbita2d_beta = ["orbita2d", "beta", "ec45", "cmd_filter", "gearbox_output" , "use_flash", "dynamixel"]
+orbita3d_beta = ["orbita3d", "beta", "ecx22", "cmd_filter", "gearbox_output", "use_flash", "dynamixel", "orbita3d_zero_pre_dvt"]
 
-####### gamma
+
+####### gamma (dvt)
 ## orbita 2d (gamma elec)
 # default = ["orbita2d", "gamma", "ec45", "cmd_filter", "gearbox_output" , "use_flash"]
 ## orbita 3d (gamma elec)
 # default = ["orbita3d", "gamma", "ecx22",  "cmd_filter", "gearbox_output", "use_flash"]
-
-
 orbita2d_gamma = ["orbita2d", "gamma", "ec45", "cmd_filter", "gearbox_output" , "use_flash", "ethercat"]
 orbita3d_gamma = ["orbita3d", "gamma", "ecx22", "cmd_filter", "gearbox_output", "use_flash", "ethercat"]
+
+## pvt 
+orbita2d_pvt = ["orbita2d", "pvt", "ec45", "cmd_filter", "gearbox_output" , "use_flash", "ethercat"]
+orbita3d_pvt = ["orbita3d", "pvt", "ecx22", "cmd_filter", "gearbox_output", "use_flash", "ethercat"]
 
 # default = ["orbita2d_gamma"]
 orbita2d = []
@@ -39,6 +45,7 @@ ecx22=[]
 # driver board type
 beta = [] # beta elec with poulpe + 2/3 X sponge+BOB
 gamma = [] # new gamma elec with poulpe + ventouse 2d/3d
+pvt = [] # pvt elec with poulpe + ventouse 2d/3d
 
 # use command filter to reduce the jerk of the motor
 cmd_filter = []
@@ -71,6 +78,8 @@ dynamixel = []
 
 # allow mode of operation to be changed by the user
 allow_mode_change = []
+
+required  = ["orbita2d", "beta", "ec45", "cmd_filter", "gearbox_output" , "use_flash", "dynamixel"]
 
 [dependencies]
 # rustypot = "0.4.2"
@@ -210,6 +219,7 @@ overflow-checks = false # <-
 
 
 
-[[bin]]
-name = "firmware_poulpe" # src/main.rs
-test = false
+# [[bin]]
+# name = "firmware_poulpe" # src/main.rs
+# test = false
+

@@ -3,12 +3,12 @@ use core::array;
 use embassy_futures::join;
 
 use super::foc::MotionMode;
-use super::motors_io::{IOError, Pid, RawMotorsIO, Result};
-use super::sensors_io::RawSensorsIO;
+use super::motors_io::{Pid, RawMotorsIO};
 use crate::config::BrushlessMotor;
 use crate::config::DonutHall;
 
-use super::sensors::SensorKind;
+use crate::utils::errors::{IOError, Result};
+use crate::sensors::{sensors::SensorKind, sensors_io::RawSensorsIO};
 use super::ventouse::VentouseKind;
 use defmt::{debug, error, info, warn};
 use micromath::F32Ext;

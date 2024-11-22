@@ -11,6 +11,8 @@ use embassy_stm32::{
     spi,
 };
 
+use crate::utils::errors::IOError;
+
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex};
 use embassy_sync::pipe::ReadFuture;
 use embassy_time::{block_for, Duration, Instant, Ticker, Timer};
@@ -23,23 +25,79 @@ use crate::motor_control::foc::MotionMode;
 use crate::state_machine::CiA402State;
 use crate::{
     config::{self, ActuatorConfig, DonutHall},
-    motor_control::{
-        analog::AnalogInput,
-        sensors::{AD5047Sensor, I2cHallSensor, SensorKind},
-        RawSensorsIO,
+    sensors::{
+        sensors::*,
+        sensors_io::RawSensorsIO,
     },
     state_machine::poulpe_state::{HomingErrorFlag, MotorErrorFlag, PoulpeState},
     IrqsI2c, SHARED_MEMORY,
 };
 
-use super::sensors;
+#[cfg(not(feature = "no_temperature_sensor"))]
+use crate::sensors::analog::{adc_setup, adc_read_temperature};
+
+#[cfg(feature = "pvt")]
+use crate::sensors::ltc4332::{LTC4332, LTC4332Config};
+
 use super::{
-    sensors::AksimSensor,
     ventouse::{Ventouse, VentouseKind},
     Actuator, Foc, RawMotorsIO,
 };
 
 use super::driver::{DriverDRV8316, DriverTMC6200};
+
+
+// macro that creates a new AD5047 sensor from the configuration
+// the sensor is created with the SPI bus, the chip select pin and the SPI configuration
+macro_rules! create_ad5047_from_config {
+    (
+        $spi_bus:expr, // the SPI bus
+        $cs_pin:expr,  // the chip select pin
+        $spi_config:expr  // the SPI configuration
+    ) => {
+        AD5047Sensor::new(SpiDeviceWithConfig::new(
+            &$spi_bus,
+            Output::new($cs_pin, Level::High, Speed::Medium),
+            $spi_config,
+        ));
+    };
+}
+
+
+// macro that creates a new LTC4322 sensor from the configuration
+// the sensor is created with the SPI bus, the chip select pin and the SPI configuration
+macro_rules! create_ltc4332_from_config {
+    (
+        $spi_bus:expr, // the SPI bus
+        $cs_pin:expr,  // the chip select pin
+        $spi_config:expr  // the SPI configuration
+    ) => {
+        // $spi_config.mode = spi::MODE_0; // LTC4332 uses MODE0
+        LTC4332::new(SpiDeviceWithConfig::new(
+            &$spi_bus,
+            Output::new($cs_pin, Level::High, Speed::Medium),
+            $spi_config,
+        ));
+    };
+}
+
+// macro that creates a new Aksim2 sensor from the configuration
+// the sensor is created with the SPI bus, the chip select pin and the SPI configuration
+macro_rules! create_aksim_from_config {
+    (
+        $spi_bus:expr, // the SPI bus
+        $cs_pin:expr,  // the chip select pin
+        $spi_config:expr  // the SPI configuration
+    ) => {
+        AksimSensor::new(SpiDeviceWithConfig::new(
+            &$spi_bus,
+            Output::new($cs_pin, Level::High, Speed::Medium),
+            $spi_config,
+        ));
+    };
+}
+
+
 
 // this macro checks the temperatures of the motors and the boards
 // if the temperature is too high, set the error state
@@ -281,6 +339,7 @@ pub async fn robust_read_axis_sensors<'d, const N: usize>(
                 Ok(sensors) => {
                     if sensors.iter().any(|x| x.is_nan()) {
                         error!("Nan values in sensors, retrying...");
+                        #[cfg(not(feature = "ignore_errors"))] // dont wait if ignoring errors
                         Timer::after(Duration::from_micros(100000)).await; // wait for a bit
                         continue;
                     }
@@ -296,6 +355,7 @@ pub async fn robust_read_axis_sensors<'d, const N: usize>(
                 }
                 Err(e) => {
                     error!("Error reading axis sensors: {:?}", e);
+                    #[cfg(not(feature = "ignore_errors"))] // dont wait if ignoring errors
                     Timer::after(Duration::from_micros(100000)).await;
                     continue; //  retry the init if the read
                 }
@@ -331,7 +391,7 @@ pub async fn find_index_orbita3d<'d, const N: usize>(
     mut actuator: &mut Actuator<'d, N>,
     hardware_zeros: [f32; N],
     mut donut_hall: &mut DonutHall<'d>,
-) -> Result<HomingErrorFlag, super::motors_io::IOError> {
+) -> Result<HomingErrorFlag, IOError> {
     //FIXME:
     // - Maybe torque off is not so good, moving motor can induce motion in the torque off motor...
 
@@ -467,7 +527,7 @@ pub async fn find_index_orbita3d<'d, const N: usize>(
 pub async fn find_index_orbita2d<'d, const N: usize>(
     mut actuator: &mut Actuator<'d, N>,
     hardware_zeros: [f32; N],
-) -> Result<HomingErrorFlag, super::motors_io::IOError> {
+) -> Result<HomingErrorFlag, IOError> {
     actuator.set_torque([false; N])?; //be sure to torque off to avoid noise in axis sensors?
     block_for(Duration::from_millis(10));
     // let zeros = [5.236674785614014, 1.6637036800384521]; //Orbita domain
@@ -532,12 +592,12 @@ fn wrap_to_pi(angle: f32) -> f32 {
 }
 
 #[embassy_executor::task]
-pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::N_AXIS]) {
+pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; config::N_AXIS]) {
     let mut spi_config = spi::Config::default();
     spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
     spi_config.bit_order = spi::BitOrder::MsbFirst;
-
     spi_config.mode = spi::MODE_1;
+
 
     let mut foc_spi_config = spi::Config::default();
     foc_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
@@ -545,7 +605,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
     foc_spi_config.bit_order = spi::BitOrder::MsbFirst;
     let mut driver_spi_config = spi::Config::default();
     driver_spi_config.mode = spi::MODE_3;
-    #[cfg(all(feature = "gamma", feature = "orbita3d"))]
+    #[cfg(all(any(feature = "gamma", feature="pvt"), feature = "orbita3d"))]
     {
         driver_spi_config.mode = spi::MODE_1;
     }
@@ -575,18 +635,15 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
         let foc = Foc::new(
             foc_spi,
             config.a.foc_enable,
-            config::BrushlessMotor::ecx22(),
-            #[cfg(feature = "beta")]
-            config::CurrentSensing::ventouse_bob(), // current sense for the TMC BOB board
-            #[cfg(feature = "gamma")]
-            config::CurrentSensing::ventouse_3d(), // current sense for gamma elec ventouse 2d
+            config.a.motor_config,
+            config.a.current_sense_config
         );
         let driver_spi = SpiDeviceWithConfig::new(
             &spi_bus,
             Output::new(config.a.driver_cs, Level::High, Speed::Medium),
             driver_spi_config,
         );
-        #[cfg(feature = "gamma")]
+        #[cfg(any(feature = "gamma", feature="pvt"))]
         let driver = DriverDRV8316::new(driver_spi, config.a.driver_status_pin);
         #[cfg(feature = "beta")]
         let driver = DriverTMC6200::new(driver_spi, config.a.driver_status_pin);
@@ -609,82 +666,71 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
 
     //AD5047 center sensor BUS B
     /////////////
-    let mut ad5047_spi_config = spi::Config::default();
-    ad5047_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
-    ad5047_spi_config.mode = spi::MODE_1;
+    let mut center_spi_config = spi::Config::default();
+    center_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
+    center_spi_config.mode = spi::MODE_1; // AD5047 uses MODE1
+    #[cfg(feature = "pvt")]
+    { center_spi_config.mode = spi::MODE_0;} // override the mode - LTC4332 uses MODE0
 
-    ad5047_spi_config.bit_order = spi::BitOrder::MsbFirst;
-    #[cfg(feature = "orbita2d")]
-    let ad5047_spi = SpiDeviceWithConfig::new(
-        &spi_bus,
-        Output::new(config.ad5047.cs, Level::High, Speed::Medium),
-        ad5047_spi_config,
+    #[cfg(all(feature = "pvt", feature = "orbita2d"))]
+    let mut center_ltc4332 = create_ltc4332_from_config!(
+        spi_bus,
+        config.ltc4332center.cs,
+        center_spi_config
     );
     #[cfg(feature = "orbita2d")]
-    let mut ad5047 = AD5047Sensor::new(ad5047_spi);
-    #[cfg(feature = "orbita2d")]
-    ad5047.init().unwrap();
-    #[cfg(feature = "orbita2d")]
-    let mut ad5047 = SensorKind::Center(ad5047);
+    let mut ad5047 = SensorKind::Center(
+        create_ad5047_from_config!(
+            spi_bus,
+            config.ad5047.cs,
+            center_spi_config
+        )
+    );
 
     //////////
 
     //Donut sensor BUS B
 
-    let mut ad5047top_spi_config = spi::Config::default();
-
-    ad5047top_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
-
-    ad5047top_spi_config.mode = spi::MODE_1;
-
-    ad5047top_spi_config.bit_order = spi::BitOrder::MsbFirst;
-    #[cfg(feature = "orbita3d")]
-    let ad5047top_spi = SpiDeviceWithConfig::new(
-        &spi_bus,
-        Output::new(config.ad5047top.cs, Level::High, Speed::Medium),
-        ad5047top_spi_config,
+    let mut donut_spi_config = spi::Config::default();
+    donut_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
+    donut_spi_config.bit_order = spi::BitOrder::MsbFirst;
+    donut_spi_config.mode = spi::MODE_1; // AD5047 uses MODE1
+    #[cfg(feature = "pvt")]
+    { donut_spi_config.mode = spi::MODE_0;} // override the mode - LTC4332 uses MODE0
+    
+    #[cfg(all(feature = "pvt", feature = "orbita3d"))]
+    let mut donut_ltc4332 = create_ltc4332_from_config!(
+        spi_bus,
+        config.ltc4332donut.cs,
+        donut_spi_config
     );
+        
     #[cfg(feature = "orbita3d")]
-    let ad5047top = AD5047Sensor::new(ad5047top_spi);
-    #[cfg(feature = "orbita3d")]
-    let ad5047top = SensorKind::DonutTop(ad5047top);
-
-    let mut ad5047mid_spi_config = spi::Config::default();
-
-    ad5047mid_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
-
-    ad5047mid_spi_config.mode = spi::MODE_1;
-
-    ad5047mid_spi_config.bit_order = spi::BitOrder::MsbFirst;
-    #[cfg(feature = "orbita3d")]
-    let ad5047mid_spi = SpiDeviceWithConfig::new(
-        &spi_bus,
-        Output::new(config.ad5047mid.cs, Level::High, Speed::Medium),
-        ad5047mid_spi_config,
+    let ad5047top = SensorKind::DonutTop(
+        create_ad5047_from_config!(
+            spi_bus,
+            config.ad5047top.cs,
+            donut_spi_config
+        )
     );
+
     #[cfg(feature = "orbita3d")]
-    let ad5047mid = AD5047Sensor::new(ad5047mid_spi);
-    #[cfg(feature = "orbita3d")]
-    let ad5047mid = SensorKind::DonutMid(ad5047mid);
-
-    let mut ad5047bot_spi_config = spi::Config::default();
-
-    ad5047bot_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
-
-    ad5047bot_spi_config.mode = spi::MODE_1;
-
-    ad5047bot_spi_config.bit_order = spi::BitOrder::MsbFirst;
-    #[cfg(feature = "orbita3d")]
-    let ad5047bot_spi = SpiDeviceWithConfig::new(
-        &spi_bus,
-        Output::new(config.ad5047bot.cs, Level::High, Speed::Medium),
-        ad5047bot_spi_config,
+    let ad5047mid = SensorKind::DonutMid(
+        create_ad5047_from_config!(
+            spi_bus,
+            config.ad5047mid.cs,
+            donut_spi_config
+        )
     );
+
     #[cfg(feature = "orbita3d")]
-    let ad5047bot = AD5047Sensor::new(ad5047bot_spi);
-    #[cfg(feature = "orbita3d")]
-    let ad5047bot = SensorKind::DonutBot(ad5047bot);
-    ///////////////
+    let ad5047bot =  SensorKind::DonutBot(
+        create_ad5047_from_config!(
+            spi_bus,
+            config.ad5047bot.cs,
+            donut_spi_config
+        )
+    );
 
     let ventouse_b = {
         let foc_spi = SpiDeviceWithConfig::new(
@@ -695,18 +741,8 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
         let foc = Foc::new(
             foc_spi,
             config.b.foc_enable,
-            #[cfg(all(feature = "orbita2d", feature = "ec45"))]
-            config::BrushlessMotor::ec45(),
-            #[cfg(all(feature = "orbita2d", feature = "ec60"))]
-            config::BrushlessMotor::ec60(),
-            #[cfg(feature = "orbita3d")]
-            config::BrushlessMotor::ecx22(),
-            #[cfg(feature = "beta")]
-            config::CurrentSensing::ventouse_bob(), // current sense for the TMC BOB board
-            #[cfg(all(feature = "gamma", feature = "orbita2d"))]
-            config::CurrentSensing::ventouse_2d(), // current sense for gamma elec ventouse 2d
-            #[cfg(all(feature = "gamma", feature = "orbita3d"))]
-            config::CurrentSensing::ventouse_3d(), // current sense for gamma elec ventouse 2d
+            config.b.motor_config,
+            config.b.current_sense_config
         );
 
         let driver_spi = SpiDeviceWithConfig::new(
@@ -715,9 +751,9 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             driver_spi_config,
         );
 
-        #[cfg(all(feature = "orbita3d", feature = "gamma"))]
+        #[cfg(all(feature = "orbita3d", any(feature = "gamma", feature="pvt")))]
         let driver = DriverDRV8316::new(driver_spi, config.b.driver_status_pin);
-        #[cfg(any(feature = "beta", all(feature = "orbita2d", feature = "gamma")))]
+        #[cfg(any(feature = "beta", all(feature = "orbita2d", any(feature = "gamma", feature="pvt"))))]
         let driver = DriverTMC6200::new(driver_spi, config.b.driver_status_pin);
 
         let ventouse_b = Ventouse::new(foc, driver);
@@ -746,18 +782,8 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
         let foc = Foc::new(
             foc_spi,
             config.c.foc_enable,
-            #[cfg(all(feature = "orbita2d", feature = "ec45"))]
-            config::BrushlessMotor::ec45(),
-            #[cfg(all(feature = "orbita2d", feature = "ec60"))]
-            config::BrushlessMotor::ec60(),
-            #[cfg(feature = "orbita3d")]
-            config::BrushlessMotor::ecx22(),
-            #[cfg(feature = "beta")]
-            config::CurrentSensing::ventouse_bob(), // current sense for the TMC BOB board
-            #[cfg(all(feature = "gamma", feature = "orbita2d"))]
-            config::CurrentSensing::ventouse_2d(), // current sense for gamma elec ventouse 2d
-            #[cfg(all(feature = "gamma", feature = "orbita3d"))]
-            config::CurrentSensing::ventouse_3d(), // current sense for gamma elec ventouse 2d
+            config.c.motor_config,
+            config.c.current_sense_config
         );
 
         let driver_spi = SpiDeviceWithConfig::new(
@@ -766,9 +792,9 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             driver_spi_config,
         );
 
-        #[cfg(all(feature = "orbita3d", feature = "gamma"))]
+        #[cfg(all(feature = "orbita3d", any(feature = "gamma", feature="pvt")))]
         let driver = DriverDRV8316::new(driver_spi, config.c.driver_status_pin);
-        #[cfg(any(feature = "beta", all(feature = "orbita2d", feature = "gamma")))]
+        #[cfg(any(feature = "beta", all(feature = "orbita2d", any(feature = "gamma", feature="pvt"))))]
         let driver = DriverTMC6200::new(driver_spi, config.c.driver_status_pin);
 
         let ventouse_c = Ventouse::new(foc, driver);
@@ -776,62 +802,52 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
     };
 
     //Aksim sensor BUS C
-    let mut aksim_spi_config = spi::Config::default();
+    let mut ring_spi_config = spi::Config::default();
+    ring_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
+    ring_spi_config.bit_order = spi::BitOrder::MsbFirst;
+    ring_spi_config.mode = spi::MODE_1; // Aksim2 uses MODE1
+    #[cfg(feature = "pvt")]
+    { ring_spi_config.mode = spi::MODE_0; } // override the mode - LTC4332 uses MODE0
 
-    aksim_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
-
-    aksim_spi_config.mode = spi::MODE_1;
-
-    aksim_spi_config.bit_order = spi::BitOrder::MsbFirst;
-
-    #[cfg(feature = "orbita2d")]
-    let aksim_spi = SpiDeviceWithConfig::new(
-        &spi_bus,
-        Output::new(config.aksim.cs, Level::High, Speed::Medium),
-        aksim_spi_config,
+    #[cfg(all(feature = "pvt", feature = "orbita2d"))]
+    let mut ring_ltc4332 = create_ltc4332_from_config!(
+        spi_bus,
+        config.ltc4332ring.cs,
+        ring_spi_config
     );
+
     #[cfg(feature = "orbita2d")]
-    let aksim = AksimSensor::new(aksim_spi);
-    #[cfg(feature = "orbita2d")]
-    let aksim = SensorKind::Ring(aksim);
-    ////
+    let aksim = SensorKind::Ring(
+        create_aksim_from_config!(
+            spi_bus,
+            config.aksim.cs,
+            ring_spi_config
+        )
+    );
 
     //Donut I2C Hall sensors
     #[cfg(feature = "orbita3d")]
-    let i2c = I2c::new(
-        config.donut_hall.peri,
-        config.donut_hall.scl,
-        config.donut_hall.sda,
-        IrqsI2c,
-        NoDma,
-        NoDma,
-        Hertz(100_000),
-        Default::default(),
+    let mut donut_hall = DonutHall::new(
+        I2c::new(
+            config.donut_hall.peri,
+            config.donut_hall.scl,
+            config.donut_hall.sda,
+            IrqsI2c,
+            NoDma,
+            NoDma,
+            Hertz(100_000),
+            Default::default(),
+        )
     );
 
-    #[cfg(feature = "orbita3d")]
-    let mut donut_hall = DonutHall::new(i2c);
-    // let mut donut_hall=SensorKind::DonutHall(donut_hall);
-
-    // let val=donut_hall.read();
-    // match val {
-    // 	Ok(val) => {
-    // 	    info!("Donut sensor: {:#x}",val);
-    // 	},
-    // 	Err(e) => {
-    // 	    error!("Donut sensor error: {:?}",e);
-    // 	}
-    // }
-
-    // error!("Donut sensor: {:#x}",val);
-    /////////
 
     // initialise the adc for motor temperature reading
-    #[cfg(not(feature = "no_temperture_sensor"))]
-    let mut motor_temperature_sensor = AnalogInput::new(config.temperature_sensor);
+    #[cfg(not(feature = "no_temperature_sensor"))]
+    let mut motor_temperature_adc = adc_setup(&mut config.temperature_sensing.adc);
+
 
     // Setup the actuator with the configured ventouses
-    #[cfg(all(feature = "orbita2d", feature = "gamma"))]
+    #[cfg(all(feature = "orbita2d", any(feature = "gamma", feature="pvt")))]
     let mut actuator = Actuator::new([ventouse_b, ventouse_c], [aksim, ad5047]);
     #[cfg(all(feature = "orbita2d", feature = "beta"))]
     // We invert motor_a and motor_b because of... mechanics
@@ -871,6 +887,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
 
         // wait for a random duration to avoid all the actuators to start at the same time
         block_for(Duration::from_millis(config::DXL_ID as u64 * 10));
+
         // configure the motors of the actuator
         let res_init = actuator.init().await;
         // verify that the motors are correctly configured
@@ -890,6 +907,50 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
         #[cfg(not(feature = "ignore_errors"))]
         if board_state.is_fault() {
             continue 'init_loop;
+        }
+
+
+        // configure axis sensors if PVT 
+        #[cfg(all(feature = "pvt", feature = "orbita3d"))]
+        match donut_ltc4332.setup(LTC4332Config::Donut){
+            Ok(_) => {
+                info!("Donut LTC4322 setup ok");
+            },
+            Err(e) => {
+                board_state.set_fault_state();
+                board_state.set_homing_error_flag(HomingErrorFlag::AxisSensorReadFail);
+                error!("Donut LTC4322 setup error: {:?}",e);
+                #[cfg(not(feature = "ignore_errors"))]
+                continue 'init_loop;
+            }
+        }
+
+        #[cfg(all(feature = "pvt", feature = "orbita2d"))]
+        match center_ltc4332.setup(LTC4332Config::Center){
+            Ok(_) => {
+                info!("Center LTC4322 setup ok");
+            },
+            Err(e) => {
+                board_state.set_fault_state();
+                board_state.set_homing_error_flag(HomingErrorFlag::AxisSensorReadFail);
+                error!("Center LTC4322 setup error: {:?}",e);
+                #[cfg(not(feature = "ignore_errors"))]
+                continue 'init_loop;
+            }
+        }
+
+        #[cfg(all(feature = "pvt", feature = "orbita2d"))]
+        match ring_ltc4332.setup(LTC4332Config::Ring){
+            Ok(_) => {
+                info!("Ring LTC4322 setup ok");
+            },
+            Err(e) => {
+                board_state.set_fault_state();
+                board_state.set_homing_error_flag(HomingErrorFlag::AxisSensorReadFail);
+                error!("Ring LTC4322 setup error: {:?}",e);
+                #[cfg(not(feature = "ignore_errors"))]
+                continue 'init_loop;
+            }
         }
 
         // read the axis sensors
@@ -1592,20 +1653,18 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
             let mut motor_temp = [0.0; config::N_AXIS];
             #[cfg(not(feature = "no_temperature_sensor"))]
             {
-                // read the motor temperature
-                match motor_temperature_sensor.read_temperature() {
-                    Ok(t) => {
-                        motor_temp = [t; config::N_AXIS];
-                        {
-                            SHARED_MEMORY.lock().await.set_motor_temperature(motor_temp)
-                        };
-                        info!("Motor temperature: {:?}", t);
-                    }
-                    Err(e) => {
-                        loop_communication_error = true;
-                        error!("Motor temperature reading error {:?}", e);
-                    }
-                }
+                // get motor temperatures
+                motor_temp[0] = adc_read_temperature(&mut motor_temperature_adc, &mut config.temperature_sensing.pin1).unwrap_or(motor_temp[0]);
+                #[cfg(feature = "pvt")]
+                {motor_temp[1] = adc_read_temperature(&mut motor_temperature_adc, &mut config.temperature_sensing.pin2).unwrap_or(motor_temp[1]);}
+                #[cfg(all(feature = "pvt", feature = "orbita3d"))]
+                {motor_temp[2] = adc_read_temperature(&mut motor_temperature_adc, &mut config.temperature_sensing.pin3).unwrap_or(motor_temp[2]);}
+                #[cfg(not(feature = "pvt"))]
+                {motor_temp = [motor_temp[0]; config::N_AXIS];}
+                info!("Motor temperature: {:?}", motor_temp);
+                {
+                    SHARED_MEMORY.lock().await.set_motor_temperature(motor_temp)
+                };
             }
 
             // check the temperatures and set the error state if needed
@@ -1633,7 +1692,7 @@ pub async fn control_loop(config: ActuatorConfig, hardware_zeros: [f32; config::
                     {
                         SHARED_MEMORY.lock().await.set_poulpe_state(board_state)
                     };
-                    board_state.set_homing_error_flag(HomingErrorFlag::CommunicationFail);
+                    board_state.set_homing_error_flag(HomingErrorFlag::LowLevelCommunicaiton);
                     error!(
                         "Communication error for {} secs ( max allowed {} secs), stopping operation!",
                         communication_down_duration,

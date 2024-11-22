@@ -1,11 +1,7 @@
 use defmt::error;
 use defmt::Format;
 
-#[derive(Format)]
-pub enum ConversionError {
-    InvalidDataLength,
-    NanReceived,
-}
+use super::errors::ConversionError;
 
 use crate::motor_control::Pid;
 

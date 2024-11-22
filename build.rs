@@ -5,6 +5,28 @@ fn main() {
     println!("cargo:rustc-link-arg-bins=-Tlink.x");
     println!("cargo:rustc-link-arg-bins=-Tdefmt.x");
 
+    let feature_orbitas = [
+        "orbita3d",
+        "orbita2d"
+    ];
+
+    // Check if at least one feature is enabled
+    let feature_enabled = feature_orbitas.iter().any(|feature| {
+        env::var(format!("CARGO_FEATURE_{}", feature.to_uppercase())).is_ok()
+    });
+
+    if !feature_enabled {
+        panic!(
+            "At least one feature ( orbita2d or orbita3d ) must be enabled.\n
+        Please specify a feature in Cargo.toml or with `cargo build --features`. 
+        Example:  \n 
+          cargo build --features orbita2d_pvt # for pvt version on orbita2d \n
+        or \n 
+         cargo build --features orbita3d_beta # for beta version on orbita3d \n"
+    );
+    }
+
+
     // Create a build time file for constants
     let out_dir = env::var("OUT_DIR").expect("No out dir");
     let dest_path = Path::new(&out_dir).join("constants.rs");

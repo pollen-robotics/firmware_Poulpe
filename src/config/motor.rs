@@ -22,7 +22,7 @@ pub struct BrushlessMotor {
 
 impl BrushlessMotor {
     #[allow(dead_code)]
-    #[cfg(not(all(feature = "gamma", feature = "orbita3d")))]
+    #[cfg(not(all(any(feature = "gamma", feature="pvt"), feature = "orbita3d")))]
     pub fn ecx22() -> Self {
         Self {
             // 4 pole pairs for the ecx22
@@ -43,7 +43,7 @@ impl BrushlessMotor {
         }
     }
     #[allow(dead_code)]
-    #[cfg(all(feature = "gamma", feature = "orbita3d"))]
+    #[cfg(all(any(feature = "gamma", feature="pvt"), feature = "orbita3d"))]
     pub fn ecx22() -> Self {
         Self {
             // 4 pole pairs for the ecx22

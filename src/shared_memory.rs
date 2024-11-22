@@ -1,7 +1,8 @@
 use core::cell::RefCell;
 
 use crate::motor_control::foc::MotionMode;
-use crate::motor_control::{Actuator, Pid, RawMotorsIO, RawSensorsIO};
+use crate::motor_control::{Actuator, Pid, RawMotorsIO};
+use crate::sensors::RawSensorsIO;
 use crate::state_machine::cia402_state_machine::CiA402StateMachine;
 use crate::state_machine::poulpe_state::PoulpeState;
 use defmt::error;

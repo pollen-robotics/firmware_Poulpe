@@ -6,17 +6,7 @@ use crate::config::DonutHall;
 
 use super::foc::MotionMode;
 
-pub type Result<T> = core::result::Result<T, IOError>;
-
-#[derive(Debug, Format)]
-pub enum IOError {
-    SpiError(spi::Error),
-    I2cError,
-    InvalidData,
-    Unavailable,
-    InitError,
-    DriverError,
-}
+use crate::utils::errors::Result;
 
 #[derive(Debug, Clone, Copy, PartialEq, Format)]
 pub struct Pid {

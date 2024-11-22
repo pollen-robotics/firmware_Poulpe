@@ -5,13 +5,15 @@ use embassy_time::{Duration, Instant, Timer};
 use crate::{
     config,
     dynamixel::{
-        self, conversion, packet::ParsingError, DynamixelRegister, InstructionPacketKind,
+        self, packet::ParsingError, DynamixelRegister, InstructionPacketKind,
         StatusPacket,
     },
     motor_control::Pid,
     state_machine::poulpe_state::PoulpeState,
     SHARED_MEMORY,
 };
+
+use crate::utils::conversion;
 
 #[embassy_executor::task]
 pub async fn messsage_handler(usart: config::DynamixelUart, dir_pin: AnyPin, id: u8) {

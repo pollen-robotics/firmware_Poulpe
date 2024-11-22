@@ -25,7 +25,7 @@ use embedded_hal_1::spi::SpiDevice;
 
 use static_cell::StaticCell;
 
-use super::motors_io::IOError;
+use crate::utils::errors::IOError;
 use super::RawSensorsIO;
 
 const ADDRESS_A: u8 = 0x38;
@@ -262,7 +262,12 @@ where
         Ok(())
     }
     pub fn read_angle(&mut self) -> Result<[f32; 1], IOError> {
+
         // RLS Aksim2
+        
+        #[cfg(feature = "pvt")]
+        let mut data_read = [0x00u8, 0x00u8, 0x00u8, 0x00u8 , 0x00u8]; // for PVT we use ltc4332 and the first byte is empty
+        #[cfg(not(feature = "pvt"))]
         let mut data_read = [0x00u8, 0x00u8, 0x00u8, 0x00u8];
         // block_for(Duration::from_micros(10000));
         let _ = SpiDevice::transfer_in_place(&mut self.spi, &mut data_read).map_err(|e| {
@@ -270,57 +275,49 @@ where
             IOError::SpiError
         });
 
-        // let _ = SpiDevice::read(&mut self.spi, &mut data_read).map_err(|e| {
-        //         error!("!!! Error SPI {:?}!!!", e);
-        //         IOError::SpiError
-        //     });
-
-        // debug!("read via spi: {:#02x}  {:#02x}  {:#02x} {:#02x}.", &data_read[0], &data_read[1], &data_read[2], &data_read[3]);
-
+        #[cfg(feature = "pvt")]
+        let encoder_data: u64 = ((data_read[1] as u64) << 24) // for PVT we use ltc4332 and the first byte is empty
+            | ((data_read[2] as u64) << 16)
+            | ((data_read[3] as u64) << 8)
+            | (data_read[4] as u64);
+        #[cfg(not(feature = "pvt"))]
         let encoder_data: u64 = ((data_read[0] as u64) << 24)
             | ((data_read[1] as u64) << 16)
             | ((data_read[2] as u64) << 8)
             | (data_read[3] as u64);
+
         // For single-turn
         // b31:b10 - Encoder position + zero padding bits. Left aligned, MSB first. b12:b10 are zero padding bits.
         // b9      - Error: if low, the position data is not valid.
         // b8      - Warning: if low, the position data is valid, but
         //                    some operating conditions are close to limits.
         // b7:b0   - Inverted CRC, 0x97 polynomial
-
         let encoder_position: u32 = ((encoder_data & 0x00000000ffffe000) >> 13) as u32; // 19 bits on MB049
                                                                                         // encoder_position >>= 13; // 19 + 13 = 31 (MSB position of data)
                                                                                         // Nota: 2^19 = 524288
         let error: bool = ((encoder_data & 0x0000000000000200) >> 9) != 0x1; // 9th bit, active low
                                                                              // error >>= 9;
-        let _warning: bool = ((encoder_data & 0x0000000000000100) >> 8) != 0x1; // 8th bit, active low
+        let wanring: bool = ((encoder_data & 0x0000000000000100) >> 8) != 0x1; // 8th bit, active low
         if error {
-            // error!("Ring sensor error",);
+            error!("Ring sensor in error state",);
+            return Err(IOError::InvalidState);
+        }else if wanring {
+            warn!("Ring sensor in warning state",);
+        } 
+        
+        let crc: u8 = (encoder_data & 0x00000000000000ff) as u8; // 7-0 bits //TODO
+        let datapacket: u64 = (encoder_data >> 8) & 0x0000000000ffffff;
+        let calculated_crc = !CRC_SPI_97_64bit(datapacket);
+
+        if calculated_crc != crc  {
+            error!("Ring sensor CRC error. crc: {:#02x} computed: {:#02x} data: {:#x} datapacket: {:#x}", crc, calculated_crc, encoder_data, datapacket);
             Err(IOError::InvalidData)
         } else {
-            let crc: u8 = (encoder_data & 0x00000000000000ff) as u8; // 7-0 bits //TODO
-            let datapacket: u64 = (encoder_data >> 8) & 0x0000000000ffffff;
-            let calculated_crc = !CRC_SPI_97_64bit(datapacket);
-
-            if calculated_crc != crc {
-                // error!("Ring sensor CRC error. crc: {:#02x} computed: {:#02x} data: {:#x} datapacket: {:#x}", crc, calculated_crc, encoder_data, datapacket);
-                Err(IOError::InvalidData)
-            } else {
-                // debug!("CRC {:#02x} computed {:#02x} data {:#x} datapacket {:#x}", crc, calculated_crc, encoder_data, datapacket);
-                let angle = ((encoder_position as f64 / 524288.0) * Self::ANGLE_RANGE) as f32;
-                // debug!("encoder position: {:?} angle {:?} ]warn {:?}",encoder_position,angle, _warning);
-                //debug
-                /*
-                if error{
-                error!("Ring Angle: raw: {}  deg: {} error: {} warn: {}", encoder_position,angle, error, warning);
-                }else{
-                debug!("Ring Angle: raw: {}  deg: {} error: {} warn: {}", encoder_position,angle, error, warning);
-                }
-                 */
-                //Return result
-                Ok([angle])
-            }
+            let angle = ((encoder_position as f64 / 524288.0) * Self::ANGLE_RANGE) as f32;
+            //Return result
+            Ok([angle])
         }
+    
     }
 
     pub fn get_axis_sensor(&mut self) -> Result<[f32; 1], IOError> {
@@ -333,7 +330,7 @@ where
     T: Instance,
     Cs: Pin,
 {
-    spi: SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'static, T, NoDma, NoDma>, Output<'static, Cs>>,
+    pub spi: SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'static, T, NoDma, NoDma>, Output<'static, Cs>>,
 }
 
 // pub struct AD5047SensorConfig<
@@ -388,38 +385,27 @@ where
 
         let mut data_write = [0x7fu8, 0xfeu8]; // read angle
 
-        // let result = self.spi.blocking_write(&data_write);
-        // if result.is_err() {
-        //     defmt::error!("Error writing to Center sensor");
-        //     return Err(result.err().unwrap());
-        // }
-
-        // block_for(Duration::from_micros(10));
 
         let _ = SpiDevice::transfer_in_place(&mut self.spi, &mut data_write).map_err(|e| {
             error!("!!! Error SPI {:?}!!!", e);
             IOError::SpiError
         });
-        // block_for(Duration::from_micros(10));
-
-        // block_for(Duration::from_micros(1));
-
-        // block_for(Duration::from_micros(1));
-
-        let mut data_read = [0x00u8, 0x00u8];
+        
+        #[cfg(feature = "pvt")]
+        let mut data_read = [0x42u8, 0x43u8, 0x44u8];
+        #[cfg(not(feature = "pvt"))]
+        let mut data_read = [0x0u8, 0x0u8];
 
         let _ = SpiDevice::transfer_in_place(&mut self.spi, &mut data_read).map_err(|e| {
             error!("!!! Error SPI {:?}!!!", e);
             IOError::SpiError
         });
 
-        // let result = self.spi.blocking_read(&mut data_read);
-        // if result.is_err() {
-        //     defmt::error!("Error reading Center sensor");
-        //     return Err(result.err().unwrap());
-        // }
-
+        
         // Combine the two u8 values into a 16-bit integer
+        #[cfg(feature = "pvt")]
+        let mut combined_value: u16 = ((data_read[1] as u16) << 8) | (data_read[2] as u16);
+        #[cfg(not(feature = "pvt"))]
         let mut combined_value: u16 = ((data_read[0] as u16) << 8) | (data_read[1] as u16);
 
         if combined_value == 0 {
@@ -429,7 +415,7 @@ where
 
         // check if data has good parity
         if (combined_value.count_ones() % 2) != 0 {
-            // error!("Parity error reading Center sensor");
+            error!("Parity error reading Center sensor");
             return Err(IOError::InvalidData);
         }
         combined_value &= 0x3FFF;

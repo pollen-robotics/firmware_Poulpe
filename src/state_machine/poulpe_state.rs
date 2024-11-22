@@ -24,6 +24,7 @@ pub enum MotorErrorFlag {
     OverCurrent = 32,
     LowBusVoltage = 64,
     DriverFault = 128,
+    TemperatureSensorMalfunctionWarning = 256,
 }
 
 // Error codes for the homing procedure
@@ -33,7 +34,7 @@ pub enum MotorErrorFlag {
 // - AxisSensorAlignFail - error during the alignment of the axis sensor
 // - ZeroingFail - error during the zeroing of the axis positions
 // - IndexSearchFail - error during the search of the index (only orbita3d)
-// - CommunicationFail - error due to communication failure with the motor driver
+// - LowLevelCommunicaiton - error due to communication failure with the motor driver
 #[derive(PartialEq, Clone, Copy, defmt::Format)]
 #[repr(u16)]
 pub enum HomingErrorFlag {
@@ -43,7 +44,7 @@ pub enum HomingErrorFlag {
     AxisSensorAlignFail = 4,
     ZeroingFail = 8,
     IndexSearchFail = 16,
-    CommunicationFail = 32,
+    LowLevelCommunicaiton = 32,
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -218,7 +219,7 @@ impl PoulpeState {
                 4 => Some(HomingErrorFlag::AxisSensorAlignFail),
                 8 => Some(HomingErrorFlag::ZeroingFail),
                 16 => Some(HomingErrorFlag::IndexSearchFail),
-                32 => Some(HomingErrorFlag::CommunicationFail),
+                32 => Some(HomingErrorFlag::LowLevelCommunicaiton),
                 _ => None,
             };
         }
@@ -242,6 +243,7 @@ impl PoulpeState {
                 32 => Some(MotorErrorFlag::OverCurrent),
                 64 => Some(MotorErrorFlag::LowBusVoltage),
                 128 => Some(MotorErrorFlag::DriverFault),
+                256 => Some(MotorErrorFlag::TemperatureSensorMalfunctionWarning),
                 _ => None,
             };
         }

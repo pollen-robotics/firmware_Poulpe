@@ -8,7 +8,7 @@ use embedded_hal_1::spi::SpiDevice;
 
 use libm;
 
-use crate::motor_control::motors_io::IOError;
+use crate::utils::errors::IOError;
 
 use crate::config;
 
@@ -20,10 +20,10 @@ const PWM_POLARITIES: u32 = 0x00000000;
 // drv8316 which are in the gamma elec for orbita3d use low-side
 // current sensing and require a bit more time to measure the current
 // so we need to keep the pwm frequency a bit lower (at 25kHz)
-#[cfg(all(feature = "gamma", feature = "orbita3d"))]
+#[cfg(all(any(any(feature = "gamma", feature="pvt"), feature="pvt"), feature = "orbita3d"))]
 const PWM_MAXCNT: u32 = 0x00000F9F; // PWM-freq 3999 = > 25KHz
                                     // for other boards we can use a higher frequency as they use inline current sensing
-#[cfg(not(all(feature = "gamma", feature = "orbita3d")))]
+#[cfg(not(all(any(any(feature = "gamma", feature="pvt"), feature="pvt"), feature = "orbita3d")))]
 const PWM_MAXCNT: u32 = 0x000007CF; // PWM-freq 1999 = > 50KHz slightly less noisy
                                     // const PWM_MAXCNT: u32 = 0x000003E7; // PWM-freq 999 = > 100KHz
 
@@ -31,16 +31,16 @@ const PWM_BBM_H_BBM_L: u32 = 0x00001919; // Break-Before-Make
 
 // for drv8316 which are in the gamma elec for orbita3d use low-side
 // better current measurement with space vector than with sine wave
-#[cfg(all(feature = "gamma", feature = "orbita3d"))]
+#[cfg(all(any(any(feature = "gamma", feature="pvt"), feature="pvt"), feature = "orbita3d"))]
 const PWM_SV_CHOP: u32 = 0x00000107; //Space vector On + PWM centered
                                      // for other boards we can use the default value
-#[cfg(not(all(feature = "gamma", feature = "orbita3d")))]
+#[cfg(not(all(any(any(feature = "gamma", feature="pvt"), feature="pvt"), feature = "orbita3d")))]
 const PWM_SV_CHOP: u32 = 0x00000007; //Space vector On + PWM centered
 
 // ADC configuration
 #[cfg(feature = "beta")] // current U and V inversion for BOBs in beta elec
 const ADC_I_SELECT: u32 = 0x18000100;
-#[cfg(feature = "gamma")] // no inversions for gamma elec
+#[cfg(any(any(feature = "gamma", feature="pvt"), feature="pvt"))] // no inversions for gamma elec
 const ADC_I_SELECT: u32 = 0x24000100;
 
 const DS_ADC_MCFG_B_MCFG_A: u32 = 0x00100010;
@@ -48,10 +48,10 @@ const DS_ADC_MCFG_B_MCFG_A: u32 = 0x00100010;
 // for drv8316 which are in the gamma elec for orbita3d use low-side
 // better current sensing for lower ADC frequency (20Mhz)
 // datasheet Table 9: Delta Sigma MCLK Configurations
-#[cfg(all(feature = "gamma", feature = "orbita3d"))]
+#[cfg(all(any(any(feature = "gamma", feature="pvt"), feature="pvt"), feature = "orbita3d"))]
 const DS_ADC_MCLK: u32 = 0x19000000;
 // for other boards we can use the default value (25Mhz)
-#[cfg(not(all(feature = "gamma", feature = "orbita3d")))]
+#[cfg(not(all(any(any(feature = "gamma", feature="pvt"), feature="pvt"), feature = "orbita3d")))]
 const DS_ADC_MCLK: u32 = 0x20000000;
 
 const DS_ADC_MCLK_A: u32 = DS_ADC_MCLK;
@@ -62,10 +62,10 @@ const DS_ADC_MCLK_B: u32 = DS_ADC_MCLK;
 // PWM frequency
 // The MDEC_A and MDEC_B should be set to 665 to be in sync with 25KHz pwm
 // dataheet https://www.analog.com/media/en/technical-documentation/data-sheets/TMC4671_datasheet_v1.06.pdf (page 27, table 10.)
-#[cfg(all(feature = "gamma", feature = "orbita3d"))]
+#[cfg(all(any(any(feature = "gamma", feature="pvt"), feature="pvt"), feature = "orbita3d"))]
 const DS_ADC_MDEC_B_MDEC_A: u32 = 0x02990299;
 // for other boards we can use the default value
-#[cfg(not(all(feature = "gamma", feature = "orbita3d")))]
+#[cfg(not(all(any(any(feature = "gamma", feature="pvt"), feature="pvt"), feature = "orbita3d")))]
 const DS_ADC_MDEC_B_MDEC_A: u32 = 0x014E014E;
 
 // full resolution of the ADC is 2^16 - 1
@@ -100,10 +100,10 @@ pub const OPENLOOP_ACCELERATION: u32 = 0x0000003c; // Wizard default
 
 // for drv8316 which are in the gamma elec for orbita3d use low-side
 // better motor encoder align if higher voltage is used (5000 out of 32000)
-#[cfg(all(feature = "gamma", feature = "orbita3d"))]
+#[cfg(all(any(any(feature = "gamma", feature="pvt"), feature="pvt"), feature = "orbita3d"))]
 pub const UQ_UD_EXT: u32 = 0x1388;
 // for other boards we can use the default value (4000 out of 32000)
-#[cfg(not(all(feature = "gamma", feature = "orbita3d")))]
+#[cfg(not(all(any(any(feature = "gamma", feature="pvt"), feature="pvt"), feature = "orbita3d")))]
 pub const UQ_UD_EXT: u32 = 0x000001000;
 
 // max is 32000
@@ -418,7 +418,7 @@ where
             }
         }
     }
-    #[cfg(feature = "gamma")]
+    #[cfg(any(any(feature = "gamma", feature="pvt"), feature="pvt"))]
     fn adc_to_temperature(&self, adc_raw: u32) -> Result<f32, IOError> {
         // NTCS0603E3103FMT 10k
         // https://www.vishay.com/docs/29056/ntcs0603e3t.pdf
@@ -465,7 +465,7 @@ where
                 let voltage = (adc_raw - self.adc_vm_offset) / 32768.0 * 2.5; // scale to 0-2.5V
                 #[cfg(feature = "beta")]
                 let voltage = voltage / (1.0 / (47.0 + 1.0)); // 47k/1k voltage divider (BOB)
-                #[cfg(feature = "gamma")]
+                #[cfg(any(any(feature = "gamma", feature="pvt"), feature="pvt"))]
                 let voltage = voltage / (4.7 / (75.0 + 4.7)); // 75k/4.7k voltage divider (gamma elec ventouse 2d/3d)
 
                 // a seemingly constant linear error
@@ -474,7 +474,7 @@ where
 
                 #[cfg(feature = "beta")]
                 let voltage = (voltage - 0.8580) / 1.0285;
-                #[cfg(feature = "gamma")]
+                #[cfg(any(any(feature = "gamma", feature="pvt"), feature="pvt"))]
                 let voltage = (voltage - 6.1204) / 0.8779;
                 Ok(voltage)
             }
