@@ -36,7 +36,7 @@ jobs:
       - name: Build Hall example for Orbita3d beta
         run: cargo build --release --features orbita3d_beta --bin test_Hall
       - name: Build Hall example for Orbita3d pvt
-        run: cargo build --release --features orbita3d_pvt--bin test_Hall
+        run: cargo build --release --features orbita3d_pvt --bin test_Hall
       - name: Build MotorControl example for Orbita3d beta
         run: cargo build --release --features orbita3d_beta --bin test_MotorControl
       - name: Build MotorControl example for Orbita3d pvt
