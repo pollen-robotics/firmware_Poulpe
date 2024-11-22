@@ -33,6 +33,7 @@ use firmware_poulpe::{
     sensors::sensors::I2cHallConfig,
     motor_control::ventouse::VentouseConfig,
     SHARED_MEMORY,
+    Irqs
 };
 
 

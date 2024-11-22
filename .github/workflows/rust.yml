@@ -34,22 +34,22 @@ jobs:
       steps:
       - uses: actions/checkout@v3
       - name: Build Hall example for Orbita3d beta
-        run: cargo build --release --features orbita3d_beta --example test_Hall
+        run: cargo build --release --features orbita3d_beta --bin test_Hall
       - name: Build Hall example for Orbita3d pvt
-        run: cargo build --release --features orbita3d_pvt--example test_Hall
+        run: cargo build --release --features orbita3d_pvt--bin test_Hall
       - name: Build MotorControl example for Orbita3d beta
-        run: cargo build --release --features orbita3d_beta --example test_MotorControl
+        run: cargo build --release --features orbita3d_beta --bin test_MotorControl
       - name: Build MotorControl example for Orbita3d pvt
-        run: cargo build --release --features orbita3d_pvt --example test_MotorControl
+        run: cargo build --release --features orbita3d_pvt --bin test_MotorControl
       - name: Build Ring example for Orbita2d beta
-        run: cargo build --release --features orbita2d_beta --example test_Ring
+        run: cargo build --release --features orbita2d_beta --bin test_Ring
       - name: Build Ring example for Orbita2d pvt
-        run: cargo build --release --features orbita2d_pvt --example test_Ring
+        run: cargo build --release --features orbita2d_pvt --bin test_Ring
       - name: Build Center example for Orbita2d beta
-        run: cargo build --release --features orbita2d_beta --example test_Center
+        run: cargo build --release --features orbita2d_beta --bin test_Center
       - name: Build Center example for Orbita2d pvt
-        run: cargo build --release --features orbita2d_pvt --example test_Center
+        run: cargo build --release --features orbita2d_pvt --bin test_Center
       - name: Build Temperature example for Orbita2d beta
-        run: cargo build --release --features orbita2d_beta --example test_Temperature
+        run: cargo build --release --features orbita2d_beta --bin test_Temperature
       - name: Build Temperature example for Orbita2d pvt
-        run: cargo build --release --features orbita2d_pvt --example test_Temperature
+        run: cargo build --release --features orbita2d_pvt --bin test_Temperature
