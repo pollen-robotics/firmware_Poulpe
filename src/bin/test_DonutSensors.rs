@@ -3,20 +3,20 @@
 #![feature(type_alias_impl_trait)]
 #![feature(stmt_expr_attributes)]
 
-use embassy_executor::Spawner;
 use defmt::*;
+use embassy_executor::Spawner;
+use embassy_stm32::dma::NoDma;
+use embassy_stm32::gpio::{Level, Output, Speed};
+use embassy_stm32::spi::Spi;
 use embassy_stm32::time::mhz;
 use embassy_stm32::{spi, Config};
-use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_time::{Timer, Duration};
+use embassy_time::{Duration, Timer};
 use {defmt_rtt as _, panic_probe as _};
-use embassy_stm32::dma::{NoDma};
-use embassy_stm32::spi::Spi;
 
 use core::cell::RefCell;
-use embassy_sync::blocking_mutex::{Mutex};
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
+use embassy_sync::blocking_mutex::Mutex;
 use embedded_hal_1::spi::SpiDevice;
 use firmware_poulpe::sensors::sensors::AD5047Sensor;
 use firmware_poulpe::sensors::*;
@@ -64,8 +64,7 @@ async fn main(_spawner: Spawner) {
 
     info!("----------------- LEDs config -----------------");
     let mut led_green = Output::new(p.PC9, Level::High, Speed::Low);
-    let mut led_red   = Output::new(p.PC8, Level::High, Speed::Low);
-
+    let mut led_red = Output::new(p.PC8, Level::High, Speed::Low);
 
     info!("----------------- SPI config -----------------");
     // Configure SPI
@@ -73,21 +72,15 @@ async fn main(_spawner: Spawner) {
     spi_config.mode = spi::MODE_1; // For AS5047 directly internal interface
     spi_config.frequency = mhz(1); // 10 MHz max clk
     #[cfg(feature = "pvt")]
-    { spi_config.mode = spi::MODE_0; } // For LTC4332 internal interface 
+    {
+        spi_config.mode = spi::MODE_0;
+    } // For LTC4332 internal interface
 
     // SPI4 - J3 - 3V3 powered
-    let mut spi4 = spi::Spi::new(
-        p.SPI4, 
-        p.PE12, 
-        p.PE6, 
-        p.PE5, 
-        NoDma, 
-        NoDma, 
-        spi_config);
+    let mut spi4 = spi::Spi::new(p.SPI4, p.PE12, p.PE6, p.PE5, NoDma, NoDma, spi_config);
     // create the shared mutex
     let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi4));
 
-    
     // if pvt electronics we need to configure the LTC4332
     #[cfg(feature = "pvt")]
     {
@@ -97,16 +90,15 @@ async fn main(_spawner: Spawner) {
             Output::new(p.PA12, Level::High, Speed::Medium),
             spi_config,
         );
-        
+
         let mut ltc4332 = ltc4332::LTC4332::new(ltc4332_spi);
         ltc4332.setup(ltc4332::LTC4332Config::Donut);
         info!(
-            "LTC4332 configured, status: {=u8:#x},  config: {=u8:#b} ", 
-            ltc4332.read_status().unwrap_or_default(), 
+            "LTC4332 configured, status: {=u8:#x},  config: {=u8:#b} ",
+            ltc4332.read_status().unwrap_or_default(),
             ltc4332.read_config().unwrap_or_default()
         );
     }
-
 
     info!("----------------- DONUT config -----------------");
     let mut ad5047mid_spi = SpiDeviceWithConfig::new(
@@ -114,7 +106,7 @@ async fn main(_spawner: Spawner) {
         Output::new(p.PE4, Level::High, Speed::Medium),
         spi_config,
     );
-    let mut as5047mid  = AD5047Sensor::new(ad5047mid_spi);
+    let mut as5047mid = AD5047Sensor::new(ad5047mid_spi);
     as5047mid.init();
 
     let mut as5047top_spi = SpiDeviceWithConfig::new(
@@ -122,21 +114,19 @@ async fn main(_spawner: Spawner) {
         Output::new(p.PA4, Level::High, Speed::Medium),
         spi_config,
     );
-    let mut as5047top  = AD5047Sensor::new(as5047top_spi);
+    let mut as5047top = AD5047Sensor::new(as5047top_spi);
     as5047top.init();
-    
+
     let mut as5047bot_spi = SpiDeviceWithConfig::new(
         &spi_bus,
         Output::new(p.PA15, Level::High, Speed::Medium),
         spi_config,
     );
-    let mut as5047bot  = AD5047Sensor::new(as5047bot_spi);
+    let mut as5047bot = AD5047Sensor::new(as5047bot_spi);
     as5047bot.init();
 
-
     info!("----------------- Loop -----------------");
-    loop{
-
+    loop {
         // Led
         led_green.set_high();
         Timer::after_millis(500).await;
@@ -147,8 +137,9 @@ async fn main(_spawner: Spawner) {
         let angle_mid = as5047mid.read_angle().unwrap_or_default();
         let angle_top = as5047top.read_angle().unwrap_or_default();
         // display angles with 3 decimals
-        info!("Angles: bot: {}, mid: {}, top: {}", angle_bot, angle_mid, angle_top);
-
+        info!(
+            "Angles: bot: {}, mid: {}, top: {}",
+            angle_bot, angle_mid, angle_top
+        );
     }
-
 }

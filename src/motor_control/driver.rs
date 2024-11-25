@@ -154,7 +154,7 @@ where
 
     fn check_status(&mut self, _is_enabled: bool) -> Result<(), DriverError> {
         // if not gamma, then return Ok
-        #[cfg(any(feature = "gamma", feature="pvt"))]
+        #[cfg(any(feature = "gamma", feature = "pvt"))]
         {
             return Ok(());
         }

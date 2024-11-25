@@ -1,7 +1,6 @@
 use defmt::Format;
 use embassy_stm32::{i2c, spi};
 
-
 pub type Result<T> = core::result::Result<T, IOError>;
 
 #[derive(Debug, Format)]
@@ -13,7 +12,7 @@ pub enum IOError {
     Unavailable,
     InitError,
     DriverError,
-    CommunicationError
+    CommunicationError,
 }
 
 #[derive(Debug, Format)]

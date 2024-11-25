@@ -3,20 +3,20 @@
 #![feature(type_alias_impl_trait)]
 #![feature(stmt_expr_attributes)]
 
-use embassy_executor::Spawner;
 use defmt::*;
+use embassy_executor::Spawner;
+use embassy_stm32::dma::NoDma;
+use embassy_stm32::gpio::{Level, Output, Speed};
+use embassy_stm32::spi::Spi;
 use embassy_stm32::time::mhz;
 use embassy_stm32::{spi, Config};
-use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_time::{Timer, Duration};
+use embassy_time::{Duration, Timer};
 use {defmt_rtt as _, panic_probe as _};
-use embassy_stm32::dma::{NoDma};
-use embassy_stm32::spi::Spi;
 
 use core::cell::RefCell;
-use embassy_sync::blocking_mutex::{Mutex};
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
+use embassy_sync::blocking_mutex::Mutex;
 use embedded_hal_1::spi::SpiDevice;
 use firmware_poulpe::sensors::sensors::AksimSensor;
 use firmware_poulpe::sensors::*;
@@ -63,8 +63,7 @@ async fn main(_spawner: Spawner) {
     let p = embassy_stm32::init(stm32_conf);
     info!("----------------- LEDs config -----------------");
     let mut led_green = Output::new(p.PC9, Level::High, Speed::Low);
-    let mut led_red   = Output::new(p.PC8, Level::High, Speed::Low);
-
+    let mut led_red = Output::new(p.PC8, Level::High, Speed::Low);
 
     info!("----------------- SPI config -----------------");
     // Configure SPI
@@ -72,17 +71,12 @@ async fn main(_spawner: Spawner) {
     spi_config.mode = spi::MODE_1; // Aksim uses MODE1
     spi_config.frequency = mhz(1); // 10 MHz max clk
     #[cfg(feature = "pvt")]
-    { spi_config.mode = spi::MODE_0; } // For LTC4332 internal interface 
+    {
+        spi_config.mode = spi::MODE_0;
+    } // For LTC4332 internal interface
 
     // SPI4 - J3 - 3V3 powered
-    let mut spi6 = spi::Spi::new(
-        p.SPI6, 
-        p.PB3, 
-        p.PB5, 
-        p.PB4, 
-        NoDma, 
-        NoDma, 
-        spi_config);
+    let mut spi6 = spi::Spi::new(p.SPI6, p.PB3, p.PB5, p.PB4, NoDma, NoDma, spi_config);
     // create the shared mutex
     let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi6));
 
@@ -95,16 +89,15 @@ async fn main(_spawner: Spawner) {
             Output::new(p.PD1, Level::High, Speed::Medium),
             spi_config,
         );
-        
+
         let mut ltc4332 = ltc4332::LTC4332::new(ltc4332_spi);
         ltc4332.setup(ltc4332::LTC4332Config::Ring);
         info!(
-            "LTC4332 configured, status: {=u8:#x},  config: {=u8:#b} ", 
-            ltc4332.read_status().unwrap_or_default(), 
+            "LTC4332 configured, status: {=u8:#x},  config: {=u8:#b} ",
+            ltc4332.read_status().unwrap_or_default(),
             ltc4332.read_config().unwrap_or_default()
         );
     }
-
 
     info!("----------------- RING config -----------------");
     let mut ring_spi = SpiDeviceWithConfig::new(
@@ -112,13 +105,11 @@ async fn main(_spawner: Spawner) {
         Output::new(p.PA15, Level::High, Speed::Medium),
         spi_config,
     );
-    let mut ring_sensor  = AksimSensor::new(ring_spi);
+    let mut ring_sensor = AksimSensor::new(ring_spi);
     ring_sensor.init();
 
-
     info!("----------------- Loop -----------------");
-    loop{
-
+    loop {
         // Led
         led_green.set_high();
         Timer::after_millis(500).await;
@@ -128,5 +119,4 @@ async fn main(_spawner: Spawner) {
         let angle_ring_sensor = ring_sensor.read_angle().unwrap_or_default();
         info!("Ring angle: {}", angle_ring_sensor[0]);
     }
-
 }

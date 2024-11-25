@@ -15,8 +15,7 @@ where
     pub pin1: P,
 }
 
-
-pub struct Orbita2dTemperatureConfig<T,  P1, P2>
+pub struct Orbita2dTemperatureConfig<T, P1, P2>
 where
     T: Instance,
     P1: AdcPin<T> + Pin,
@@ -26,8 +25,6 @@ where
     pub pin1: P1,
     pub pin2: P2,
 }
-
-
 
 pub struct Orbita3dTemperatureConfig<T, P1, P2, P3>
 where
@@ -39,7 +36,7 @@ where
     pub adc: T,
     pub pin1: P1,
     pub pin2: P2,
-    pub pin3: P3
+    pub pin3: P3,
 }
 
 pub fn adc_setup<T: Instance>(adc: &mut T) -> Adc<T> {
@@ -60,7 +57,10 @@ pub fn adc_read_voltage<T: Instance, P: AdcPin<T> + Pin>(adc: &mut Adc<T>, pin: 
     voltage
 }
 
-pub fn adc_read_temperature<T: Instance, P: AdcPin<T> + Pin>(adc: &mut Adc<T>, pin: &mut P) -> Result<f32> {
+pub fn adc_read_temperature<T: Instance, P: AdcPin<T> + Pin>(
+    adc: &mut Adc<T>,
+    pin: &mut P,
+) -> Result<f32> {
     let voltage: f32 = adc_read_voltage(adc, pin);
     // Formula: https://www.giangrandi.org/electronics/ntc/ntc.shtml
     let r_div: f32 = 4700.0;
@@ -76,4 +76,3 @@ pub fn adc_read_temperature<T: Instance, P: AdcPin<T> + Pin>(adc: &mut Adc<T>, p
         _ => Ok((t as f32) - 273.15), // final conversion to Celsius
     }
 }
-

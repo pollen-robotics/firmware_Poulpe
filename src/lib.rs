@@ -10,22 +10,19 @@ pub mod config;
 pub mod dynamixel;
 pub mod ethercat;
 pub mod motor_control;
-pub mod state_machine;
 pub mod sensors;
+pub mod state_machine;
 pub mod utils;
 
-pub use utils::shared_memory::SharedMemory;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
+pub use utils::shared_memory::SharedMemory;
 
 // TODO: Use a NoopMutex instead of a real mutex?
 pub static SHARED_MEMORY: Mutex<ThreadModeRawMutex, SharedMemory<{ config::N_AXIS }>> =
     Mutex::new(SharedMemory::default());
 
-
-
-
-use embassy_stm32::{bind_interrupts, peripherals, usart, i2c};
+use embassy_stm32::{bind_interrupts, i2c, peripherals, usart};
 
 bind_interrupts!(pub struct Irqs {
     USART1 => usart::InterruptHandler<peripherals::USART1>;
@@ -33,7 +30,6 @@ bind_interrupts!(pub struct Irqs {
 bind_interrupts!(pub struct IrqsI2c {
     I2C1_EV => i2c::InterruptHandler<peripherals::I2C1>;
 });
-
 
 use {defmt_rtt as _, panic_probe as _};
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message
@@ -47,4 +43,3 @@ pub fn exit() -> ! {
         cortex_m::asm::bkpt();
     }
 }
-    

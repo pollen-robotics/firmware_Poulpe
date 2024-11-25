@@ -19,29 +19,26 @@ use embassy_time::{block_for, Duration, Ticker, Timer};
 use rand_core::le;
 
 use firmware_poulpe::config::{
-    AD5047Config, AD5047ConfigBot, AD5047ConfigMid, AD5047ConfigTop, ActuatorConfig, AksimConfig, LAN9252Config, LTC4332CenterConfig, LTC4332DonutConfig, LTC4332RingConfig
+    AD5047Config, AD5047ConfigBot, AD5047ConfigMid, AD5047ConfigTop, ActuatorConfig, AksimConfig,
+    LAN9252Config, LTC4332CenterConfig, LTC4332DonutConfig, LTC4332RingConfig,
 };
 use firmware_poulpe::{
-    config::{self, CurrentSensing, BrushlessMotor},
-    utils,
-    motor_control,
-    dynamixel,
-    ethercat,
-    utils::flash,
-    state_machine::poulpe_state,
+    config::{self, BrushlessMotor, CurrentSensing},
+    dynamixel, ethercat,
     ethercat::EthercatConfig,
-    sensors::sensors::I2cHallConfig,
+    motor_control,
     motor_control::ventouse::VentouseConfig,
-    SHARED_MEMORY,
-    Irqs
+    sensors::sensors::I2cHallConfig,
+    state_machine::poulpe_state,
+    utils,
+    utils::flash,
+    Irqs, SHARED_MEMORY,
 };
 
-
-#[cfg(feature = "use_flash")]
-use firmware_poulpe::utils::flash::{FlashData, FlashManager};
 #[cfg(not(feature = "no_temperature_sensor"))]
 use firmware_poulpe::config::TemperatureSensingConfig;
-
+#[cfg(feature = "use_flash")]
+use firmware_poulpe::utils::flash::{FlashData, FlashManager};
 
 // from build.rs
 // include!(concat!(env!("OUT_DIR"), "/constants.rs"));
@@ -54,11 +51,11 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "orbita2d")]
     info!("Poulpe: Orbita 2D");
 
-    #[cfg(feature ="pvt")]
+    #[cfg(feature = "pvt")]
     info!("Verison: PVT");
-    #[cfg(feature ="beta")]
+    #[cfg(feature = "beta")]
     info!("Verison: Beta");
-    #[cfg(feature ="gamma")]
+    #[cfg(feature = "gamma")]
     info!("Verison: Gamma");
 
     #[cfg(feature = "ec45")]
@@ -72,10 +69,7 @@ async fn main(spawner: Spawner) {
     info!("Communication: EtherCAT");
     #[cfg(feature = "dynamixel")]
     info!("Communication: Dynamixel");
-    #[cfg(not(any(
-        feature = "ethercat",
-        feature = "dynamixel",
-    )))]
+    #[cfg(not(any(feature = "ethercat", feature = "dynamixel",)))]
     warn!("No communication enabled");
 
     info!("Git commit: {:?}", config::GIT_HASH); //TODO: read access from a dxl msg?
@@ -185,7 +179,7 @@ async fn main(spawner: Spawner) {
             motor_config: BrushlessMotor::ecx22(),
             #[cfg(feature = "beta")]
             current_sense_config: CurrentSensing::ventouse_bob(), // current sense for the TMC BOB board
-            #[cfg(any(feature = "gamma", feature="pvt"))]
+            #[cfg(any(feature = "gamma", feature = "pvt"))]
             current_sense_config: CurrentSensing::ventouse_3d(), // current sense for gamma elec ventouse 2d
         },
         b: VentouseConfig {
@@ -200,7 +194,7 @@ async fn main(spawner: Spawner) {
             motor_config: BrushlessMotor::ecx22(),
             #[cfg(feature = "beta")]
             current_sense_config: CurrentSensing::ventouse_bob(), // current sense for the TMC BOB board
-            #[cfg(any(feature = "gamma", feature="pvt"))]
+            #[cfg(any(feature = "gamma", feature = "pvt"))]
             current_sense_config: CurrentSensing::ventouse_3d(), // current sense for gamma elec ventouse 2d
         },
         c: VentouseConfig {
@@ -215,7 +209,7 @@ async fn main(spawner: Spawner) {
             motor_config: BrushlessMotor::ecx22(),
             #[cfg(feature = "beta")]
             current_sense_config: CurrentSensing::ventouse_bob(), // current sense for the TMC BOB board
-            #[cfg(any(feature = "gamma", feature="pvt"))]
+            #[cfg(any(feature = "gamma", feature = "pvt"))]
             current_sense_config: CurrentSensing::ventouse_3d(), // current sense for gamma elec ventouse 2d
         },
 
@@ -240,8 +234,8 @@ async fn main(spawner: Spawner) {
             scl: p.PB6,
             sda: p.PB7,
         },
-        #[cfg(feature="pvt")]
-        ltc4332donut: LTC4332DonutConfig{ cs: p.PA12 },
+        #[cfg(feature = "pvt")]
+        ltc4332donut: LTC4332DonutConfig { cs: p.PA12 },
     };
     #[cfg(feature = "orbita2d")]
     let actuator_config = ActuatorConfig {
@@ -260,7 +254,7 @@ async fn main(spawner: Spawner) {
             otor_config: BrushlessMotor::ec60(),
             #[cfg(feature = "beta")]
             current_sense_config: CurrentSensing::ventouse_bob(), // current sense for the TMC BOB board
-            #[cfg(any(feature = "gamma", feature="pvt"))]
+            #[cfg(any(feature = "gamma", feature = "pvt"))]
             current_sense_config: CurrentSensing::ventouse_2d(), // current sense for gamma elec ventouse 2d
         },
         c: VentouseConfig {
@@ -278,7 +272,7 @@ async fn main(spawner: Spawner) {
             otor_config: BrushlessMotor::ec60(),
             #[cfg(feature = "beta")]
             current_sense_config: CurrentSensing::ventouse_bob(), // current sense for the TMC BOB board
-            #[cfg(any(feature = "gamma", feature="pvt"))]
+            #[cfg(any(feature = "gamma", feature = "pvt"))]
             current_sense_config: CurrentSensing::ventouse_2d(), // current sense for gamma elec ventouse 2d
         },
 
@@ -295,10 +289,10 @@ async fn main(spawner: Spawner) {
             adc: p.ADC1,
             pin1: p.PB1,
         },
-        #[cfg(feature="pvt")]
-        ltc4332center: LTC4332CenterConfig{ cs: p.PB9 },
-        #[cfg(feature="pvt")]
-        ltc4332ring: LTC4332RingConfig{ cs: p.PD1 },
+        #[cfg(feature = "pvt")]
+        ltc4332center: LTC4332CenterConfig { cs: p.PB9 },
+        #[cfg(feature = "pvt")]
+        ltc4332ring: LTC4332RingConfig { cs: p.PD1 },
     };
 
     unwrap!(spawner.spawn(motor_control::task::control_loop(

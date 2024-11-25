@@ -7,18 +7,10 @@ use embassy_executor::Spawner;
 use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_stm32::i2c::{Error, I2c};
 use embassy_stm32::time::Hertz;
+use embassy_stm32::{dma::NoDma, i2c, peripherals};
 use embassy_time::{Duration, Timer};
-use embassy_stm32::{
-    i2c, 
-    peripherals,
-    dma::NoDma,
-};
 
-use firmware_poulpe::{
-    sensors::sensors::I2cHallSensor,
-    IrqsI2c,
-};
-
+use firmware_poulpe::{sensors::sensors::I2cHallSensor, IrqsI2c};
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -27,11 +19,9 @@ async fn main(_spawner: Spawner) {
 
     info!("----------------- LEDs config -----------------");
     let mut led_green = Output::new(p.PC9, Level::High, Speed::Low);
-    let mut led_red   = Output::new(p.PC8, Level::High, Speed::Low);
+    let mut led_red = Output::new(p.PC8, Level::High, Speed::Low);
     led_green.set_low();
     led_red.set_high();
-
-
 
     info!("----------------- HALL sensor config ------------------");
     let i2c = I2c::new(
@@ -46,9 +36,8 @@ async fn main(_spawner: Spawner) {
     );
     let mut hall_sensors = I2cHallSensor::new(i2c);
 
-
     led_red.set_low();
-    
+
     loop {
         led_green.set_high();
         Timer::after(Duration::from_millis(100)).await;
@@ -57,7 +46,7 @@ async fn main(_spawner: Spawner) {
         match hall_sensors.read() {
             Ok(hall_detected) => {
                 info!("Halls: {:#018b}", hall_detected);
-            },
+            }
             Err(e) => {
                 info!("Error: {:?}", e);
             }
@@ -65,5 +54,4 @@ async fn main(_spawner: Spawner) {
 
         Timer::after(Duration::from_millis(100)).await;
     }
-
 }

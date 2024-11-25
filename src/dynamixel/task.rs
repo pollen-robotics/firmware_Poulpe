@@ -5,8 +5,7 @@ use embassy_time::{Duration, Instant, Timer};
 use crate::{
     config,
     dynamixel::{
-        self, packet::ParsingError, DynamixelRegister, InstructionPacketKind,
-        StatusPacket,
+        self, packet::ParsingError, DynamixelRegister, InstructionPacketKind, StatusPacket,
     },
     motor_control::Pid,
     state_machine::poulpe_state::PoulpeState,

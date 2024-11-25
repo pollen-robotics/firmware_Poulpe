@@ -10,7 +10,6 @@ pub fn bit(value: u16, bit: u8) -> bool {
     value & (1 << bit) != 0
 }
 
-
 pub fn bytes_to_bool<const N: usize>(data: &[u8]) -> Result<[bool; N], ConversionError> {
     if data.len() != N {
         error!(

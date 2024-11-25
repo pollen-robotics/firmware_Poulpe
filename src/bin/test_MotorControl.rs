@@ -4,24 +4,24 @@
 #![feature(stmt_expr_attributes)]
 
 use cortex_m::register::control;
-use embassy_executor::Spawner;
 use defmt::*;
+use embassy_executor::Spawner;
+use embassy_stm32::dma::NoDma;
+use embassy_stm32::gpio::{Level, Output, Speed};
+use embassy_stm32::spi::Spi;
 use embassy_stm32::time::mhz;
 use embassy_stm32::{spi, Config};
-use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_time::{Timer, Duration,Ticker, Instant};
-use embassy_stm32::dma::{NoDma};
-use embassy_stm32::spi::Spi;
+use embassy_time::{Duration, Instant, Ticker, Timer};
 
 use core::cell::RefCell;
-use embassy_sync::blocking_mutex::{Mutex};
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
+use embassy_sync::blocking_mutex::Mutex;
 use embedded_hal_1::spi::SpiDevice;
 
-use firmware_poulpe::motor_control::ventouse::*;    
+use firmware_poulpe::config::{BrushlessMotor, CurrentSensing};
+use firmware_poulpe::motor_control::ventouse::*;
 use firmware_poulpe::motor_control::*;
-use firmware_poulpe::config::{CurrentSensing, BrushlessMotor};
 
 #[embassy_executor::main]
 pub async fn main(_spawner: Spawner) {
@@ -66,8 +66,7 @@ pub async fn main(_spawner: Spawner) {
 
     info!("----------------- LEDs config -----------------");
     let mut led_green = Output::new(p.PC9, Level::High, Speed::Low);
-    let mut led_red   = Output::new(p.PC8, Level::High, Speed::Low);
-
+    let mut led_red = Output::new(p.PC8, Level::High, Speed::Low);
 
     info!("----------------- SPI config -----------------");
     let mut foc_spi_config = spi::Config::default();
@@ -76,12 +75,14 @@ pub async fn main(_spawner: Spawner) {
     foc_spi_config.bit_order = spi::BitOrder::MsbFirst;
     let mut driver_spi_config = spi::Config::default();
     driver_spi_config.mode = spi::MODE_3;
-    #[cfg(all(any(feature = "gamma", feature="pvt"), feature = "orbita3d"))]
-    { driver_spi_config.mode = spi::MODE_1; }
-    driver_spi_config.frequency =mhz(2);
+    #[cfg(all(any(feature = "gamma", feature = "pvt"), feature = "orbita3d"))]
+    {
+        driver_spi_config.mode = spi::MODE_1;
+    }
+    driver_spi_config.frequency = mhz(2);
     driver_spi_config.bit_order = spi::BitOrder::MsbFirst;
 
-    let config = VentouseConfig{
+    let config = VentouseConfig {
         peri: p.SPI4,
         sck: p.PE12,
         mosi: p.PE6,
@@ -92,13 +93,13 @@ pub async fn main(_spawner: Spawner) {
         driver_status_pin: p.PC14,
         #[cfg(feature = "orbita3d")]
         motor_config: BrushlessMotor::ecx22(), // motor config for the ECX22
-        #[cfg(feature = "orbita2d")] 
+        #[cfg(feature = "orbita2d")]
         motor_config: BrushlessMotor::ec45(), // motor config for the EC45
         #[cfg(feature = "beta")]
         current_sense_config: CurrentSensing::ventouse_bob(), // current sense for the TMC BOB board
-        #[cfg(all(any(feature = "gamma", feature="pvt"), feature = "orbita2d"))]
+        #[cfg(all(any(feature = "gamma", feature = "pvt"), feature = "orbita2d"))]
         current_sense_config: CurrentSensing::ventouse_2d(), // current sense for gamma elec ventouse 2d
-        #[cfg(all(any(feature = "gamma", feature="pvt"), feature = "orbita3d"))]
+        #[cfg(all(any(feature = "gamma", feature = "pvt"), feature = "orbita3d"))]
         current_sense_config: CurrentSensing::ventouse_3d(), // current sense for gamma elec ventouse 2d
     };
 
@@ -108,11 +109,12 @@ pub async fn main(_spawner: Spawner) {
         config.sck,
         config.mosi,
         config.miso,
-        NoDma, 
-        NoDma, 
-        spi::Config::default());
+        NoDma,
+        NoDma,
+        spi::Config::default(),
+    );
     // create the shared mutex
-    let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi4));   
+    let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi4));
 
     info!("----------------- FOC config -----------------");
     let foc = Foc::new(
@@ -123,7 +125,7 @@ pub async fn main(_spawner: Spawner) {
         ),
         config.foc_enable,
         config.motor_config,
-        config.current_sense_config
+        config.current_sense_config,
     );
 
     info!("----------------- Driver config -----------------");
@@ -132,25 +134,33 @@ pub async fn main(_spawner: Spawner) {
         Output::new(config.driver_cs, Level::High, Speed::Medium),
         driver_spi_config,
     );
-    #[cfg(all(feature = "orbita3d", any(feature = "gamma", feature="pvt")))]
+    #[cfg(all(feature = "orbita3d", any(feature = "gamma", feature = "pvt")))]
     let driver = DriverDRV8316::new(driver_spi, config.driver_status_pin);
-    #[cfg(any(feature = "beta", all(feature = "orbita2d", any(feature = "gamma", feature="pvt"))))]
+    #[cfg(any(
+        feature = "beta",
+        all(feature = "orbita2d", any(feature = "gamma", feature = "pvt"))
+    ))]
     let driver = DriverTMC6200::new(driver_spi, config.driver_status_pin);
 
-
     info!("----------------- Ventouse config -----------------");
-    let mut controller: Ventouse<'_, embassy_stm32::peripherals::SPI4, embassy_stm32::peripherals::PE3, embassy_stm32::peripherals::PE0, _> = Ventouse::new(foc, driver);
-    match controller.init('A').await{
+    let mut controller: Ventouse<
+        '_,
+        embassy_stm32::peripherals::SPI4,
+        embassy_stm32::peripherals::PE3,
+        embassy_stm32::peripherals::PE0,
+        _,
+    > = Ventouse::new(foc, driver);
+    match controller.init('A').await {
         Ok(_) => info!("Ventouse initialized"),
         Err(e) => error!("Ventouse initialization failed: {:?}", e),
     }
     Timer::after(Duration::from_millis(500)).await;
-    match controller.check_motors_1().await{
+    match controller.check_motors_1().await {
         Ok(_) => info!("Check 1 passed"),
         Err(e) => error!("Check 1 failed: {:?}", e),
     }
     Timer::after(Duration::from_millis(500)).await;
-    match controller.check_motors_2().await{
+    match controller.check_motors_2().await {
         Ok(_) => info!("Check 2 passed"),
         Err(e) => error!("Check 2 failed: {:?}", e),
     }
@@ -163,12 +173,15 @@ pub async fn main(_spawner: Spawner) {
     // set the green led
     led_green.set_high();
     loop {
-        let angle = libm::sin(t0.elapsed().as_millis() as f64/1000.0) as f32;
+        let angle = libm::sin(t0.elapsed().as_millis() as f64 / 1000.0) as f32;
         controller.set_target_position([angle + initial_position]);
 
         let current_position = controller.get_current_position().unwrap_or_default()[0];
         ticker.next().await;
-        info!("Target position: {} \t Current position: {}", angle + initial_position, current_position);
+        info!(
+            "Target position: {} \t Current position: {}",
+            angle + initial_position,
+            current_position
+        );
     }
-
 }

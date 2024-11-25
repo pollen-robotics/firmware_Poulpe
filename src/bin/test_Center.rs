@@ -3,20 +3,20 @@
 #![feature(type_alias_impl_trait)]
 #![feature(stmt_expr_attributes)]
 
-use embassy_executor::Spawner;
 use defmt::*;
+use embassy_executor::Spawner;
+use embassy_stm32::dma::NoDma;
+use embassy_stm32::gpio::{Level, Output, Speed};
+use embassy_stm32::spi::Spi;
 use embassy_stm32::time::mhz;
 use embassy_stm32::{spi, Config};
-use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_time::{Timer, Duration};
+use embassy_time::{Duration, Timer};
 use {defmt_rtt as _, panic_probe as _};
-use embassy_stm32::dma::{NoDma};
-use embassy_stm32::spi::Spi;
 
 use core::cell::RefCell;
-use embassy_sync::blocking_mutex::{Mutex};
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
+use embassy_sync::blocking_mutex::Mutex;
 use embedded_hal_1::spi::SpiDevice;
 use firmware_poulpe::sensors::sensors::AD5047Sensor;
 use firmware_poulpe::sensors::*;
@@ -63,8 +63,7 @@ pub async fn main(_spawner: Spawner) {
 
     info!("----------------- LEDs config -----------------");
     let mut led_green = Output::new(p.PC9, Level::High, Speed::Low);
-    let mut led_red   = Output::new(p.PC8, Level::High, Speed::Low);
-
+    let mut led_red = Output::new(p.PC8, Level::High, Speed::Low);
 
     info!("----------------- SPI config -----------------");
     // Configure SPI
@@ -73,21 +72,15 @@ pub async fn main(_spawner: Spawner) {
     spi_config.frequency = mhz(1); // 10 MHz max clk
     spi_config.bit_order = spi::BitOrder::MsbFirst;
     #[cfg(feature = "pvt")]
-    { spi_config.mode = spi::MODE_0; } // For LTC4332 internal interface 
+    {
+        spi_config.mode = spi::MODE_0;
+    } // For LTC4332 internal interface
 
     // SPI4 - J3 - 3V3 powered
-    let mut spi4 = spi::Spi::new(
-        p.SPI4, 
-        p.PE12, 
-        p.PE6, 
-        p.PE5, 
-        NoDma, 
-        NoDma, 
-        spi_config);
+    let mut spi4 = spi::Spi::new(p.SPI4, p.PE12, p.PE6, p.PE5, NoDma, NoDma, spi_config);
     // create the shared mutex
     let spi_bus: Mutex<NoopRawMutex, _> = Mutex::new(RefCell::new(spi4));
 
-    
     // if pvt electronics we need to configure the LTC4332
     #[cfg(feature = "pvt")]
     {
@@ -97,30 +90,27 @@ pub async fn main(_spawner: Spawner) {
             Output::new(p.PB9, Level::High, Speed::Medium),
             spi_config,
         );
-        
+
         let mut ltc4332 = ltc4332::LTC4332::new(ltc4332_spi);
         ltc4332.setup(ltc4332::LTC4332Config::Center);
         info!(
-            "LTC4332 configured, status: {=u8:#x},  config: {=u8:#b} ", 
-            ltc4332.read_status().unwrap_or_default(), 
+            "LTC4332 configured, status: {=u8:#x},  config: {=u8:#b} ",
+            ltc4332.read_status().unwrap_or_default(),
             ltc4332.read_config().unwrap_or_default()
         );
     }
 
-
     info!("----------------- CENTER config -----------------");
-    let mut center  = AD5047Sensor::new(
-        SpiDeviceWithConfig::new(
-            &spi_bus,
-            Output::new(p.PE4, Level::High, Speed::Medium),
-            spi_config,
-        )
-    );
+    let mut center = AD5047Sensor::new(SpiDeviceWithConfig::new(
+        &spi_bus,
+        Output::new(p.PE4, Level::High, Speed::Medium),
+        spi_config,
+    ));
     center.init();
 
     #[cfg(not(feature = "pvt"))]
-    { 
-        // if gamma or beta the electronics seem to be a bit more sensitive 
+    {
+        // if gamma or beta the electronics seem to be a bit more sensitive
         // so we need to set the chip select pins high
         // for tmc4671
         Output::new(p.PE3, Level::High, Speed::Low).set_high();
@@ -128,15 +118,14 @@ pub async fn main(_spawner: Spawner) {
         Output::new(p.PC15, Level::High, Speed::Low).set_high();
     }
     info!("----------------- Loop -----------------");
-    loop{
-
+    loop {
         // Led
         led_green.set_high();
         Timer::after_millis(500).await;
         led_green.set_low();
         Timer::after_millis(500).await;
 
-        let angle_center = match center.read_angle(){
+        let angle_center = match center.read_angle() {
             Ok(a) => a,
             Err(e) => {
                 error!("Error reading center angle: {:?}", e);
@@ -144,8 +133,5 @@ pub async fn main(_spawner: Spawner) {
             }
         };
         info!("Center angle: {}", angle_center[0]);
-
-
     }
-
 }

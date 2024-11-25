@@ -3,11 +3,11 @@
 #![feature(type_alias_impl_trait)]
 #![feature(stmt_expr_attributes)]
 
+use defmt::*;
 use embassy_executor::Spawner;
 use embassy_stm32::{spi, Config};
-use defmt::*;
+use embassy_time::{Duration, Timer};
 use firmware_poulpe::sensors::analog::*;
-use embassy_time::{Timer, Duration};
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -50,42 +50,44 @@ async fn main(_spawner: Spawner) {
 
     info!("----------------- Motor Temperature sensor config -----------------");
     #[cfg(all(feature = "orbita3d", feature = "pvt"))]
-    let mut sensor_config = Orbita3dTemperatureConfig{
+    let mut sensor_config = Orbita3dTemperatureConfig {
         adc: p.ADC1,
         pin1: p.PB1,
         pin2: p.PC5,
-        pin3: p.PB0
+        pin3: p.PB0,
     };
 
     #[cfg(all(feature = "orbita2d", feature = "pvt"))]
-    let mut sensor_config = Orbita2dTemperatureConfig{
+    let mut sensor_config = Orbita2dTemperatureConfig {
         adc: p.ADC1,
         pin1: p.PC5,
-        pin2: p.PB0
+        pin2: p.PB0,
     };
     #[cfg(not(feature = "pvt"))]
-    let mut sensor_config = AnalogInputConfig{
+    let mut sensor_config = AnalogInputConfig {
         adc: p.ADC1,
         pin1: p.PB1,
     };
     let mut adc = adc_setup(&mut sensor_config.adc);
 
-
     info!("----------------- Loop -----------------");
-    loop {  
+    loop {
         #[cfg(all(feature = "orbita3d", feature = "pvt"))]
-        info!("Motor Temperatures: {} C, {} C, {} C", 
-            adc_read_temperature(&mut adc, &mut sensor_config.pin1), 
-            adc_read_temperature(&mut adc, &mut sensor_config.pin2), 
+        info!(
+            "Motor Temperatures: {} C, {} C, {} C",
+            adc_read_temperature(&mut adc, &mut sensor_config.pin1),
+            adc_read_temperature(&mut adc, &mut sensor_config.pin2),
             adc_read_temperature(&mut adc, &mut sensor_config.pin3)
         );
         #[cfg(all(feature = "orbita2d", feature = "pvt"))]
-        info!("Motor Temperatures: {} C, {} C", 
-            adc_read_temperature(&mut adc, &mut sensor_config.pin1), 
+        info!(
+            "Motor Temperatures: {} C, {} C",
+            adc_read_temperature(&mut adc, &mut sensor_config.pin1),
             adc_read_temperature(&mut adc, &mut sensor_config.pin2)
         );
         #[cfg(not(feature = "pvt"))]
-        info!("Motor Temperature: {} C", 
+        info!(
+            "Motor Temperature: {} C",
             adc_read_temperature(&mut adc, &mut sensor_config.pin1)
         );
         Timer::after_millis(500).await;

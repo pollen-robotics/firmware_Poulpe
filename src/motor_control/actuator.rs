@@ -7,9 +7,9 @@ use super::motors_io::{Pid, RawMotorsIO};
 use crate::config::BrushlessMotor;
 use crate::config::DonutHall;
 
-use crate::utils::errors::{IOError, Result};
-use crate::sensors::{sensors::SensorKind, sensors_io::RawSensorsIO};
 use super::ventouse::VentouseKind;
+use crate::sensors::{sensors::SensorKind, sensors_io::RawSensorsIO};
+use crate::utils::errors::{IOError, Result};
 use defmt::{debug, error, info, warn};
 use micromath::F32Ext;
 

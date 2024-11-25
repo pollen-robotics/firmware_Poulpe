@@ -25,8 +25,8 @@ use embedded_hal_1::spi::SpiDevice;
 
 use static_cell::StaticCell;
 
-use crate::utils::errors::IOError;
 use super::RawSensorsIO;
+use crate::utils::errors::IOError;
 
 const ADDRESS_A: u8 = 0x38;
 const ADDRESS_B: u8 = 0x39;
@@ -262,11 +262,10 @@ where
         Ok(())
     }
     pub fn read_angle(&mut self) -> Result<[f32; 1], IOError> {
-
         // RLS Aksim2
-        
+
         #[cfg(feature = "pvt")]
-        let mut data_read = [0x00u8, 0x00u8, 0x00u8, 0x00u8 , 0x00u8]; // for PVT we use ltc4332 and the first byte is empty
+        let mut data_read = [0x00u8, 0x00u8, 0x00u8, 0x00u8, 0x00u8]; // for PVT we use ltc4332 and the first byte is empty
         #[cfg(not(feature = "pvt"))]
         let mut data_read = [0x00u8, 0x00u8, 0x00u8, 0x00u8];
         // block_for(Duration::from_micros(10000));
@@ -301,15 +300,15 @@ where
         if error {
             error!("Ring sensor in error state",);
             return Err(IOError::InvalidState);
-        }else if wanring {
+        } else if wanring {
             warn!("Ring sensor in warning state",);
-        } 
-        
+        }
+
         let crc: u8 = (encoder_data & 0x00000000000000ff) as u8; // 7-0 bits //TODO
         let datapacket: u64 = (encoder_data >> 8) & 0x0000000000ffffff;
         let calculated_crc = !CRC_SPI_97_64bit(datapacket);
 
-        if calculated_crc != crc  {
+        if calculated_crc != crc {
             error!("Ring sensor CRC error. crc: {:#02x} computed: {:#02x} data: {:#x} datapacket: {:#x}", crc, calculated_crc, encoder_data, datapacket);
             Err(IOError::InvalidData)
         } else {
@@ -317,7 +316,6 @@ where
             //Return result
             Ok([angle])
         }
-    
     }
 
     pub fn get_axis_sensor(&mut self) -> Result<[f32; 1], IOError> {
@@ -330,7 +328,8 @@ where
     T: Instance,
     Cs: Pin,
 {
-    pub spi: SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'static, T, NoDma, NoDma>, Output<'static, Cs>>,
+    pub spi:
+        SpiDeviceWithConfig<'d, NoopRawMutex, Spi<'static, T, NoDma, NoDma>, Output<'static, Cs>>,
 }
 
 // pub struct AD5047SensorConfig<
@@ -385,12 +384,11 @@ where
 
         let mut data_write = [0x7fu8, 0xfeu8]; // read angle
 
-
         let _ = SpiDevice::transfer_in_place(&mut self.spi, &mut data_write).map_err(|e| {
             error!("!!! Error SPI {:?}!!!", e);
             IOError::SpiError
         });
-        
+
         #[cfg(feature = "pvt")]
         let mut data_read = [0x42u8, 0x43u8, 0x44u8];
         #[cfg(not(feature = "pvt"))]
@@ -401,7 +399,6 @@ where
             IOError::SpiError
         });
 
-        
         // Combine the two u8 values into a 16-bit integer
         #[cfg(feature = "pvt")]
         let mut combined_value: u16 = ((data_read[1] as u16) << 8) | (data_read[2] as u16);

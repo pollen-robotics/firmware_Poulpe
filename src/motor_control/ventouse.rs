@@ -148,7 +148,9 @@ where
         Ok(())
     }
 
-    pub async fn calibrate_adc_offsets(&mut self) -> core::result::Result<(), embassy_stm32::spi::Error> {
+    pub async fn calibrate_adc_offsets(
+        &mut self,
+    ) -> core::result::Result<(), embassy_stm32::spi::Error> {
         // stop the motor
         // disable potential motion/torque control
         self.foc.tmc4671_set_mode(MotionMode::Stopped)?;
@@ -233,7 +235,7 @@ where
 
         let mut target: i32 = 1000;
         //Assume that check_motors_1 has been called
-        #[cfg(all(feature = "orbita2d", any(feature = "gamma", feature="pvt")))]
+        #[cfg(all(feature = "orbita2d", any(feature = "gamma", feature = "pvt")))]
         {
             if self.kind == 'B' {
                 target = 500;
@@ -309,7 +311,7 @@ where
     pub async fn check_motors_2(&mut self) -> Result<()> {
         let mut target: i32 = -1000;
         //Assume that check_motors_1 has been called
-        #[cfg(all(feature = "orbita2d", any(feature = "gamma", feature="pvt")))]
+        #[cfg(all(feature = "orbita2d", any(feature = "gamma", feature = "pvt")))]
         {
             if self.kind == 'B' {
                 target = -500;

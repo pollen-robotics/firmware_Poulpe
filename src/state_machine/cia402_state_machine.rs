@@ -23,7 +23,7 @@ use core::ops::BitAnd;
 
 use defmt::{info, warn};
 
-use crate::utils::conversion::bit;  
+use crate::utils::conversion::bit;
 
 #[derive(PartialEq, Clone, Copy, defmt::Format)]
 #[repr(u16)]
@@ -115,17 +115,18 @@ impl CiA402Command {
     // Shutdown            0xxxx110
     // Switch on           0xxx0111
     // Disable voltage     0xxxxx0x  (not used)
-    // Quick stop          0xxxx01x  
+    // Quick stop          0xxxx01x
     // Disable operation   0xxx0111
     // Enable operation    0xxx1111
     // Fault reset         1xxxxxxx
     pub fn from_u16(cmd: u16) -> CiA402Command {
-        if bit(cmd, 7) { // 1xxxxxxx
-            return CiA402Command::FaultReset; 
+        if bit(cmd, 7) {
+            // 1xxxxxxx
+            return CiA402Command::FaultReset;
         } else if !bit(cmd, 0) && bit(cmd, 1) && bit(cmd, 2) {
             return CiA402Command::Shutdown; // 0xxxx110
-        } else if bit(cmd, 1) && !bit(cmd, 2){
-            return CiA402Command::QuickStop; // 0xxxx01x  
+        } else if bit(cmd, 1) && !bit(cmd, 2) {
+            return CiA402Command::QuickStop; // 0xxxx01x
         } else if bit(cmd, 0) && bit(cmd, 1) && bit(cmd, 2) && bit(cmd, 3) {
             return CiA402Command::EnableOperation; // 0xxx1111
         } else if bit(cmd, 0) && bit(cmd, 1) && bit(cmd, 2) && !bit(cmd, 3) {
@@ -185,7 +186,7 @@ impl CiA402StateMachine {
             CiA402State::SwitchedOn => {
                 if command == CiA402Command::EnableOperation {
                     self.state = CiA402State::OperationEnabled;
-                }else if command == CiA402Command::QuickStop{
+                } else if command == CiA402Command::QuickStop {
                     self.state = CiA402State::SwitchOnDisabled;
                 }
             }
