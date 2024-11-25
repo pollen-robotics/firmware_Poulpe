@@ -14,8 +14,7 @@ pub mod state_machine;
 pub mod sensors;
 pub mod utils;
 
-pub mod shared_memory;
-pub use shared_memory::SharedMemory;
+pub use utils::shared_memory::SharedMemory;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 
