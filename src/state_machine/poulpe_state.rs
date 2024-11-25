@@ -153,12 +153,22 @@ impl PoulpeState {
         self.state_machine.state == CiA402State::Fault
     }
 
+    // reaction state to a fault being triggered
     pub fn is_fault_reaction_state(&self) -> bool {
         self.state_machine.state == CiA402State::FaultReactionActive
     }
-
+    // after the fault reaction is done, we go back to the fault state
     pub fn notify_fault_reaction_done(&mut self) {
         self.state_machine.set_state(CiA402State::Fault);
+    }
+
+    // reaction state to a quick stop
+    pub fn is_quick_stop_active(&self) -> bool {
+        self.state_machine.state == CiA402State::QuickStopActive
+    }
+    // after the quick stop is done, we go back to the switch on disabled state
+    pub fn notify_quick_stop_done(&mut self) {
+        self.state_machine.set_state(CiA402State::SwitchOnDisabled);
     }
 
     pub fn is_warning(&self) -> bool {

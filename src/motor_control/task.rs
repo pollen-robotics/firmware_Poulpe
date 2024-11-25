@@ -1021,7 +1021,7 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
             continue 'init_loop;
         }
 
-        SHARED_MEMORY.lock().await.set_axis_sensor(moved_sensors);
+        { SHARED_MEMORY.lock().await.set_axis_sensor(moved_sensors); }
 
         // motor check - move the motors in the other direction
         let res_check2 = actuator.check_motors_2().await;
@@ -1190,6 +1190,7 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
 
     // a variable used for the safe fault handling
     let mut fault_response_counter = 5000; // 5000 loops at 1kHz = 5 seconds
+    let mut quick_stop_response_counter = 5000; // 5000 loops at 1kHz = 5 seconds
 
     // actuator.set_torque([false,false]).unwrap();
     let mut error_led = false;
@@ -1322,6 +1323,52 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
                     // notify that the fault handling is done
                     // this will set the state to fault
                     board_state.notify_fault_reaction_done();
+                } else {
+                    // if the torque limit is not under 5%, set the new torque limit
+                    SHARED_MEMORY
+                        .lock()
+                        .await
+                        .set_torque_flux_limit(home_torque_limit)
+                };
+            }
+        }
+
+        // handle the quick stop command
+        #[cfg(feature = "allow_quickstop")]
+        {
+            if board_state.is_quick_stop_active() {
+                // if there was a bus voltage error the operation stops but gently
+                let stopping_velocity_limit = [0.1; config::N_AXIS];
+                {
+                    SHARED_MEMORY
+                        .lock()
+                        .await
+                        .set_velocity_limit(stopping_velocity_limit)
+                };
+
+                // reduce the torque limit to 0 (from 1) over 5 seconds
+                // this runs at 1kHz so it will take 5000 iterations
+                let mut home_torque_limit = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
+                home_torque_limit.iter_mut().for_each(
+                    |t| *t -= 0.0002, // 1/5000 = 0.0002 (5 seconds at 1kHz)
+                );
+                // update the fault response counter
+                quick_stop_response_counter -= 1;
+                // if the torque limit is under 5% (0.05), the operation stops
+                if home_torque_limit.iter().all(|t| *t < 0.05) || quick_stop_response_counter <= 0 {
+                    torque_on = [false; config::N_AXIS];
+                    {
+                        SHARED_MEMORY.lock().await.set_torque_on(torque_on)
+                    };
+                    info!(
+                        "torque limit under 5%, stopping operation, {:?}",
+                        home_torque_limit
+                    );
+                    // notify that the quick stop is done
+                    // this will set the state to switched on disabled
+                    board_state.notify_quick_stop_done();
+                    // allow the new quick stop to be activated later if needed
+                    quick_stop_response_counter = 5000;
                 } else {
                     // if the torque limit is not under 5%, set the new torque limit
                     SHARED_MEMORY

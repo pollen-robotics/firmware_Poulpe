@@ -176,8 +176,9 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                     error!("Read data error! {:?}", e)
                 }
             }
-            // info!("Motors - Torque on: {:?}, Target: {:?}",  torque_on, target_position);
-            if !poulpe_state.is_fault() && !poulpe_state.is_fault_reaction_state() {
+            // allow changing the target position ans weel as the velocity and torque limits 
+            // only if not in fault state, not in fault reaction state and not in quick stop state
+            if !poulpe_state.is_fault() && !poulpe_state.is_fault_reaction_state() && !poulpe_state.is_quick_stop_active() {
                 let shared_memory = SHARED_MEMORY.lock().await;
                 shared_memory.set_control_word(control_word);
                 // motion mode not used for now!!!
@@ -186,10 +187,13 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                     shared_memory.set_control_mode(CiA402ModeOfOperation::to_tmc4671_mode(
                         &mode_of_operation,
                     ));
+                    // dont update the target velocity and torque if the 
+                    // control mode cannot be changed
+                    // saving some time
+                    shared_memory.set_target_velocity(target_velocity);
+                    shared_memory.set_target_torque(target_torque);
                 }
                 shared_memory.set_target_position(target_position);
-                shared_memory.set_target_velocity(target_velocity);
-                shared_memory.set_target_torque(target_torque);
                 shared_memory.set_velocity_limit(velocity_limits);
                 shared_memory.set_torque_flux_limit(torque_limits);
             }
