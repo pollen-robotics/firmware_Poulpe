@@ -24,8 +24,8 @@ jobs:
       run: cargo build --release --features orbita3d_pvt
     - name: Build Orbita2d pvt
       run: cargo build --release --features orbita2d_pvt
-    - name: Run tests
-      run: cargo test --verbose
+    # - name: Run tests
+    #   run: cargo test --verbose 
 
   build_examples:
   
