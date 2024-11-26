@@ -697,10 +697,7 @@ where
         &mut self,
         torque_target: i32,
     ) -> Result<u32, embassy_stm32::spi::Error> {
-        self.tmc4671_write_register(
-            Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8,
-            torque_target as u32,
-        )
+        self.tmc4671_set_torque_target(torque_target as i16)
     }
 
     pub fn tmc4671_get_target_torque(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
