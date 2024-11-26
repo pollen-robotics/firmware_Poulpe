@@ -1,7 +1,14 @@
 # Poulpe board firmware using Embassy-rs
 
-<a href="https://github.com/pollen-robotics/elec_Poulpe"><img align="right" src="./docs/Poulpe_3d.png" width="120px"></a>
-A complete firmware stack for the [Poulpe](https://github.com/pollen-robotics/elec_Poulpe) board using the Rust programming language and the [Embassy-rs](https://github.com/embassy-rs/embassy) framework. The firmware is designed to work with the Orbita2d and Orbita3d actuator setups. 
+<a href="https://github.com/pollen-robotics/elec_Poulpe"><img src="./docs/carte_Poulpe_2d.png" width="120px"></a><img src="./docs/carte_Poulpe_3d.png" width="120px"></a><img src="./docs/Poulpe_3d.png" width="120px"></a>
+
+
+A complete firmware stack for the **Poulpe** boards in combination with **Venouse** boards.
+- [Poulpe](https://github.com/pollen-robotics/elec_Poulpe) + [Sponge](https://github.com/pollen-robotics/elec_Sponge) + [BOB]
+- [Poulpe 2d](https://github.com/pollen-robotics/elec_Poulpe_2d)  + [Ventouse 2d](https://github.com/pollen-robotics/elec_Ventouse_2d)
+- [Poulpe 3d ](https://github.com/pollen-robotics/elec_Poulpe_3d) + [Ventouse 3d](https://github.com/pollen-robotics/elec_Ventouse_3d)
+
+ using the Rust programming language and the [Embassy-rs](https://github.com/embassy-rs/embassy) framework. The firmware is designed to work with the Orbita2d and Orbita3d actuator setups. 
 
 ## Table of contents
 
