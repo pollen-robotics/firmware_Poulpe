@@ -28,3 +28,17 @@ Bench programs are used to do standarized tests on the library and the hardware.
 Verify that the motor has not too much vibration when it is not moving.
 Testing the motor in torque mode with 500mA target. 
 - `bench_MotorTest.rs`
+
+
+## Running the programs
+
+```bash
+cargo run --release --features <orbita version> --bin <program_name>
+```
+
+Make sure to select the correct orbita version for the program you are running using the `--features` flag. See the list of orbita versions in the `Cargo.toml` file or in the docs [see the main README](../../README.md).
+
+For example
+```sh
+cargo run --release --features orbita3d_pvt --bin test_Hall
+```

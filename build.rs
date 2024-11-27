@@ -23,6 +23,20 @@ fn main() {
         );
     }
 
+    // check if dynamixel and ethercat both set and throw error
+    if env::var("CARGO_FEATURE_DYNAMIXEL").is_ok() && env::var("CARGO_FEATURE_ETHERCAT").is_ok() {
+        panic!(
+            "\n \n Dynamixel and Ethercat features cannot be enabled at the same time. Please choose one.\n \n "
+        );
+    }
+
+    // check if orbita2d and orbita3d both set and throw error
+    if env::var("CARGO_FEATURE_ORBITA2D").is_ok() && env::var("CARGO_FEATURE_ORBITA3D").is_ok() {
+        panic!(
+            "\n \n Orbita2d and Orbita3d features cannot be enabled at the same time. Please choose one.\n \n "
+        );
+    }
+
     // Create a build time file for constants
     let out_dir = env::var("OUT_DIR").expect("No out dir");
     let dest_path = Path::new(&out_dir).join("constants.rs");
