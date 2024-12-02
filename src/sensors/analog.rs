@@ -64,15 +64,15 @@ pub fn adc_read_temperature<T: Instance, P: AdcPin<T> + Pin>(
     let voltage: f32 = adc_read_voltage(adc, pin);
     // Formula: https://www.giangrandi.org/electronics/ntc/ntc.shtml
     let r_div: f32 = 4700.0;
-    #[cfg(feature = "pvt")]
+    #[cfg(all(feature = "pvt", feature = "orbita3d"))]
     let beta: f32 = 3435.0;
-    #[cfg(not(feature = "pvt"))]
+    #[cfg(all(not(feature = "pvt", feature = "orbita3d")))]
     let beta: f32 = 3425.0;
     let room_temp_inv: f32 = 1.0 / 298.15; //[K]
     let r_t: f32 = r_div * ((3.3 / voltage) - 1.0);
-    #[cfg(feature = "pvt")]
+    #[cfg(all(feature = "pvt", feature = "orbita3d"))]
     let r_25: f32 = 10000.0;
-    #[cfg(not(feature = "pvt"))]
+    #[cfg(all(not(feature = "pvt", feature = "orbita3d")))]
     let r_25: f32 = 5000.0;
 
     let mut t: f32 = 1.0 / (((log((r_t / r_25) as f64) as f32) / beta) + room_temp_inv);
