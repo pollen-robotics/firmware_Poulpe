@@ -135,6 +135,19 @@ impl CiA402Command {
             return CiA402Command::Unknown;
         }
     }
+
+    pub fn to_u16(&self) -> u16 {
+        match self {
+            CiA402Command::Shutdown => 0b00000110,
+            CiA402Command::SwitchOn => 0b00000111,
+            CiA402Command::DisableVoltage => 0b00000000,
+            CiA402Command::EnableOperation => 0b00001111,
+            CiA402Command::DisableOperation => 0b00000111,
+            CiA402Command::QuickStop => 0b00000010,
+            CiA402Command::FaultReset => 0b10000000,
+            CiA402Command::Unknown => 0b00000000,
+        }
+    }
 }
 
 #[derive(PartialEq, Clone, Copy)]

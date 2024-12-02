@@ -16,9 +16,14 @@ pub const HIGH_TEMP: f32 = 65.0;
 pub const MAX_MOTOR_TEMP: f32 = 75.0;
 // maximal board temperature - error state if above
 pub const MAX_BOARD_TEMP: f32 = 100.0;
+// minimal measureable temperature - error state if below (sensor malfunction)
+pub const MIN_TEMP: f32 = -40.0;
 
 // minimal bus voltage - error state if below
 pub const MIN_BUS_VOLTAGE: f32 = 10.0;
+
+// maximal time without the watchdog update - error state if above
+pub const MAX_WATCHDOG_DOWN_TIME_MS: u64 = 100; // in milliseconds
 
 // maximal timeout that is allowed for communication with the motor controller
 // after this time, the communication is considered as failed and the operation is stopped

@@ -304,6 +304,22 @@ There is an additional warning flag that can be active if the board or motor tem
 Read more in the [state machine module](src/state_machine/README.md)
 
 
+## LED blinking patterns
+
+the blinking is happening each 500ms
+this number of blinks indicates the state of the board
+as well as the color of the blinking
+
+ state            | green         | red
+ -----------------|---------------|------
+ init             | blinks        | blinks
+ preop            | solid         | off
+ preop  + warning | solid         | blinks
+ op               | solid         | off
+ op  + warning    | solid         | blinks
+ fault            | off           | solid
+ fault_reaction   | off           | blinks
+
 ## Future work and improvements
 
 - Safety 

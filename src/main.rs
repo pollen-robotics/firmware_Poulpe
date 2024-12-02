@@ -64,6 +64,8 @@ async fn main(spawner: Spawner) {
     info!("Motors: EC60");
     #[cfg(feature = "ecx22")]
     info!("Motors: ECX22");
+    #[cfg(feature = "ecx22l")]
+    info!("Motors: ECX22L");
 
     #[cfg(feature = "ethercat")]
     info!("Communication: EtherCAT");

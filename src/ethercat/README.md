@@ -39,7 +39,7 @@ The Indexes correspond to the indexes in the standard and the sub-indexes corres
 
 ### OrbitaIn (RxPdo)  - Master to Slave
 
-| Entry Name | Entry Type | Index | Sub-Index |
+| Entry Name | Entry Type | Index | Sub-Index | 
 | --- | --- | --- | --- |
 | controlword | UINT16 | 0x6041 | - |
 | mode_of_operation | UINT8 | 0x6060 | - |
@@ -74,3 +74,20 @@ The Indexes correspond to the indexes in the standard and the sub-indexes corres
 
 
 
+## Watchdog implmenetation
+
+As we are using the LAN9252 which buffers the data in the master, we need to implement a watchdog mechanism to ensure that the data has been sent from the master, and that we are not reading old data, as well as to ensure that the slave is still alive. The watchdog mechanism is implemented in the `task.rs` file. 
+
+The watchdog is implemented as a 3 bit counter that is received from the master and replayed by the slave. The master increments the counter every time it sends the data and the slave replays the counter every time it sends the data to the master. This way if the counter is not incremented by the master, the slave will know that the master is not sending the data and will stop the actuators. If the counter is not replayed by the slave the master will know that the slave is not sending the data and will stop the actuators.
+
+The watchdog is impmented using the `controlword` and `statusword` PDO entries. The `controlword` is used to send the counter from the master to the slave and the `statusword` is used to send the counter from the slave to the master. Each of these PDO entries has some manufacturer specific bits that we can use, and in this case we are using 
+- `controlword` bits 11-13 to send the counter from the master to the slave
+- `statusword` bits 8, 15 and 15 to send the counter from the slave to the master
+
+The watchdog mechanism is implemented in the `task.rs` file. 
+
+![Some nice docs](../../docs/watchdog.png)
+
+### Watchdog counter stop behavior
+
+If the watchdog counter is not incremented by the maste any more, this means that the connection is lost and the actuators should be stopped for more than 100ms. The CiA402 `QuickStop` command is emitted and the firmware goes to the `SwitchOnDisabled` state. If the state was `OperationEnabled` the turning off is done in a controller manner through `QuickStopActive` state. See more info in the state machine module [here](../state_machine/README.md).

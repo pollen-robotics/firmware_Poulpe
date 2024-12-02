@@ -95,6 +95,7 @@ macro_rules! create_aksim_from_config {
 // this macro checks the temperatures of the motors and the boards
 // if the temperature is too high, set the error state
 // if the temperature is high, set the warning state
+// if temperature is too low, set the warning state (temperature sensor malfunction)
 // if the temperature is back to normal, clear the warning state
 // the function outputs the error and warning messages
 macro_rules! verify_temperatures_and_update_state {
@@ -104,7 +105,8 @@ macro_rules! verify_temperatures_and_update_state {
         $motor_temp: expr,
         $max_board_temp: expr,
         $max_motor_temp: expr,
-        $high_temp: expr
+        $high_temp: expr,
+        $min_temp: expr
 
     ) => {// clear the warning state, it will be set in the next checks if true
         $board_state.clear_warning_state();
@@ -139,15 +141,33 @@ macro_rules! verify_temperatures_and_update_state {
                     "Axis {} Temperature (motor: {}C, board: {}C) is very high (above {}C degrees)!",
                     i, m, b, $high_temp
                 );
-            } else if $board_state.check_motor_error_flag(i, MotorErrorFlag::HighTemperatureWarning){
-                // if the motor or the board temperature is back to normal, clear the warning state
-                $board_state.clear_motor_error_flag(i, MotorErrorFlag::HighTemperatureWarning);
-                info!(
-                    "Axis {} Temperature (motor: {}C, board: {}C) is back to normal!",
+            }else if *b < $min_temp || *m < $min_temp  {
+                // if the board temperature is high, set the warning state
+                $board_state.set_motor_error_flag(i, MotorErrorFlag::TemperatureSensorMalfunctionWarning);
+                $board_state.set_warning_state();
+                warn!(
+                    "Axis {} Temperature (motor: {}C, board: {}C) is very low (below -30C degrees)!",
                     i, m, b
                 );
+            } else {
+                if $board_state.check_motor_error_flag(i, MotorErrorFlag::HighTemperatureWarning){
+                    // if the motor or the board temperature is back to normal, clear the warning state
+                    $board_state.clear_motor_error_flag(i, MotorErrorFlag::HighTemperatureWarning);
+                    info!(
+                        "Axis {} Temperature (motor: {}C, board: {}C) is back to normal!",
+                        i, m, b
+                    );
+                   
+                } 
+                if $board_state.check_motor_error_flag(i, MotorErrorFlag::TemperatureSensorMalfunctionWarning){
+                    // if the motor or board temperature sensor is back to normal, clear the warning state
+                    $board_state.clear_motor_error_flag(i, MotorErrorFlag::TemperatureSensorMalfunctionWarning);
+                    info!(
+                        "Axis {} Temperature (motor: {}C, board: {}C) is back to normal!",
+                        i, m, b
+                    );
+                } 
             }
-            // }
         }
     };
 }
@@ -219,7 +239,7 @@ macro_rules! update_limit_setting {
                     new_limit[i] = limit_max[i] as f32;
                 }
             });
-            warn!($debug_message, limit, new_limit, limit_max);
+            //warn!($debug_message, limit, new_limit, limit_max);
 
             $actuator.$set_function(new_limit).unwrap_or_else(|e| {
                 error!($error_message, e);
@@ -1725,7 +1745,8 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
                 motor_temp,             // motor temperature
                 config::MAX_BOARD_TEMP, // max board temperature
                 config::MAX_MOTOR_TEMP, // max motor temperature
-                config::HIGH_TEMP       // high temperature
+                config::HIGH_TEMP,      // high temperature
+                config::MIN_TEMP        // min measurable temperature
             );
 
             // verify that the communication is working

@@ -1,5 +1,6 @@
 use crate::{
     config::{self, LAN9252Config, N_AXIS},
+    state_machine::{poulpe_state, CiA402Command},
     SHARED_MEMORY,
 };
 use core::{cell::RefCell, default, mem::take};
@@ -26,6 +27,21 @@ pub enum Lan9252Memory {
     OrbitaIn = 0x1000, // default write address 0x1000
     OrbitaStatus = 0x1200,
     OrbitaOut = 0x1300,
+}
+
+// parse the watchdog counter from the bits 11-15 of the controlword
+// these bits are manufacturer specific
+pub fn parse_watchdog_counter(controlword: u16) -> u8 {
+    (controlword >> 11) as u8
+}
+
+// set the watchdog counter to the bits 8, 14 and 15 of the statusword
+// these bits are manufacturer specific
+pub fn write_watchdog_counter(statusword: [u8; 2], counter: u8) -> [u8; 2] {
+    let mut status_upper = statusword[1];
+    status_upper |= counter & 0b1;
+    status_upper |= (counter >> 1) << 6;
+    return [statusword[0], status_upper];
 }
 
 #[embassy_executor::task]
@@ -107,6 +123,10 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
         }
     }
 
+    // the vatiables to keep track of the watchdog counter
+    let mut last_watchdog_counter = 0;
+    let mut last_watchdog_counter_timestamp = Instant::now();
+
     let mut ticker = Ticker::every(Duration::from_micros(1000));
 
     let mut poulpe_state = { SHARED_MEMORY.lock().await.get_poulpe_state() };
@@ -114,10 +134,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
     let mut t0 = Instant::now();
     loop {
         let t_loop = Instant::now();
-        // #[cfg(feature = "ignore_errors")]
-        // let receive_commands = true;
-        // #[cfg(not(feature = "ignore_errors"))]
-        // let receive_commands = state == BoardStatus::Ok || state == BoardStatus::HighTemperatureState;
+
         if !poulpe_state.is_init() {
             let mut control_word: u16 = 0;
             let mut mode_of_operation: CiA402ModeOfOperation = CiA402ModeOfOperation::NoMode;
@@ -176,12 +193,26 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                     error!("Read data error! {:?}", e)
                 }
             }
+
+            // watchdog counter is in the controlword
+            let watchdog_counter = parse_watchdog_counter(control_word);
+
             // allow changing the target position ans weel as the velocity and torque limits
             // only if not in fault state, not in fault reaction state and not in quick stop state
-            if !poulpe_state.is_fault()
-                && !poulpe_state.is_fault_reaction_state()
-                && !poulpe_state.is_quick_stop_active()
-            {
+            if poulpe_state.is_preoperation_state() || poulpe_state.is_operation_enabled() {
+                if last_watchdog_counter == watchdog_counter {
+                    if last_watchdog_counter_timestamp.elapsed()
+                        > Duration::from_millis(config::MAX_WATCHDOG_DOWN_TIME_MS)
+                    {
+                        // if the watchdog counter is not updated for more than 100ms
+                        // we go to the quick stop reaction state
+                        control_word = CiA402Command::QuickStop.to_u16();
+                    }
+                } else {
+                    // update the last watchdog counter and the timestamp
+                    last_watchdog_counter_timestamp = Instant::now();
+                    last_watchdog_counter = watchdog_counter;
+                }
                 let shared_memory = SHARED_MEMORY.lock().await;
                 shared_memory.set_control_word(control_word);
                 // motion mode not used for now!!!
@@ -199,6 +230,10 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                 shared_memory.set_target_position(target_position);
                 shared_memory.set_velocity_limit(velocity_limits);
                 shared_memory.set_torque_flux_limit(torque_limits);
+            } else {
+                // if we are not in the preoperation state or in the operation enabled state
+                last_watchdog_counter_timestamp = Instant::now();
+                last_watchdog_counter = 255; // set to a value that is not possible
             }
 
             let shared_memory = SHARED_MEMORY.lock().await;
@@ -208,6 +243,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
             let current_velocity = shared_memory.get_current_velocity();
             let current_torque = shared_memory.get_current_torque();
             let axis_sensors = shared_memory.get_axis_sensor();
+            poulpe_state = shared_memory.get_poulpe_state();
 
             // write back the read data to be read by the main ethercat loop
             // the data are written in the OrbitaOut memory
@@ -219,13 +255,15 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
             // 4. actual_velocity (N_AXIS * 4 bytes)
             // 5. actual_torque (N_AXIS * 4 bytes)
             // 6. axis sensors (N_AXIS * 4 bytes)
-
             // NOTE:
             //  - max length (for orbita3d) is 3 + 16*3 = 51Bytes
             //  - If it would be more than 64 bytes, we would need to split the write in two parts
             let mut data: [u8; 3 + 16 * N_AXIS] = [0; 3 + 16 * N_AXIS];
             // statusword
-            data[0..2].copy_from_slice(&poulpe_state.status_to_statusword_byte_array());
+            let mut statusword = poulpe_state.status_to_statusword_byte_array();
+            // write the watchdog counter to the statusword (copied from the controlword)
+            statusword = write_watchdog_counter(statusword, watchdog_counter);
+            data[0..2].copy_from_slice(&statusword);
             // mode of operation
             data[2] = CiA402ModeOfOperation::from_tmc4671_mode(control_mode).to_u8();
             // actual values
@@ -248,8 +286,8 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                     error!("Write data error! {:?}", e)
                 }
             }
-            Timer::after(Duration::from_micros(1)).await;
         }
+        // mailbox PDO write at around 10Hz
         if downsample_state_cnt >= 100 {
             match lan9252.read_register_indirect(AL_STATUS, 1).await {
                 Ok(al) => {
@@ -259,8 +297,6 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                     error!("Read status error {:?}", e)
                 }
             }
-            Timer::after(Duration::from_micros(1)).await;
-
             // write the state to the OrbitaStatus memory
             // lower frequency than the rest of the data
             // at 0.1Hz more or less
@@ -291,7 +327,6 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                 data[nb_bytes + 2 * N_AXIS * 4 + i * 4..nb_bytes + 4 + 2 * N_AXIS * 4 + i * 4]
                     .copy_from_slice(&motor_temperture[i].to_le_bytes());
             }
-
             match lan9252
                 .write_bytes(&data, Lan9252Memory::OrbitaStatus as u16)
                 .await
@@ -301,13 +336,12 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                     error!("Write data error! {:?}", e)
                 }
             }
-            ticker.next().await;
-            // Timer::after(Duration::from_micros(1)).await;
             downsample_state_cnt = 0;
         }
         // Timer::after(Duration::from_millis(1)).await;
         // info!("Ethercat loop elapsed time: {}us \t time between loops: {}us",t_loop.elapsed().as_micros(), t0.elapsed().as_micros());
         // t0 = Instant::now();
         downsample_state_cnt += 1;
+        ticker.next().await;
     }
 }
