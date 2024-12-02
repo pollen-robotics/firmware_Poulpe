@@ -53,7 +53,7 @@ impl BrushlessMotor {
             #[cfg(feature = "ecx22")]
             gearbox_ratio: 1.0 / 35.0,
             #[cfg(feature = "ecx22l")]
-            gearbox_ratio: 1.0 / 28.0,
+            gearbox_ratio: 169.0/4761.0,
             axis_ratio: 12.0 / 64.0,
         }
     }
@@ -95,7 +95,7 @@ impl BrushlessMotor {
             torque_flux_limit_max: 6000, // 6 amps
             velocity_limit_max: 10,      // 410 rad/s
             // gearing ratios
-            gearbox_ratio: 1.0 / 35.0,
+            gearbox_ratio: 130.0/4554.0,
             axis_ratio: 20.0 / 38.0,
         }
     }
