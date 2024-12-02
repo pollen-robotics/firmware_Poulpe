@@ -191,8 +191,7 @@ pub async fn main(_spawner: Spawner) {
         info!(
             "Target torque: {} mA\t Current torque: {} mA",
             500.0,
-            current_torque,
-            controller.get_control_mode()
+            current_torque
         );
     }
 }
