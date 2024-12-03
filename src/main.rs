@@ -385,6 +385,7 @@ async fn main(spawner: Spawner) {
     // op  + warning    | solid         | blinks
     // fault            | off           | solid
     // fault_reaction   | off           | blinks
+    // quick_stop       | solid         | solid
     //
     // TODO implement the blinking patterns to indicate different error states
 
@@ -400,12 +401,16 @@ async fn main(spawner: Spawner) {
     loop {
         let poulpe_state = { SHARED_MEMORY.lock().await.get_poulpe_state() };
 
+        // determine the state of the leds
         if poulpe_state.is_fault() {
             red = LedState::Solid;
             green = LedState::Off;
         } else if poulpe_state.is_fault_reaction_state() {
             red = LedState::Blink;
             green = LedState::Off;
+        } else if poulpe_state.is_quick_stop_active()  {
+            red = LedState::Solid;
+            green = LedState::Solid;
         } else if poulpe_state.is_init() {
             red = LedState::Blink;
             green = LedState::Blink;
@@ -422,6 +427,7 @@ async fn main(spawner: Spawner) {
             green = LedState::Off;
         }
 
+        // set the leds
         match red {
             LedState::Off => led_error.set_low(),
             LedState::Solid => led_error.set_high(),

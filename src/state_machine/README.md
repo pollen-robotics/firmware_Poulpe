@@ -46,3 +46,20 @@ Then there are more generic errors that are triggered for the actuator (`HomingE
 - `ZeroingFail` - The zeroing of the motor has failed
 - `IndexSearchFail` - The index search has failed (orbita3d)
 - `LowLevelCommunicaiton` - The low-level communication has failed (either the pwm drivers or position sensors)
+
+
+## LED blinking patterns
+
+The blinking of the LED on the board is used to indicate the state of the board. There are two colors of the LED - green and red. The LED can be solid or blinking. The LED is blinking with a period of 500ms. The pattern of blinking is as follows:
+
+
+ state           | CiA402 state | green         | red
+ ----------------|--------------|---------------|---------
+ init            | `NotReadyToSwitchOn`  | blinks        | blinks
+ preop           |`SwitchOnDisabled`,`ReadyToSwitchOn`,`SwitchedOn` | solid         | off
+ preop  + warning |`SwitchOnDisabled`,`ReadyToSwitchOn`,`SwitchedOn`| solid         | blinks
+ op               |`OperationEnabled`| solid         | off
+ op  + warning    |`OperationEnabled`| solid         | blinks
+ fault            |`Fault`| off           | solid
+ fault_reaction   |`FaultReactionActive`| off           | blinks
+ quick_stop_reaction   |`QuickStopActive`| solid           | solid

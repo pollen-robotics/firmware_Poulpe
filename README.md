@@ -306,9 +306,8 @@ Read more in the [state machine module](src/state_machine/README.md)
 
 ## LED blinking patterns
 
-the blinking is happening each 500ms
-this number of blinks indicates the state of the board
-as well as the color of the blinking
+The blinking of the LED on the board is used to indicate the state of the board. There are two colors of the LED - green and red. The LED can be solid or blinking. The LED is blinking with a period of 500ms. The pattern of blinking is as follows:
+
 
  state            | green         | red
  -----------------|---------------|------
@@ -319,6 +318,22 @@ as well as the color of the blinking
  op  + warning    | solid         | blinks
  fault            | off           | solid
  fault_reaction   | off           | blinks
+ quick_stop_reaction   | solid           | solid
+## LED blinking patterns
+
+The blinking of the LED on the board is used to indicate the state of the board. There are two colors of the LED - green and red. The LED can be solid or blinking. The LED is blinking with a period of 500ms. The pattern of blinking is as follows:
+
+
+ state           | CiA402 state | green         | red
+ ----------------|--------------|---------------|---------
+ init            | `NotReadyToSwitchOn`  | blinks        | blinks
+ preop           |`SwitchOnDisabled`,`ReadyToSwitchOn`,`SwitchedOn` | solid         | off
+ preop  + warning |`SwitchOnDisabled`,`ReadyToSwitchOn`,`SwitchedOn`| solid         | blinks
+ op               |`OperationEnabled`| solid         | off
+ op  + warning    |`OperationEnabled`| solid         | blinks
+ fault            |`Fault`| off           | solid
+ fault_reaction   |`FaultReactionActive`| off           | blinks
+ quick_stop_reaction   |`QuickStopActive`| solid           | solid
 
 ## Future work and improvements
 
