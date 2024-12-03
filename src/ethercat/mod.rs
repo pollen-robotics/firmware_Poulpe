@@ -1,2 +1,3 @@
+pub mod lan9252;
 pub mod task;
-pub use task::EthercatConfig;
+pub use lan9252::EthercatConfig;

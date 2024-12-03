@@ -6,16 +6,7 @@ use crate::config::DonutHall;
 
 use super::foc::MotionMode;
 
-pub type Result<T> = core::result::Result<T, IOError>;
-
-#[derive(Debug, Format)]
-pub enum IOError {
-    SpiError(spi::Error),
-    I2cError,
-    InvalidData,
-    Unavailable,
-    InitError,
-}
+use crate::utils::errors::Result;
 
 #[derive(Debug, Clone, Copy, PartialEq, Format)]
 pub struct Pid {
@@ -79,6 +70,8 @@ pub trait RawMotorsIO<const N: usize> {
     fn get_velocity_limit(&mut self) -> Result<[f32; N]>;
     /// Set the velocity limit of the motors (in radians per second)
     fn set_velocity_limit(&mut self, limit: [f32; N]) -> Result<()>;
+
+    fn get_driver_state(&mut self) -> Result<[(); N]>;
 
     /*
     /// Get uq/ud limit

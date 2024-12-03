@@ -2,8 +2,7 @@ use defmt::Format;
 use embassy_stm32::i2c;
 use embassy_stm32::spi;
 
-// pub type Result<T> = core::result::Result<T, IOError>;
-use super::motors_io::Result;
+use crate::utils::errors::Result;
 
 pub trait RawSensorsIO<const N: usize> {
     /// Get sensors value

@@ -66,30 +66,6 @@ The task flow is as follows:
             - Undervoltage protection
             - Update the board state
         
-## Board state
-
-The motor control crate uses the `BoardState` struct to keep track of the internal state of the board. The board state is updated in real-time and is used to determine its safety status. The board state can be one of the following:
-
-<b>Normal operation</b>
-- `Ok` - The board is operating normally
-- `HighTemperatureState` - The board is overheating, but not yet in a critical state
-     - This state will return to `Ok` once the temperature drops below the threshold
-     - Treshold is set to `65C` by default in the `config` crate
-
-<b>Initialisation errors</b>
-- `InitError` - The board failed to initialize
-- `SensorError` - The board failed to read the sensor values
-- `ZeroingError` - The board failed to perform the homing search procedure
-- `IndexError` - The board failed to perform the homing search procedure
-
-<b>Real-time operation errors</b>
-- `OverTemperatureError` - The board or the motor is overheating
-     - Treshold is set to `75C` by default in the `config` crate
-- `OverCurrentError` - The board is drawing too much current (not yet implemented)
-- `BusVoltageError` - The board's power supply voltage is too low
-     - Treshold is set to `10V`
-- `UnknownError` - An unknown error occurred
-
 
 ## Software architecture
 

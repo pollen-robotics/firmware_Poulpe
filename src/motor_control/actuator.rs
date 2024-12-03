@@ -1,13 +1,15 @@
+use core::array;
+
 use embassy_futures::join;
 
 use super::foc::MotionMode;
-use super::motors_io::{IOError, Pid, RawMotorsIO, Result};
-use super::sensors_io::RawSensorsIO;
+use super::motors_io::{Pid, RawMotorsIO};
 use crate::config::BrushlessMotor;
 use crate::config::DonutHall;
 
-use super::sensors::SensorKind;
 use super::ventouse::VentouseKind;
+use crate::sensors::{sensors::SensorKind, sensors_io::RawSensorsIO};
+use crate::utils::errors::{IOError, Result};
 use defmt::{debug, error, info, warn};
 use micromath::F32Ext;
 
@@ -44,42 +46,17 @@ impl<'d, const N: usize> Actuator<'d, N> {
         }
     }
 
-    pub async fn init(&mut self) -> Result<()> {
-        let res = join::join_array(self.axes.each_mut().map(|v| v.init())).await;
-        // Ok(())
-        for r in res {
-            match r {
-                Ok(_) => {}
-                Err(e) => return Err(e),
-            }
-        }
-        Ok(())
+    pub async fn init(&mut self) -> [Result<()>; N] {
+        join::join_array(self.axes.each_mut().map(|v| v.init())).await
     }
 
     // check motors
-    pub async fn check_motors_1(&mut self) -> Result<()> {
-        let res = join::join_array(self.axes.each_mut().map(|v| v.check_motors_1())).await;
-
-        for r in res {
-            match r {
-                Ok(_) => {}
-                Err(e) => return Err(e),
-            }
-        }
-
-        Ok(())
+    pub async fn check_motors_1(&mut self) -> [Result<()>; N] {
+        join::join_array(self.axes.each_mut().map(|v| v.check_motors_1())).await
     }
-    pub async fn check_motors_2(&mut self) -> Result<()> {
-        let res = join::join_array(self.axes.each_mut().map(|v| v.check_motors_2())).await;
-        for r in res {
-            match r {
-                Ok(_) => {}
-                Err(e) => return Err(e),
-            }
-        }
-        Ok(())
+    pub async fn check_motors_2(&mut self) -> [Result<()>; N] {
+        join::join_array(self.axes.each_mut().map(|v| v.check_motors_2())).await
     }
-
     // pub fn get_ventouse(&mut self, v: char) -> Option<&mut dyn RawMotorsIO<1>> {
     //     match v {
     //         'A' => self.axes[0].get_ventouse('A'),
@@ -88,6 +65,14 @@ impl<'d, const N: usize> Actuator<'d, N> {
     //         _ => None,
     //     }
     // }
+
+    // check the state of each
+    pub fn check_driver_states(&mut self) -> [Result<()>; N] {
+        array::from_fn(|i| match self.axes[i].get_driver_state() {
+            Ok(_) => Ok(()),
+            Err(_) => Err(IOError::DriverError),
+        })
+    }
 
     pub fn get_axis(&mut self, idx: usize) -> &mut dyn RawMotorsIO<1> {
         &mut self.axes[idx]
@@ -577,6 +562,16 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
     */
     /////////////////////
 
+    // get the driver states
+    fn get_driver_state(&mut self) -> Result<[(); N]> {
+        let mut res = [(); N];
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            res[i] = axis.get_driver_state()?[0];
+        }
+
+        Ok(res)
+    }
+
     // get temperature
     fn get_board_temperature(&mut self) -> Result<[f32; N]> {
         let mut res = [0.0; N];
@@ -724,7 +719,7 @@ impl<'d, const N: usize> RawSensorsIO<N> for Actuator<'d, N> {
         for (i, sensor) in self.sensors.iter_mut().enumerate() {
             match sensor.get_axis_sensors() {
                 Ok(val) => res[i] = val[0],
-                Err(_) => res[i] = f32::NAN,
+                Err(e) => return Err(e),
             }
         }
 

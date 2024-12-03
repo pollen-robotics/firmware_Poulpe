@@ -1,5 +1,3 @@
-use defmt::debug;
-
 pub struct CurrentSensing {
     // current sensing parameters
     // Shunt resistor value

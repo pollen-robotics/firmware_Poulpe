@@ -1,5 +1,3 @@
-mod conversion;
-
 mod packet;
 pub use packet::{InstructionPacketKind, StatusPacket};
 
