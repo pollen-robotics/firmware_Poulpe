@@ -69,6 +69,8 @@ no_temperature_sensor = []
 # feature allowing to ignore the errors and continue the operation
 # this is a debug feature and should not be used in production
 ignore_errors = []
+# display the task execution time in the debug console
+debug_execution_time = []
 
 # for the computation of the zero position prior to Reachy2 DVT
 orbita3d_zero_pre_dvt =[]

@@ -175,6 +175,18 @@ impl PoulpeState {
         self.state_machine.warning_active
     }
 
+    pub fn is_torque_enabled(&self) -> bool {
+        let status_bits = self.state_machine.get_status_bits();
+        for bit in status_bits.iter() {
+            if let Some(status_bit) = bit {
+                if *status_bit == super::CiA402StatusBit::OperationEnabled {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     pub fn is_motor_error(&self, axis: usize) -> bool {
         self.motor_error_flags[axis] != MotorErrorFlag::None as u16
     }

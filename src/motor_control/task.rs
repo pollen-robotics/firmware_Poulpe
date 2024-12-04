@@ -22,7 +22,7 @@ use modular_bitfield::error;
 const SPI_FREQ: u32 = 2_000_000;
 
 use crate::motor_control::foc::MotionMode;
-use crate::state_machine::CiA402State;
+use crate::state_machine::{CiA402State, CiA402StatusBit};
 use crate::{
     config::{self, ActuatorConfig, DonutHall},
     sensors::{sensors::*, sensors_io::RawSensorsIO},
@@ -1278,7 +1278,7 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
             // process the commands
             let control_word = { SHARED_MEMORY.lock().await.get_control_word() };
             board_state.process_command(control_word); // if we are in the init state, we can only go to the switch on state
-            if board_state.is_operation_enabled() {
+            if board_state.is_torque_enabled() {
                 torque_on = [true; config::N_AXIS];
             } else {
                 torque_on = [false; config::N_AXIS];
@@ -1312,6 +1312,9 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
                 );
                 // update the fault response counter
                 fault_response_counter -= 1;
+                if fault_response_counter % 500 == 0 {
+                    warn!("Fault reaction active, torque limit: {:?}, counter {}", home_torque_limit, fault_response_counter);
+                }
                 // if the torque limit is under 5% (0.05), the operation stops
                 if home_torque_limit.iter().all(|t| *t < 0.05) || fault_response_counter <= 0 {
                     torque_on = [false; config::N_AXIS];
@@ -1356,6 +1359,9 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
                 );
                 // update the fault response counter
                 quick_stop_response_counter -= 1;
+                if quick_stop_response_counter % 500 == 0 {
+                    warn!("Quick stop active, torque limit: {:?}, counter {}", home_torque_limit, quick_stop_response_counter);
+                }
                 // if the torque limit is under 5% (0.05), the operation stops
                 if home_torque_limit.iter().all(|t| *t < 0.05) || quick_stop_response_counter <= 0 {
                     torque_on = [false; config::N_AXIS];
@@ -1799,9 +1805,12 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
             last_communication_timestamp
         );
 
-        let elapsed = t_loop.elapsed().as_micros();
-        // info!("Motor control loop elapsed time: {}us \t time between loops: {}us",elapsed, t0.elapsed().as_micros());
-        // t0 = Instant::now();
+        #[cfg(feature = "debug_execution_time")]
+        {
+            let elapsed = t_loop.elapsed().as_micros();
+            info!("Motor control loop elapsed time: {}us \t time between loops: {}us",elapsed, t0.elapsed().as_micros());
+            t0 = Instant::now();
+        }
         // Timer::after(Duration::from_micros(1000-elapsed)).await;
         // Timer::after(Duration::from_millis(1)).await;
         ticker.next().await;

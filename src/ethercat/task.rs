@@ -12,7 +12,7 @@ use embassy_stm32::{
     gpio::{Level, Output, Speed},
 };
 
-use crate::ethercat::lan9252::{Lan9252, Lan9252Registers, AL_STATUS, WDOG_STATUS};
+use crate::ethercat::lan9252::{Lan9252, Lan9252Registers, AL_STATUS, WDOG_STATUS, READY};
 use crate::state_machine::poulpe_state::PoulpeState;
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex};
 use embassy_time::{Duration, Instant, Timer};
@@ -126,177 +126,226 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
     // the vatiables to keep track of the watchdog counter
     let mut last_watchdog_counter = 0;
     let mut last_watchdog_counter_timestamp = Instant::now();
+    // master connected flag
+    let mut last_master_connected_timestamp = Instant::now();
 
+
+    // create a ticker to run the loop at a fixed frequency of 1kHz
     let mut ticker = Ticker::every(Duration::from_micros(1000));
 
+    // get the initial state of the poulpe state machine
     let mut poulpe_state = { SHARED_MEMORY.lock().await.get_poulpe_state() };
     let mut downsample_state_cnt: u32 = 0;
     let mut t0 = Instant::now();
+
+    // variables to display the state of the ethercat communication
+    let mut loop_cnt_display: u32 = 0;
+    let mut t_display = Instant::now();
+
+    // variables to be read from the OrbitaIn memory
+    let mut control_word: u16 = 0;
+    let mut mode_of_operation: CiA402ModeOfOperation = CiA402ModeOfOperation::NoMode;
+    let mut target_position = [0.0; N_AXIS];
+    let mut target_velocity = [0.0; N_AXIS]; // not used
+    let mut target_torque = [0.0; N_AXIS]; // not used
+    let mut velocity_limits = [0.0; N_AXIS];
+    let mut torque_limits = [0.0; N_AXIS];
+    let mut watchdog_counter = 0;
+
     loop {
         let t_loop = Instant::now();
+        // get the satet of the poulpe state machine
+        poulpe_state = { SHARED_MEMORY.lock().await.get_poulpe_state() };
+            
+        // check the ethercat state of the LAN9252
+        let ethercat_state = match lan9252.read_register_indirect(AL_STATUS, 1).await {
+            Ok(al) => {
+                debug!("Status: {:#x}", al[0] & 0x0F);
+                al[0] & 0x0F
+            }
+            Err(e) => {
+                error!("Read status error {:?}", e);
+                0
+            }
+        };
 
-        if !poulpe_state.is_init() {
-            let mut control_word: u16 = 0;
-            let mut mode_of_operation: CiA402ModeOfOperation = CiA402ModeOfOperation::NoMode;
-            let mut target_position = [0.0; N_AXIS];
-            let mut target_velocity = [0.0; N_AXIS]; // not used
-            let mut target_torque = [0.0; N_AXIS]; // not used
-            let mut velocity_limits = [0.0; N_AXIS];
-            let mut torque_limits = [0.0; N_AXIS];
-            match lan9252
-                .read_bytes(3 + 20 * N_AXIS, Lan9252Memory::OrbitaIn as u16)
-                .await
-            {
-                Ok(data) => {
-                    // control word is the first 2 bytes
-                    control_word = u16::from_le_bytes(data[0..2].try_into().unwrap());
-                    // info!("Control word: {:#x}", control_word);
-                    // then the mode of operation
-                    mode_of_operation = CiA402ModeOfOperation::from_u8(data[2]);
+        // check if the master if the master is connected 
+        // by checking the watchdog status
+        let master_connected = match lan9252.read_register_indirect(WDOG_STATUS, 1).await {
+            Ok(al) => {
+                debug!("Watchdog Status: {:#x}", al[0]);
+                al[0] != 0  // if the watchdog is not 0, the master is connected
+            }
+            Err(e) => {
+                error!("Watchdog  status error {:?}", e);
+                false
+            }
+        };
 
-                    // then the next N_AXIS f32 are the
-                    // target positions (3 - N_AXIS*4+3
-                    // then the target velocity (N_AXIS*4+3 - 2*N_AXIS*4+3)
-                    // then the velocity limits (2*N_AXIS*4+3 - 3*N_AXIS*4+3)
-                    // then the target torque (3*N_AXIS*4+3 - 4*N_AXIS*4+3)
-                    // then the torque limits (4*N_AXIS*4+3 - 5*N_AXIS*4+3)
-                    // NOTE:
-                    //  - max length (for orbita3d) is 3 + 20*3 = 63Bytes
-                    //  - If it would be more than 64 bytes, we would need to split the read in two parts
-                    for i in 0..N_AXIS {
-                        target_position[i] = f32::from_le_bytes(
-                            data[3 + i * 4..3 + (i + 1) * 4].try_into().unwrap(),
-                        );
-                        target_velocity[i] = f32::from_le_bytes(
-                            data[3 + N_AXIS * 4 + i * 4..3 + N_AXIS * 4 + (i + 1) * 4]
-                                .try_into()
-                                .unwrap(),
-                        );
-                        velocity_limits[i] = f32::from_le_bytes(
-                            data[3 + 2 * N_AXIS * 4 + i * 4..3 + 2 * N_AXIS * 4 + (i + 1) * 4]
-                                .try_into()
-                                .unwrap(),
-                        );
-                        target_torque[i] = f32::from_le_bytes(
-                            data[3 + 3 * N_AXIS * 4 + i * 4..3 + 3 * N_AXIS * 4 + (i + 1) * 4]
-                                .try_into()
-                                .unwrap(),
-                        );
-                        torque_limits[i] = f32::from_le_bytes(
-                            data[3 + 4 * N_AXIS * 4 + i * 4..3 + 4 * N_AXIS * 4 + (i + 1) * 4]
-                                .try_into()
-                                .unwrap(),
-                        );
+        if master_connected {
+            last_master_connected_timestamp = Instant::now();
+        }
+
+        if !poulpe_state.is_init() && ethercat_state == READY {
+
+            // if master is not connected we dont update the read data
+            if master_connected {
+                match lan9252
+                    .read_bytes(3 + 20 * N_AXIS, Lan9252Memory::OrbitaIn as u16)
+                    .await
+                {
+                    Ok(data) => {
+                        // control word is the first 2 bytes
+                        control_word = u16::from_le_bytes(data[0..2].try_into().unwrap());
+                        // info!("Control word: {:#x}", control_word);
+                        // then the mode of operation
+                        mode_of_operation = CiA402ModeOfOperation::from_u8(data[2]);
+
+                        // then the next N_AXIS f32 are the
+                        // target positions (3 - N_AXIS*4+3
+                        // then the target velocity (N_AXIS*4+3 - 2*N_AXIS*4+3)
+                        // then the velocity limits (2*N_AXIS*4+3 - 3*N_AXIS*4+3)
+                        // then the target torque (3*N_AXIS*4+3 - 4*N_AXIS*4+3)
+                        // then the torque limits (4*N_AXIS*4+3 - 5*N_AXIS*4+3)
+                        // NOTE:
+                        //  - max length (for orbita3d) is 3 + 20*3 = 63Bytes
+                        //  - If it would be more than 64 bytes, we would need to split the read in two parts
+                        for i in 0..N_AXIS {
+                            target_position[i] = f32::from_le_bytes(
+                                data[3 + i * 4..3 + (i + 1) * 4].try_into().unwrap(),
+                            );
+                            target_velocity[i] = f32::from_le_bytes(
+                                data[3 + N_AXIS * 4 + i * 4..3 + N_AXIS * 4 + (i + 1) * 4]
+                                    .try_into()
+                                    .unwrap(),
+                            );
+                            velocity_limits[i] = f32::from_le_bytes(
+                                data[3 + 2 * N_AXIS * 4 + i * 4..3 + 2 * N_AXIS * 4 + (i + 1) * 4]
+                                    .try_into()
+                                    .unwrap(),
+                            );
+                            target_torque[i] = f32::from_le_bytes(
+                                data[3 + 3 * N_AXIS * 4 + i * 4..3 + 3 * N_AXIS * 4 + (i + 1) * 4]
+                                    .try_into()
+                                    .unwrap(),
+                            );
+                            torque_limits[i] = f32::from_le_bytes(
+                                data[3 + 4 * N_AXIS * 4 + i * 4..3 + 4 * N_AXIS * 4 + (i + 1) * 4]
+                                    .try_into()
+                                    .unwrap(),
+                            );
+                        }
                     }
-                }
-                Err(e) => {
-                    error!("Read data error! {:?}", e)
+                    Err(e) => {
+                        error!("Read data error! {:?}", e)
+                    }
                 }
             }
 
             // watchdog counter is in the controlword
-            let watchdog_counter = parse_watchdog_counter(control_word);
-
-            // allow changing the target position ans weel as the velocity and torque limits
-            // only if not in fault state, not in fault reaction state and not in quick stop state
-            if poulpe_state.is_preoperation_state() || poulpe_state.is_operation_enabled() {
-                if last_watchdog_counter == watchdog_counter {
-                    if last_watchdog_counter_timestamp.elapsed()
-                        > Duration::from_millis(config::MAX_WATCHDOG_DOWN_TIME_MS)
-                    {
-                        // if the watchdog counter is not updated for more than 100ms
-                        // we go to the quick stop reaction state
-                        control_word = CiA402Command::QuickStop.to_u16();
-                    }
-                } else {
-                    // update the last watchdog counter and the timestamp
-                    last_watchdog_counter_timestamp = Instant::now();
-                    last_watchdog_counter = watchdog_counter;
-                }
-                let shared_memory = SHARED_MEMORY.lock().await;
-                shared_memory.set_control_word(control_word);
-                // motion mode not used for now!!!
-                #[cfg(feature = "allow_mode_change")]
-                {
-                    shared_memory.set_control_mode(CiA402ModeOfOperation::to_tmc4671_mode(
-                        &mode_of_operation,
-                    ));
-                    // dont update the target velocity and torque if the
-                    // control mode cannot be changed
-                    // saving some time
-                    shared_memory.set_target_velocity(target_velocity);
-                    shared_memory.set_target_torque(target_torque);
-                }
-                shared_memory.set_target_position(target_position);
-                shared_memory.set_velocity_limit(velocity_limits);
-                shared_memory.set_torque_flux_limit(torque_limits);
-            } else {
-                // if we are not in the preoperation state or in the operation enabled state
+            watchdog_counter = parse_watchdog_counter(control_word);
+            if last_watchdog_counter != watchdog_counter {
+                // update the last watchdog counter and the timestamp
                 last_watchdog_counter_timestamp = Instant::now();
-                last_watchdog_counter = 255; // set to a value that is not possible
+                last_watchdog_counter = watchdog_counter;
             }
 
-            let shared_memory = SHARED_MEMORY.lock().await;
-            let control_mode = { shared_memory.get_control_mode() };
-            let torque_on = shared_memory.get_torque_on();
-            let current_position = shared_memory.get_current_position();
-            let current_velocity = shared_memory.get_current_velocity();
-            let current_torque = shared_memory.get_current_torque();
-            let axis_sensors = shared_memory.get_axis_sensor();
-            poulpe_state = shared_memory.get_poulpe_state();
+            // send data only if the master is connected
+            if master_connected {
+                let shared_memory = SHARED_MEMORY.lock().await;
+                let control_mode = { shared_memory.get_control_mode() };
+                let torque_on = shared_memory.get_torque_on();
+                let current_position = shared_memory.get_current_position();
+                let current_velocity = shared_memory.get_current_velocity();
+                let current_torque = shared_memory.get_current_torque();
+                let axis_sensors = shared_memory.get_axis_sensor();
+                poulpe_state = shared_memory.get_poulpe_state();
 
-            // write back the read data to be read by the main ethercat loop
-            // the data are written in the OrbitaOut memory
-            // the data are written in the following format:
-            // 1. statusword 2 bytes
-            // 2. mode of operation 1 byte
-            // then we send the actual data for each axis
-            // 3. actual_postiion (N_AXIS * 4 bytes)
-            // 4. actual_velocity (N_AXIS * 4 bytes)
-            // 5. actual_torque (N_AXIS * 4 bytes)
-            // 6. axis sensors (N_AXIS * 4 bytes)
-            // NOTE:
-            //  - max length (for orbita3d) is 3 + 16*3 = 51Bytes
-            //  - If it would be more than 64 bytes, we would need to split the write in two parts
-            let mut data: [u8; 3 + 16 * N_AXIS] = [0; 3 + 16 * N_AXIS];
-            // statusword
-            let mut statusword = poulpe_state.status_to_statusword_byte_array();
-            // write the watchdog counter to the statusword (copied from the controlword)
-            statusword = write_watchdog_counter(statusword, watchdog_counter);
-            data[0..2].copy_from_slice(&statusword);
-            // mode of operation
-            data[2] = CiA402ModeOfOperation::from_tmc4671_mode(control_mode).to_u8();
-            // actual values
-            for n in 0..N_AXIS {
-                data[3 + n * 4..3 + (n + 1) * 4]
-                    .copy_from_slice(&current_position[n].to_le_bytes());
-                data[3 + N_AXIS * 4 + n * 4..3 + N_AXIS * 4 + (n + 1) * 4]
-                    .copy_from_slice(&current_velocity[n].to_le_bytes());
-                data[3 + 2 * N_AXIS * 4 + n * 4..3 + 2 * N_AXIS * 4 + (n + 1) * 4]
-                    .copy_from_slice(&current_torque[n].to_le_bytes());
-                data[3 + 3 * N_AXIS * 4 + n * 4..3 + 3 * N_AXIS * 4 + (n + 1) * 4]
-                    .copy_from_slice(&axis_sensors[n].to_le_bytes());
-            }
-            match lan9252
-                .write_bytes(&data, Lan9252Memory::OrbitaOut as u16)
-                .await
-            {
-                Ok(_) => {}
-                Err(e) => {
-                    error!("Write data error! {:?}", e)
+                // write back the read data to be read by the main ethercat loop
+                // the data are written in the OrbitaOut memory
+                // the data are written in the following format:
+                // 1. statusword 2 bytes
+                // 2. mode of operation 1 byte
+                // then we send the actual data for each axis
+                // 3. actual_postiion (N_AXIS * 4 bytes)
+                // 4. actual_velocity (N_AXIS * 4 bytes)
+                // 5. actual_torque (N_AXIS * 4 bytes)
+                // 6. axis sensors (N_AXIS * 4 bytes)
+                // NOTE:
+                //  - max length (for orbita3d) is 3 + 16*3 = 51Bytes
+                //  - If it would be more than 64 bytes, we would need to split the write in two parts
+                let mut data: [u8; 3 + 16 * N_AXIS] = [0; 3 + 16 * N_AXIS];
+                // statusword
+                let mut statusword = poulpe_state.status_to_statusword_byte_array();
+                // write the watchdog counter to the statusword (copied from the controlword)
+                statusword = write_watchdog_counter(statusword, watchdog_counter);
+                data[0..2].copy_from_slice(&statusword);
+                // mode of operation
+                data[2] = CiA402ModeOfOperation::from_tmc4671_mode(control_mode).to_u8();
+                // actual values
+                for n in 0..N_AXIS {
+                    data[3 + n * 4..3 + (n + 1) * 4]
+                        .copy_from_slice(&current_position[n].to_le_bytes());
+                    data[3 + N_AXIS * 4 + n * 4..3 + N_AXIS * 4 + (n + 1) * 4]
+                        .copy_from_slice(&current_velocity[n].to_le_bytes());
+                    data[3 + 2 * N_AXIS * 4 + n * 4..3 + 2 * N_AXIS * 4 + (n + 1) * 4]
+                        .copy_from_slice(&current_torque[n].to_le_bytes());
+                    data[3 + 3 * N_AXIS * 4 + n * 4..3 + 3 * N_AXIS * 4 + (n + 1) * 4]
+                        .copy_from_slice(&axis_sensors[n].to_le_bytes());
                 }
+                match lan9252
+                    .write_bytes(&data, Lan9252Memory::OrbitaOut as u16)
+                    .await
+                {
+                    Ok(_) => {}
+                    Err(e) => {
+                        error!("Write data error! {:?}", e)
+                    }
+                }
+                
             }
         }
-        // mailbox PDO write at around 10Hz
-        if downsample_state_cnt >= 100 {
-            match lan9252.read_register_indirect(AL_STATUS, 1).await {
-                Ok(al) => {
-                    debug!("Status: {:#x}", al[0] & 0x0F)
-                }
-                Err(e) => {
-                    error!("Read status error {:?}", e)
-                }
+
+
+        // allow changing the target position ans weel as the velocity and torque limits
+        // only if not in fault state, not in fault reaction state and not in quick stop state
+        if poulpe_state.is_preoperation_state() || poulpe_state.is_operation_enabled() {
+            if last_watchdog_counter_timestamp.elapsed()
+                    > Duration::from_millis(config::MAX_WATCHDOG_DOWN_TIME_MS) ||
+                last_master_connected_timestamp.elapsed()
+                    > Duration::from_millis(config::MAX_WATCHDOG_DOWN_TIME_MS)
+            {
+                // if the watchdog counter is not updated for more than 100ms
+                // we go to the quick stop reaction state
+                control_word = CiA402Command::QuickStop.to_u16();
+                debug!("Master not connected , our watchdog");
             }
+            
+            let shared_memory = SHARED_MEMORY.lock().await;
+            shared_memory.set_control_word(control_word);
+            // motion mode not used for now!!!
+            #[cfg(feature = "allow_mode_change")]
+            {
+                shared_memory.set_control_mode(CiA402ModeOfOperation::to_tmc4671_mode(
+                    &mode_of_operation,
+                ));
+                // dont update the target velocity and torque if the
+                // control mode cannot be changed
+                // saving some time
+                shared_memory.set_target_velocity(target_velocity);
+                shared_memory.set_target_torque(target_torque);
+            }
+            shared_memory.set_target_position(target_position);
+            shared_memory.set_velocity_limit(velocity_limits);
+            shared_memory.set_torque_flux_limit(torque_limits);
+        } else {
+            // if we are not in the preoperation state or in the operation enabled state
+            last_watchdog_counter_timestamp = Instant::now();
+            last_watchdog_counter = 255; // set to a value that is not possible
+        }
+
+        // mailbox PDO write at around 10Hz
+        if downsample_state_cnt >= 100 && ethercat_state == READY && master_connected {
             // write the state to the OrbitaStatus memory
             // lower frequency than the rest of the data
             // at 0.1Hz more or less
@@ -309,7 +358,6 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
             // then we send the current temperatures
             // 4. board temperature 4 bytes
             // 5. motor temperature 4 bytes
-            poulpe_state = { SHARED_MEMORY.lock().await.get_poulpe_state() };
             let board_temperture = { SHARED_MEMORY.lock().await.get_board_temperature() };
             let motor_temperture = { SHARED_MEMORY.lock().await.get_motor_temperature() };
             let mut data = [0 as u8; 2 + 2 * N_AXIS + 1 + 3 * N_AXIS * 4];
@@ -338,10 +386,31 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
             }
             downsample_state_cnt = 0;
         }
-        // Timer::after(Duration::from_millis(1)).await;
-        // info!("Ethercat loop elapsed time: {}us \t time between loops: {}us",t_loop.elapsed().as_micros(), t0.elapsed().as_micros());
-        // t0 = Instant::now();
-        downsample_state_cnt += 1;
+
+        // display the state of the ethercat communication to the console
+        if t_display.elapsed() > Duration::from_millis(2000) {
+            // display the state of the ethercat communicatio
+            if ethercat_state == READY {
+                if master_connected {
+                    info!("ETHERCAT State: READY\t Master: connected\tFrequency: {}Hz", loop_cnt_display*1000/((t_display.elapsed().as_millis()) as u32));
+                } else {
+                    warn!("ETHERCAT State: READY\tMaster: not connected");
+                }
+            } else {
+                    warn!("ETHERCAT State: NOT_READY: {:#x} (ready {:#x})", ethercat_state, READY);
+            }
+            t_display = Instant::now(); // reset the display timer
+            loop_cnt_display = 0; // reset the counter
+        }
+
+        
+        #[cfg(feature = "debug_execution_time")]
+        {
+            info!("Ethercat loop elapsed time: {}us \t time between loops: {}us",t_loop.elapsed().as_micros(), t0.elapsed().as_micros());
+            t0 = Instant::now();
+        }
+        downsample_state_cnt += 1; // increment the downsample counter for state update (PDO mailbox)
+        loop_cnt_display += 1; // increment the counter for display
         ticker.next().await;
     }
 }

@@ -223,6 +223,10 @@ Used to enable/disable the usage of the flash memory
 - `use_flash` - Enable the usage of the flash memory
 - `write_flash` - Write the configuration to the flash memory (if not used the configuration will be read from flash - if available)
 
+<b>Debugging features</b>
+Used to enable the debugging features
+- `debug_execution_time` - Measure and display the execution time of the real-time tasks
+
 ### Axis absolute zeros configuration
 
 In order to use the absolute zero position of the actuators the absolute zero values need to be writen to the flash memory of the poulpe boards. These values are written to the memory once and are used on the boot of the board. The absolute zeros can be set using the `ZEROS` command line argument. The values are written to the flash memory using the `write_flash` feature.
