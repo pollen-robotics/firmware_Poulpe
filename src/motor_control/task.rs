@@ -36,6 +36,7 @@ use crate::sensors::analog::{adc_read_temperature, adc_setup};
 #[cfg(feature = "pvt")]
 use crate::sensors::ltc4332::{LTC4332Config, LTC4332};
 
+use super::actuator;
 use super::{
     ventouse::{Ventouse, VentouseKind},
     Actuator, Foc, RawMotorsIO,
@@ -1298,50 +1299,49 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
                     SHARED_MEMORY.lock().await.set_torque_on(torque_on)
                 };
             } else if board_state.is_fault_reaction_state() {
-                // if there was a bus voltage error the operation stops but gently
-                let stopping_velocity_limit = [0.1; config::N_AXIS];
+
+                // set the control mode to stopped
+                // thic control mode will brake the motor producing a torque in the opposite direction of the velocity
+                {SHARED_MEMORY.lock().await.set_control_mode(MotionMode::Stopped);}
+                // if mode change is not allowed, do it here directly
+                // otherwise, the control mode will be changed later in code
+                #[cfg(not(feature = "allow_mode_change"))]
                 {
-                    SHARED_MEMORY
-                        .lock()
-                        .await
-                        .set_velocity_limit(stopping_velocity_limit)
-                };
+                    actuator.set_control_mode(MotionMode::Stopped).unwrap_or_else(|e| {
+                        error!("Error setting control mode: {:?}", e);
+                        loop_communication_error = true;
+                    });
+                }
+                
+                // get the latest velociyt and torque
+                let velocity = {SHARED_MEMORY.lock().await.get_current_velocity()};
+                let torque = {SHARED_MEMORY.lock().await.get_current_torque()};
 
-                // set the torque limit based on the time passed
-                let no_seconds_passed = fault_response_counter / 1000; // 1 second per 1000 loops - approx 1kHz
-                let torque_limit_index = (no_seconds_passed as f32 / emergency_stop_time_per_torque_secs) as u32 ;
-
-                // set the torque limit to the emergency stop torque limit
-                let mut home_torque_limit = [0.0; config::N_AXIS];
-                home_torque_limit.iter_mut().for_each(
-                    |t| *t = emergency_stop_torque_limits[torque_limit_index as usize], 
-                );
 
                 // update the fault response counter
-                fault_response_counter += 1;
+                fault_response_counter +=1;
                 if fault_response_counter % 500 == 0 {
-                    warn!("Fault reaction active, torque limit: {:?}, counter {}", home_torque_limit, fault_response_counter);
+                    warn!("Fault reaction active, velocity: {:?}, torque {}, quick stop time {}", velocity, torque, fault_response_counter as f32 * 0.001);
                 }
-                // if the end of the fault reaction is reached, stop the operation
-                if fault_response_counter >= emergency_stop_response_counter_max {
+
+                // if velocity is almost zero and the torque is almost zero, stop the operation
+                // dont stop if the fault response counter is not yet at the maximum
+                // and stop right away if the fault response counter is at the two times the maximum (emergency stop)
+                if (velocity.iter().all(|v| v.abs() < 0.05)) && 
+                    (torque.iter().all(|t| t.abs() < 100.0) && 
+                    (fault_response_counter >= emergency_stop_response_counter_max)) || 
+                    fault_response_counter >= 2*emergency_stop_response_counter_max {
                     torque_on = [false; config::N_AXIS];
                     {
                         SHARED_MEMORY.lock().await.set_torque_on(torque_on)
                     };
-                    info!(
-                        "Fault response done, torque limit under 5%, stopping operation, {:?}",
-                        home_torque_limit
+                    warn!(
+                        "Fault response done, stopping operation",
                     );
                     // notify that the fault handling is done
                     // this will set the state to fault
                     board_state.notify_fault_reaction_done();
-                } else {
-                    // if the torque limit is not under 5%, set the new torque limit
-                    SHARED_MEMORY
-                        .lock()
-                        .await
-                        .set_torque_flux_limit(home_torque_limit)
-                };
+                }
             }
         }
 
@@ -1350,62 +1350,48 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
         {
             if board_state.is_quick_stop_active() {
 
-                // try set the torque limit that does not exceed the current torque limit
-                if quick_stop_response_counter == 0 {
-                    // get current torque limit
-                    let mut current_torque_limit = { SHARED_MEMORY.lock().await.get_torque_flux_limit() };
-                    // take max of the current torque limit
-                    let current_torque_limit = current_torque_limit[0];
-
-                    for i in 0..emergency_stop_torque_limits.len() {
-                        if emergency_stop_torque_limits[i] < current_torque_limit {
-                            // update the counter to point to the closest torque limit
-                            quick_stop_response_counter = i * ((emergency_stop_time_per_torque_secs * 1000.0) as usize);
-                            break;
-                        }
-                    }
+                // set the control mode to stopped
+                // thic control mode will brake the motor producing a torque in the opposite direction of the velocity
+                {SHARED_MEMORY.lock().await.set_control_mode(MotionMode::Stopped);}
+                // if mode change is not allowed, do it here directly
+                // otherwise, the control mode will be changed later in code
+                #[cfg(not(feature = "allow_mode_change"))]
+                {
+                    actuator.set_control_mode(MotionMode::Stopped).unwrap_or_else(|e| {
+                        error!("Error setting control mode: {:?}", e);
+                        loop_communication_error = true;
+                    });
                 }
-
-                // if there was a bus voltage error the operation stops but gently
-                let stopping_velocity_limit = [0.1; config::N_AXIS];
-                {
-                    SHARED_MEMORY
-                        .lock()
-                        .await
-                        .set_velocity_limit(stopping_velocity_limit)
-                };
-
-                // if its orbita3d set it to posiiton 0
-                #[cfg(feature = "orbita3d")]
-                {
-                    let mut target = [0.0; config::N_AXIS];
-                    SHARED_MEMORY
-                        .lock()
-                        .await
-                        .set_target_position(target)
-                }                
                 
-                // set the torque limit based on the time passed
-                let no_seconds_passed = quick_stop_response_counter / 1000; // 1 second per 1000 loops - approx 1kHz
-                let torque_limit_index = (no_seconds_passed as f32 / emergency_stop_time_per_torque_secs) as u32 ;
+                // get the latest velociyt and torque
+                let velocity = {SHARED_MEMORY.lock().await.get_current_velocity()};
+                let torque = {SHARED_MEMORY.lock().await.get_current_torque()};
 
-                // set the torque limit to the emergency stop torque limit
-                let mut home_torque_limit = [0.0; config::N_AXIS];
-                home_torque_limit.iter_mut().for_each(
-                    |t| *t = emergency_stop_torque_limits[torque_limit_index as usize], 
-                );
-                // update the fault response counter
-                quick_stop_response_counter += 1;
+                // update the counter
+                quick_stop_response_counter +=1;
                 if quick_stop_response_counter % 500 == 0 {
-                    warn!("Quick stop active, torque limit: {:?}, counter {}", home_torque_limit, quick_stop_response_counter);
+                    warn!("Quick stop active, velocity: {:?}, torque {}, quick stop time {}", velocity, torque, quick_stop_response_counter as f32 * 0.001);
                 }
-                // if the end of the quick stop is reached, stop the operation
-                if quick_stop_response_counter >= emergency_stop_response_counter_max {
+
+                // if velocity is almost zero and the torque is almost zero, stop the operation
+                // dont stop if the fault response counter is not yet at the maximum
+                if (velocity.iter().all(|v| v.abs() < 0.05)) && 
+                    (torque.iter().all(|t| t.abs() < 100.0) && 
+                    (quick_stop_response_counter >= emergency_stop_response_counter_max)){
                     torque_on = [false; config::N_AXIS];
                     {
                         SHARED_MEMORY.lock().await.set_torque_on(torque_on)
                     };
-                    info!(
+                    // go back to the position mode only if the mode change is not allowed
+                    #[cfg(not(feature = "allow_mode_change"))]
+                    {
+                        {SHARED_MEMORY.lock().await.set_control_mode(MotionMode::Position);}
+                        actuator.set_control_mode(MotionMode::Position).unwrap_or_else(|e| {
+                            error!("Error setting control mode: {:?}", e);
+                            loop_communication_error = true;
+                        });
+                    }
+                    warn!(
                         "Quick stop done, stopping operation",
                     );
                     // notify that the quick stop is done
@@ -1413,13 +1399,7 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
                     board_state.notify_quick_stop_done();
                     // allow the new quick stop to be activated later if needed
                     quick_stop_response_counter = 0;
-                } else {
-                    // if the torque limit is not under 5%, set the new torque limit
-                    SHARED_MEMORY
-                        .lock()
-                        .await
-                        .set_torque_flux_limit(home_torque_limit)
-                };
+                }
             }
         }
 
@@ -1432,7 +1412,7 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
             init_torque_on = torque_on;
         }
 
-        let control_mode = { SHARED_MEMORY.lock().await.get_control_mode() };
+        let mut control_mode = { SHARED_MEMORY.lock().await.get_control_mode() };
         #[cfg(feature = "allow_mode_change")]
         {
             if init_control_mode.to_u8() != control_mode.to_u8() {
@@ -1443,6 +1423,18 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
                 init_control_mode = control_mode;
             }
         }
+
+        match actuator.get_control_mode(){
+            Ok(mode) => {
+                { SHARED_MEMORY.lock().await.set_control_mode_display(mode[0]) };
+                control_mode = mode[0];
+            },
+            Err(e) => {
+                error!("Error reading control mode: {:?}", e);
+                loop_communication_error = true;
+            }
+        }
+
 
         match control_mode {
             MotionMode::Position => {
@@ -1607,7 +1599,6 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
                 error!("Axis sensors error");
             }
         }
-
         // set the error led if there was an error
         if error_led != prev_error_led {
             SHARED_MEMORY.lock().await.set_error_led(error_led);
