@@ -13,6 +13,7 @@ use embassy_time::Instant;
 pub struct Memory<const N: usize> {
     torque_on: [bool; N],
     control_mode: MotionMode,
+    control_mode_display: MotionMode,
     control_word: u16,
 
     current_position: [f32; N],
@@ -68,6 +69,14 @@ impl<const N: usize> SharedMemory<N> {
     pub fn set_torque_on(&self, on: [bool; N]) {
         self.inner.borrow_mut().torque_on = on;
     }
+
+    pub fn get_control_mode_display(&self) -> MotionMode {
+        self.inner.borrow().control_mode
+    }
+    pub fn set_control_mode_display(&self, mode: MotionMode) {
+        self.inner.borrow_mut().control_mode = mode;
+    }
+
 
     pub fn get_control_mode(&self) -> MotionMode {
         self.inner.borrow().control_mode
@@ -304,7 +313,8 @@ impl<const N: usize> SharedMemory<N> {
         Self {
             inner: RefCell::new(Memory {
                 torque_on: [false; N],
-                control_mode: MotionMode::Torque,
+                control_mode: MotionMode::Stopped,
+                control_mode_display: MotionMode::Stopped,
                 control_word: 0,
 
                 current_position: [0.0; N],
@@ -353,6 +363,10 @@ impl<const N: usize> SharedMemory<N> {
         *self.inner.borrow_mut() = Memory {
             torque_on: actuator.is_torque_on().unwrap_or([false; N]),
             control_mode: match actuator.get_control_mode() {
+                Ok(mode) => mode[0],
+                Err(_) => MotionMode::Stopped,
+            },
+            control_mode_display: match actuator.get_control_mode() {
                 Ok(mode) => mode[0],
                 Err(_) => MotionMode::Stopped,
             },

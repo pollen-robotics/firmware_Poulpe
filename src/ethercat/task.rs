@@ -168,6 +168,8 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                 0
             }
         };
+        // a a microsecond delay to avoid reading the same data
+        Timer::after(Duration::from_micros(1)).await;
 
         // check if the master if the master is connected 
         // by checking the watchdog status
@@ -181,6 +183,8 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                 false
             }
         };
+        // a a microsecond delay to avoid reading the same data
+        Timer::after(Duration::from_micros(1)).await;
 
         if master_connected {
             last_master_connected_timestamp = Instant::now();
@@ -241,9 +245,12 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                     }
                 }
             }
+            // a a microsecond delay to avoid reading the same data
+            Timer::after(Duration::from_micros(1)).await;
 
             // watchdog counter is in the controlword
             watchdog_counter = parse_watchdog_counter(control_word);
+            //info!("Watchdog counter: {}, {}", watchdog_counter, master_connected);
             if last_watchdog_counter != watchdog_counter {
                 // update the last watchdog counter and the timestamp
                 last_watchdog_counter_timestamp = Instant::now();
@@ -253,7 +260,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
             // send data only if the master is connected
             if master_connected {
                 let shared_memory = SHARED_MEMORY.lock().await;
-                let control_mode = { shared_memory.get_control_mode() };
+                let control_mode = { shared_memory.get_control_mode_display() };
                 let torque_on = shared_memory.get_torque_on();
                 let current_position = shared_memory.get_current_position();
                 let current_velocity = shared_memory.get_current_velocity();
@@ -302,7 +309,8 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                         error!("Write data error! {:?}", e)
                     }
                 }
-                
+                // a a microsecond delay to avoid reading the same data
+                Timer::after(Duration::from_micros(1)).await;
             }
         }
 
@@ -385,6 +393,8 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                 }
             }
             downsample_state_cnt = 0;
+            // a a microsecond delay to avoid reading the same data
+            Timer::after(Duration::from_micros(1)).await;
         }
 
         // display the state of the ethercat communication to the console
