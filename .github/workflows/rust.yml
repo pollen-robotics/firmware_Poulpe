@@ -53,3 +53,17 @@ jobs:
         run: cargo build --release --features orbita2d_beta --bin test_Temperature
       - name: Build Temperature example for Orbita2d pvt
         run: cargo build --release --features orbita2d_pvt --bin test_Temperature
+
+  build_bench:
+  
+      runs-on: ubuntu-latest
+  
+      steps:
+      - name: Build write zeros bench for Orbita2d pvt
+        run: cargo build --release --features orbita2d_pvt --bin bench_Orbita2dWriteZeros
+      - name: Build write zeros bench for Orbita3d pvt
+        run: cargo build --release --features orbita3d_pvt --bin bench_Orbita3dWriteZeros
+      - name: Build write zeros bench for Orbita2d pvt
+        run: cargo build --release --features orbita2d_gamma --bin bench_Orbita2dWriteZeros
+      - name: Build write zeros bench for Orbita3d pvt
+        run: cargo build --release --features orbita3d_gamma --bin bench_Orbita3dWriteZeros
