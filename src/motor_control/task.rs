@@ -328,7 +328,7 @@ pub async fn robust_read_axis_sensors<'d, const N: usize>(
     n_read: u8,
 ) -> Result<[f32; N], spi::Error> {
     // read the sensors - but disable the torque to avoid the noise
-    actuator.set_torque([false; N]).unwrap();
+    //actuator.set_torque([false; N]).unwrap();
 
     Timer::after(Duration::from_micros(100000)).await;
 
@@ -354,7 +354,7 @@ pub async fn robust_read_axis_sensors<'d, const N: usize>(
                     if sensors.iter().any(|x| x.is_nan()) {
                         error!("Nan values in sensors, retrying...");
                         #[cfg(not(feature = "ignore_errors"))] // dont wait if ignoring errors
-                        Timer::after(Duration::from_micros(100000)).await; // wait for a bit
+                        Timer::after(Duration::from_micros(10000)).await; // wait for a bit
                         continue;
                     }
                     // break sensors;
@@ -370,7 +370,7 @@ pub async fn robust_read_axis_sensors<'d, const N: usize>(
                 Err(e) => {
                     error!("Error reading axis sensors: {:?}", e);
                     #[cfg(not(feature = "ignore_errors"))] // dont wait if ignoring errors
-                    Timer::after(Duration::from_micros(100000)).await;
+                    Timer::after(Duration::from_micros(10000)).await;
                     continue; //  retry the init if the read
                 }
             }
