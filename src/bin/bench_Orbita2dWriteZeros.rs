@@ -30,7 +30,6 @@ use firmware_poulpe::config::*;
 async fn main(_spawner: Spawner) {
     info!("Orbita2d Zero to flash program!");
 
-
     info!("----------------- Clock config -----------------");
     // 440MHz (without HSE)
     let mut stm32_conf = Config::default();
@@ -209,8 +208,11 @@ async fn main(_spawner: Spawner) {
     info!("----------------- Writing zeros to flash -----------------");
     let sensor_offsets = FlashData {
         board_id: DXL_ID,
-        sensor_offsets: [angle_ring,  angle_center],  
+        sensor_offsets: [0.0; N_AXIS],  
     };
+    sensor_offsets.sensor_offsets[0] = angle_ring;
+    sensor_offsets.sensor_offsets[1] = angle_center;
+    
     info!("Zeros to be written to flash: {:?}", sensor_offsets);
 
     match flash_manager.lazy_checked_write(sensor_offsets   , 5).await {

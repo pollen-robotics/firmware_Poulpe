@@ -59,6 +59,7 @@ jobs:
       runs-on: ubuntu-latest
   
       steps:
+      - uses: actions/checkout@v3
       - name: Build write zeros bench for Orbita2d pvt
         run: cargo build --release --features orbita2d_pvt --bin bench_Orbita2dWriteZeros
       - name: Build write zeros bench for Orbita3d pvt
