@@ -12,7 +12,6 @@ use embassy_stm32::time::mhz;
 use embassy_stm32::{spi, Config};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_time::{Duration, Timer};
-use {defmt_rtt as _, panic_probe as _};
 
 use core::cell::RefCell;
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
@@ -26,6 +25,8 @@ use firmware_poulpe::utils::flash::*;
 use firmware_poulpe::config::*;
 
 
+
+// only compile if orbita3d feature is enabled
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     info!("Orbita2d Zero to flash program!");
@@ -206,13 +207,13 @@ async fn main(_spawner: Spawner) {
     );
 
     info!("----------------- Writing zeros to flash -----------------");
-    let sensor_offsets = FlashData {
+    let mut sensor_offsets = FlashData {
         board_id: DXL_ID,
         sensor_offsets: [0.0; N_AXIS],  
     };
     sensor_offsets.sensor_offsets[0] = angle_ring;
     sensor_offsets.sensor_offsets[1] = angle_center;
-    
+
     info!("Zeros to be written to flash: {:?}", sensor_offsets);
 
     match flash_manager.lazy_checked_write(sensor_offsets   , 5).await {

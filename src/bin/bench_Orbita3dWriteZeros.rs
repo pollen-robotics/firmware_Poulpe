@@ -2,6 +2,8 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 #![feature(stmt_expr_attributes)]
+// only compile if orbita3d feature is enabled
+#![cfg(feature = "orbita3d")]
 
 use defmt::*;
 use embassy_executor::Spawner;
