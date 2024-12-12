@@ -23,11 +23,29 @@ Testing the motor control on one motor - connected to the `B` port
 
 ## Bench Programs
 
-Bench programs are used to do standarized tests on the library and the hardware. They are used to test and verify the performance of the library and the hardware.
+Bench programs are inteded to be run for hardware testing in the benchtop setup to verify the hardware is working correctly. As well as to configure the hardware.
+
+### Write axis zeros to FLASH memory (configure the actuator)
+Writing the axis zeros to FLASH memory, the code will read the axis sensors, transform the values to the axis values and write them to the flash memory.
+- `bench_Orbita2dWriteZeros.rs` - Write the zeros to the flash memory of the orbita2d board
+- `bench_Orbita3dWriteZeros.rs` - Write the zeros to the flash memory of the orbita3d board
+
+**IMPORTANT** The zeros are written to the flash memory, so they are persistent. Make sure to run the program only once, or the zeros will be overwritten. Make sure to position the orbita in its zero position before running the program.
+
+The code will write the axis zeros as well as the DXL_ID to the flash, it will write the id 42 by default, if you want to change the id you can do so by adding the `DXL_ID` environment variable the call of the program.
+
+For example, to write the zeros to the flash memory of the orbita3d (pvt version) board with the `DXL_ID` 56:
+```
+DEFMT_LOG=info DXL_ID=56 cargo run --release --features orbita3d_pvt --bin bench_Orbita3dWriteZeros
+```
+
+### Test the motor in torque mode (verify the motor is working correctly)
 
 Verify that the motor has not too much vibration when it is not moving.
 Testing the motor in torque mode with 500mA target. 
 - `bench_MotorTest.rs`
+
+
 
 
 ## Running the programs

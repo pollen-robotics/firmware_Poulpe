@@ -18,12 +18,18 @@ use core::cell::RefCell;
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_sync::blocking_mutex::Mutex;
 use embedded_hal_1::spi::SpiDevice;
-use firmware_poulpe::sensors::sensors::AD5047Sensor;
+use firmware_poulpe::sensors::sensors::{AD5047Sensor, SensorKind};
 use firmware_poulpe::sensors::*;
+use firmware_poulpe::sensors::sensors_io;
+
+use firmware_poulpe::utils::flash::*;
+use firmware_poulpe::config::*;
+
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
-    info!("Hello World!");
+    info!("Orbita3d Zero to flash program!");
+
 
     info!("----------------- Clock config -----------------");
     // 440MHz (without HSE)
@@ -65,6 +71,15 @@ async fn main(_spawner: Spawner) {
     info!("----------------- LEDs config -----------------");
     let mut led_green = Output::new(p.PC9, Level::High, Speed::Low);
     let mut led_red = Output::new(p.PC8, Level::High, Speed::Low);
+    led_red.set_low();
+    led_green.set_low();
+
+    #[cfg(not(feature = "orbita3d"))]
+    {
+        error!("This program is only for Orbita3d hardware!");
+        led_red.set_high();
+        return;
+    }
 
     info!("----------------- SPI config -----------------");
     // Configure SPI
@@ -107,40 +122,109 @@ async fn main(_spawner: Spawner) {
         Output::new(p.PA4, Level::High, Speed::Medium),
         spi_config,
     );
-    let mut as5047top = AD5047Sensor::new(as5047top_spi);
-    as5047top.init();
+    let mut as5047top = SensorKind::DonutTop(AD5047Sensor::new(as5047top_spi));
 
     let mut ad5047mid_spi = SpiDeviceWithConfig::new(
         &spi_bus,
         Output::new(p.PA15, Level::High, Speed::Medium),
         spi_config,
     );
-    let mut as5047mid = AD5047Sensor::new(ad5047mid_spi);
-    as5047mid.init();
-
+    // donut mid et bot are inverted
+    // thats why bot as5047mid is using SensorKind::DonutBot
+    let mut as5047mid = SensorKind::DonutBot(AD5047Sensor::new(ad5047mid_spi));
+    
     let mut as5047bot_spi = SpiDeviceWithConfig::new(
         &spi_bus,
         Output::new(p.PE4, Level::High, Speed::Medium),
         spi_config,
     );
-    let mut as5047bot = AD5047Sensor::new(as5047bot_spi);
-    as5047bot.init();
+    // donut mid et bot are inverted
+    // thats why bot as5047bot is using SensorKind::DonutMid
+    let mut as5047bot = SensorKind::DonutMid(AD5047Sensor::new(as5047bot_spi));
 
-    info!("----------------- Loop -----------------");
+
+    info!("----------------- Flash config -----------------");
+    let mut flash_manager = FlashManager::new(p.FLASH).await;
+
+    info!("Reading from flash");
+    match flash_manager.read() {
+        Ok(b) => {
+            // check if empty data
+            if b.is_valid() {
+                warn!(
+                    "Data in flash is empty or corrupted, bord id:{}, hardware_zeros: {:?}",
+                    b.board_id,  b.sensor_offsets
+                );
+            } else {
+                info!("Data in flash valid, bord id:{}, hardware_zeros: {:?}",
+                    b.board_id,  b.sensor_offsets
+                );
+            }
+        }
+        Err(e) => {
+            error!(
+                "Error reading from flash! Stopping execution! {:?}", 
+                e
+            );
+            led_red.set_high();
+            return;
+        }
+    }
+
+    info!("----------------- Reading sensors -----------------");
+
+    let angle_bot = sensors_io::get_axis_sensors_robust(&mut as5047bot, 10, 1000).await.unwrap()[0];
+    let angle_mid = sensors_io::get_axis_sensors_robust(&mut as5047mid, 10, 1000).await.unwrap()[0];
+    let angle_top = sensors_io::get_axis_sensors_robust(&mut as5047top, 10, 1000).await.unwrap()[0];
+
+    info!(
+        "Angles: bot: {}, mid: {}, top: {}",
+        angle_bot, angle_mid, angle_top
+    );
+
+    info!("----------------- Writing zeros to flash -----------------");
+    let motor_config = BrushlessMotor::ecx22();
+    let axis_ratio = motor_config.axis_ratio();
+    let sensor_offsets = FlashData {
+        board_id: DXL_ID,
+        sensor_offsets: [angle_top*axis_ratio,  angle_mid*axis_ratio, angle_bot*axis_ratio],  
+    };
+    info!("Zeros to be written to flash: {:?}", sensor_offsets);
+
+    match flash_manager.lazy_checked_write(sensor_offsets   , 5).await {
+        Ok(()) => info!("Write to flash OK"),
+        Err(e) => error!("Error writing to flash: {:?}", e),
+    }
+
+    info!("----------------- Verifying zeros in flash -----------------");
+    match flash_manager.read() {
+        Ok(b) => {
+            // check if empty data
+            if b.is_valid() {
+                error!(
+                    "Data in flash is empty or corrupted, bord id:{}, hardware_zeros: {:?}",
+                    b.board_id,  b.sensor_offsets
+                );
+            } else {
+                info!("Data in flash valid, bord id:{}, hardware_zeros: {:?}",
+                    b.board_id,  b.sensor_offsets
+                );
+            }
+        }
+        Err(e) => {
+            error!(
+                "Error reading from flash! Stopping execution! {:?}", 
+                e
+            );
+            led_red.set_high();
+            return;
+        }
+    }
+    
+
+    info!("----------------- Done : SUCCESS -----------------");
     loop {
         // Led
         led_green.set_high();
-        Timer::after_millis(500).await;
-        led_green.set_low();
-        Timer::after_millis(500).await;
-
-        let angle_bot = as5047bot.read_angle().unwrap_or_default();
-        let angle_mid = as5047mid.read_angle().unwrap_or_default();
-        let angle_top = as5047top.read_angle().unwrap_or_default();
-        // display angles with 3 decimals
-        info!(
-            "Angles: bot: {}, mid: {}, top: {}",
-            angle_bot, angle_mid, angle_top
-        );
     }
 }

@@ -13,6 +13,7 @@ pub enum IOError {
     InitError,
     DriverError,
     CommunicationError,
+    SensorError,
 }
 
 #[derive(Debug, Format)]
