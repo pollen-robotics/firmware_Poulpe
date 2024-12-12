@@ -224,7 +224,6 @@ overflow-checks = false # <-
 
 
 
-# [[bin]]
-# name = "firmware_poulpe" # src/main.rs
-# test = false
-
+[[bin]]
+name = "firmware_poulpe" # src/main.rs
+default = true
