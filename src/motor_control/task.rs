@@ -20,6 +20,7 @@ use micromath::F32Ext;
 use modular_bitfield::error;
 
 const SPI_FREQ: u32 = 2_000_000;
+const SPI_FREQ_LTC: u32 = 1_000_000;
 
 use crate::motor_control::foc::MotionMode;
 use crate::state_machine::{CiA402State, CiA402StatusBit};
@@ -328,7 +329,8 @@ pub async fn robust_read_axis_sensors<'d, const N: usize>(
     n_read: u8,
 ) -> Result<[f32; N], spi::Error> {
     // read the sensors - but disable the torque to avoid the noise
-    //actuator.set_torque([false; N]).unwrap();
+    #[cfg(feature = "orbita3d")]
+    actuator.set_torque([false; N]).unwrap();
 
     Timer::after(Duration::from_micros(100000)).await;
 
@@ -705,6 +707,7 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
     donut_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
     donut_spi_config.bit_order = spi::BitOrder::MsbFirst;
     donut_spi_config.mode = spi::MODE_1; // AD5047 uses MODE1
+    
     #[cfg(feature = "pvt")]
     {
         donut_spi_config.mode = spi::MODE_0;
@@ -812,7 +815,7 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
 
     //Aksim sensor BUS C
     let mut ring_spi_config = spi::Config::default();
-    ring_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
+    ring_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ_LTC);
     ring_spi_config.bit_order = spi::BitOrder::MsbFirst;
     ring_spi_config.mode = spi::MODE_1; // Aksim2 uses MODE1
     #[cfg(feature = "pvt")]
