@@ -238,7 +238,7 @@ pub async fn main(_spawner: Spawner) {
         //  - positive, negative  - center axis rotation positive
         //  - negative, positive  - center axis rotation negative
         // repeat for 1 minute
-        if t0.ellapsed() > Duration::from_secs(5) {
+        if t0.elapsed() > Duration::from_secs(5) {
             t0 = Instant::now();
             match current_dir {
                 1 => {
@@ -273,7 +273,7 @@ pub async fn main(_spawner: Spawner) {
                 }
             }
         }
-        if t0.ellapsed() > Duration::from_secs(60) {
+        if t0.elapsed() > Duration::from_secs(60) {
             info!("Test finished");
             break;
         }
