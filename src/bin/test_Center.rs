@@ -23,7 +23,7 @@ use firmware_poulpe::sensors::*;
 
 #[embassy_executor::main]
 pub async fn main(_spawner: Spawner) {
-    info!("Hello World!");
+    info!("Center test!");
 
     info!("----------------- Clock config -----------------");
     // 440MHz (without HSE)

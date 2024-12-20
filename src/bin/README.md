@@ -39,13 +39,18 @@ For example, to write the zeros to the flash memory of the orbita3d (pvt version
 DEFMT_LOG=info DXL_ID=56 cargo run --release --features orbita3d_pvt --bin bench_Orbita3dWriteZeros
 ```
 
+### Test the orbita2d on assembly (verify that there is not too tight)
+
+This code will run both motors of the orbita2d board in torque mode with 400mA target, which should be enough to move the assembly. The code will run the motors will change direction each 5 seconds. The goal of this code is to be a visual check for the assembly personeel to verify that the assembly is not too tight. If the motors stop moving, it means that the assembly is too tight.
+
+- `bench_Orbita2dAssemblyTest.rs` 
+
+
 ### Test the motor in torque mode (verify the motor is working correctly)
 
 Verify that the motor has not too much vibration when it is not moving.
 Testing the motor in torque mode with 500mA target. 
 - `bench_MotorTest.rs`
-
-
 
 
 ## Running the programs

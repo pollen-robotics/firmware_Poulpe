@@ -14,7 +14,7 @@ use firmware_poulpe::{sensors::sensors::I2cHallSensor, IrqsI2c};
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
-    info!("Hello world!");
+    info!("Hall sensor test!");
     let p = embassy_stm32::init(Default::default());
 
     info!("----------------- LEDs config -----------------");

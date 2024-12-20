@@ -6,26 +6,18 @@ license = "MIT OR Apache-2.0"
 default-run = "firmware_poulpe" # Refers to src/main.rs by default
 
 [features]
-### orbita specifig config
+#default = ["orbita2d", "beta", "ec60", "cmd_filter", "axis_output", "use_flash"]
 
 ###### old
 ## ec60 based orbita 2d + beta hardware
 # default = ["orbita2d", "beta", "ec60", "cmd_filter", "axis_output", "use_flash"]
 
 ###### beta
-## orbita 2d (genric boards with poulpe + 2x BOB)
-# default = ["orbita2d", "beta", "ec45",  "cmd_filter", "gearbox_output" , "use_flash"]
-## orbita 3d (genric boards with poulpe + 3x BOB)
-# default = ["orbita3d", "beta", "ecx22", ,"cmd_filter","gearbox_output", "use_flash"]
 orbita2d_beta = ["orbita2d", "beta", "ec45", "cmd_filter", "gearbox_output" , "use_flash", "allow_quickstop", "allow_mode_change", "ethercat"] #"dynamixel"]
 orbita3d_beta = ["orbita3d", "beta", "ecx22", "cmd_filter", "gearbox_output", "use_flash", "allow_quickstop", "allow_mode_change", "orbita3d_zero_pre_dvt", "ethercat"] #"dynamixel"]
 
 
 ####### gamma (dvt)
-## orbita 2d (gamma elec)
-# default = ["orbita2d", "gamma", "ec45", "cmd_filter", "gearbox_output" , "use_flash"]
-## orbita 3d (gamma elec)
-# default = ["orbita3d", "gamma", "ecx22",  "cmd_filter", "gearbox_output", "use_flash"]
 orbita2d_gamma = ["orbita2d", "gamma", "ec45", "cmd_filter", "gearbox_output" , "use_flash", "allow_quickstop", "allow_mode_change" , "ethercat"]
 orbita3d_gamma = ["orbita3d", "gamma", "ecx22l", "cmd_filter", "gearbox_output", "use_flash", "allow_quickstop", "allow_mode_change", "ethercat"]
 

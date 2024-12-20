@@ -11,7 +11,7 @@ use firmware_poulpe::sensors::analog::*;
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
-    info!("Hello World!");
+    info!("Temperature test!");
 
     info!("----------------- Clock config -----------------");
     let mut stm32_conf = Config::default();

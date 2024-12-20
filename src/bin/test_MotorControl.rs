@@ -150,7 +150,7 @@ pub async fn main(_spawner: Spawner) {
         embassy_stm32::peripherals::PE0,
         _,
     > = Ventouse::new(foc, driver);
-    match controller.init('A').await {
+    match controller.init('B').await {
         Ok(_) => info!("Ventouse initialized"),
         Err(e) => error!("Ventouse initialization failed: {:?}", e),
     }
