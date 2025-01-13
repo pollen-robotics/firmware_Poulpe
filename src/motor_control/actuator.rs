@@ -4,7 +4,7 @@ use embassy_futures::join;
 
 use super::foc::MotionMode;
 use super::motors_io::{Pid, RawMotorsIO};
-use crate::config::BrushlessMotor;
+use crate::config::{self, BrushlessMotor};
 use crate::config::DonutHall;
 
 use super::ventouse::VentouseKind;
@@ -12,6 +12,11 @@ use crate::sensors::{sensors::SensorKind, sensors_io::RawSensorsIO};
 use crate::utils::errors::{IOError, Result};
 use defmt::{debug, error, info, warn};
 use micromath::F32Ext;
+use embassy_time::{Timer,Duration};
+
+use crate::state_machine::poulpe_state::HomingErrorFlag;
+use crate::SHARED_MEMORY;
+
 
 const PI: f32 = 3.141592653589793;
 const TAU: f32 = 6.283185307179586;
@@ -180,6 +185,310 @@ impl<'d, const N: usize> Actuator<'d, N> {
         self.hardware_zeros = zeros;
         Ok(())
     }
+
+
+    // read the axis sensors
+    // disables the torque to avoid the noise
+    // make a few tries to avoid nan values and errors
+    // if there is an error, return an error
+    pub async fn robust_read_axis_sensors(
+        &mut self,
+        n_read_tries: u8,
+        n_read: u8,
+    ) -> Result<[f32; N]> {
+
+        Timer::after(Duration::from_micros(100000)).await;
+
+        let mut n_read_tries = n_read_tries;
+        // make a few tries to avoid nan values:
+        let sensor_reads = loop {
+            n_read_tries = n_read_tries - 1;
+            if n_read_tries == 0 {
+                error!("Error reading axis sensors: too many tries (10), retrying...");
+                return Err(IOError::SpiError(embassy_stm32::spi::Error::ModeFault));
+            }
+
+            // We read n_read time the sensor and take the average and deviation to check if the sensor is stable
+            let mut sensor_reads_avg: [f32; N] = [0.0; N];
+            let mut sensor_reads_std: [f32; N] = [0.0; N];
+            let mut sensor_reads_M2: [f32; N] = [0.0; N];
+
+            let mut n: f32 = 0.0;
+            for _ in 0..n_read {
+                n = n + 1.0;
+                match self.get_axis_sensors() {
+                    Ok(sensors) => {
+                        if sensors.iter().any(|x| x.is_nan()) {
+                            error!("Nan values in sensors, retrying...");
+                            #[cfg(not(feature = "ignore_errors"))] // dont wait if ignoring errors
+                            Timer::after(Duration::from_micros(10000)).await; // wait for a bit
+                            continue;
+                        }
+                        // break sensors;
+                        let mut delta: [f32; N] = [0.0; N];
+                        for s in 0..N {
+                            delta[s] = sensors[s] - sensor_reads_avg[s];
+                            sensor_reads_avg[s] = sensor_reads_avg[s] + delta[s] / n;
+                            sensor_reads_M2[s] = sensor_reads_M2[s]
+                                + F32Ext::sqrt(delta[s] * (sensors[s] - sensor_reads_avg[s]));
+                            sensor_reads_std[s] = sensor_reads_M2[s] / n;
+                        }
+                    }
+                    Err(e) => {
+                        error!("Error reading axis sensors: {:?}", e);
+                        #[cfg(not(feature = "ignore_errors"))] // dont wait if ignoring errors
+                        Timer::after(Duration::from_micros(10000)).await;
+                        continue; //  retry the init if the read
+                    }
+                }
+            }
+            info!(
+                "Sensor avg: {:?} sensor deviation: {:?}",
+                sensor_reads_avg, sensor_reads_std
+            );
+            let mut should_retry: bool = false;
+            for s in 0..N {
+                if sensor_reads_std[s] > 1e-3 {
+                    error!("Sensor deviation is to high!");
+                    should_retry = true;
+                }
+            }
+            if should_retry {
+                continue;
+            }
+            break sensor_reads_avg;
+        };
+        // wait a bit to make sure the torque is enabled
+        Timer::after(Duration::from_micros(100000)).await;
+
+        Ok(sensor_reads)
+    }
+
+
+    //Find index for Orbita3D motors
+    #[cfg(feature = "orbita3d")]
+    pub async fn find_index_orbita3d(&mut self, donut_hall: &mut config::DonutHall<'d>) -> Result<HomingErrorFlag> {
+        //FIXME:
+        // - Maybe torque off is not so good, moving motor can induce motion in the torque off motor...
+
+        // self.set_torque([false, false, false]).unwrap();
+
+        let indices = self.find_index(donut_hall).unwrap_or_else(|e| {
+            error!("Error finding index: {:?}", e);
+            [255; N]
+        });
+        info!("Found indices: {:?}", indices);
+        //TODO retry if 255 or duplicate
+
+        if indices.contains(&255) {
+            // errors in finding the Hall
+            error!("Bad index!");
+            #[cfg(not(feature = "ignore_errors"))]
+            return Ok(HomingErrorFlag::IndexSearchFail);
+        }
+        if (1..indices.len()).any(|i| indices[i..].contains(&indices[i - 1])) {
+            //thanks Stackoverflow
+            error!("Duplicate index!");
+            #[cfg(not(feature = "ignore_errors"))]
+            return Ok(HomingErrorFlag::IndexSearchFail);
+        }
+
+        self.set_index_sensor(indices);
+        self.set_torque([false; N]).unwrap(); //be sure to torque off to avoid noise in axis sensors?
+        Timer::after(Duration::from_millis(10));
+
+        // let zeros = [1.0193205177783966, 0.7377220094203949, 0.4328247159719467]; //Orbita domain
+        let zeros = self.get_hardware_zeros()?;
+
+        if zeros[0] == zeros[1] && zeros[1] == zeros[2] && zeros[0] == 0.0 {
+            //Forgot to pass the zeros as argument! FIXME switch to a different zeroing mode?
+            // => assuming HallZero mode
+            error!("No zero given in paramter! => HallZero mode");
+            // Set the initial position to the axis sensor values (used for pc-side "sofwtare" zeroring )
+
+            // read the current axis sensors positions
+            let mut init_sensors = match self.robust_read_axis_sensors(10, 100).await {
+                Ok(sensor_values) => {
+                    debug!("init sensors: {:?}", sensor_values);
+                    sensor_values
+                }
+                Err(e) => {
+                    error!("Error reading axis sensors: {:?}", e);
+                    #[cfg(not(feature = "ignore_errors"))]
+                    return Ok(HomingErrorFlag::AxisSensorReadFail);
+                    #[cfg(feature = "ignore_errors")]
+                    [0.0; N] // use the default value if ignoring errors
+                }
+            };
+
+            init_sensors.iter_mut().for_each(|x| *x = wrap_to_pi(*x));
+            debug!("init axis sensors: {:?}", init_sensors);
+            match self.set_current_position(init_sensors) {
+                Ok(_) => {
+                    SHARED_MEMORY
+                        .lock()
+                        .await
+                        .set_current_position(init_sensors[..N].try_into().unwrap());
+                    // stupid rust thing to convert N array to N_AXIS array (N = 3, N_AXIS = 3)
+                }
+                Err(e) => {
+                    error!("Error setting current position: {:?}", e);
+                    #[cfg(not(feature = "ignore_errors"))]
+                    return Ok(HomingErrorFlag::ZeroingFail);
+                }
+            }
+            // #[cfg(feature = "orbita3d")]
+            match self.set_target_position(init_sensors) {
+                Ok(_) => {
+                    SHARED_MEMORY
+                        .lock()
+                        .await
+                        .set_target_position(init_sensors[..N].try_into().unwrap());
+                    // stupid rust thing to convert N array to N_AXIS array (N = 3, N_AXIS = 3)
+                }
+                Err(e) => {
+                    error!("Error setting target position: {:?}", e);
+                    #[cfg(not(feature = "ignore_errors"))]
+                    return Ok(HomingErrorFlag::ZeroingFail);
+                }
+            }
+            return Ok(HomingErrorFlag::None);
+        } else {
+            info!("Hardware zeros: {:?}", zeros);
+            let (mut offsets, found_turn) = self.compute_offset(indices, zeros).unwrap();
+
+            if !(found_turn[0] == found_turn[1] && found_turn[1] == found_turn[2]) {
+                //It may be possible in certain case?? But better forbid this
+                error!("Incoherent number of turn found! {:?}", found_turn);
+                #[cfg(not(feature = "ignore_errors"))]
+                return Ok(HomingErrorFlag::ZeroingFail);
+            }
+            if offsets.iter().any(|&x| x.is_nan()) {
+                // Check for NaN
+                error!("Bad offsets! {:?}", offsets);
+                #[cfg(not(feature = "ignore_errors"))]
+                return Ok(HomingErrorFlag::ZeroingFail);
+            }
+
+            // read the current axis sensors positions
+            let curpos = match self.robust_read_axis_sensors(10, 100).await {
+                Ok(sensor_values) => {
+                    debug!("init sensors: {:?}", sensor_values);
+                    sensor_values
+                }
+                Err(e) => {
+                    error!("Error reading axis sensors: {:?}", e);
+                    #[cfg(not(feature = "ignore_errors"))]
+                    return Ok(HomingErrorFlag::AxisSensorReadFail);
+                    #[cfg(feature = "ignore_errors")]
+                    [0.0; N] // use the default value if ignoring errors
+                }
+            };
+
+            offsets[0] *= -1.0 / BrushlessMotor::ecx22().axis_ratio();
+            offsets[1] *= -1.0 / BrushlessMotor::ecx22().axis_ratio();
+            offsets[2] *= -1.0 / BrushlessMotor::ecx22().axis_ratio();
+
+            offsets[0] += curpos[0];
+            offsets[1] += curpos[1];
+            offsets[2] += curpos[2];
+
+            debug!("indices: {:?} offsets: {:?}", indices, offsets);
+            self.set_current_position(offsets)?;
+            return Ok(HomingErrorFlag::None);
+        }
+    }
+
+    #[cfg(feature = "orbita2d")]
+    pub async fn find_index_orbita2d(&mut self)  -> Result<HomingErrorFlag> {
+        self.set_torque([false; N])?; //be sure to torque off to avoid noise in axis sensors?
+        Timer::after(Duration::from_millis(10));
+        // let zeros = [5.236674785614014, 1.6637036800384521]; //Orbita domain
+        let zeros = self.get_hardware_zeros()?;
+
+        if zeros[0] == zeros[1] && zeros[0] == 0.0 {
+            //Forgot to pass the zeros as argument! FIXME switch to a different zeroing mode?
+            error!("No zero given in paramter! => Relative zero mode");
+            // do nothing
+        } else {
+            info!("Hardware zeros: {:?}", zeros);
+            // read the axis sensors
+            let curaxis = match self.robust_read_axis_sensors(10, 100).await {
+                Ok(sensor_values) => {
+                    debug!("init sensors: {:?}", sensor_values);
+                    sensor_values
+                }
+                Err(e) => {
+                    error!("Error reading axis sensors: {:?}", e);
+                    #[cfg(not(feature = "ignore_errors"))]
+                    return Ok(HomingErrorFlag::AxisSensorReadFail);
+                    #[cfg(feature = "ignore_errors")]
+                    [0.0; N] // use the default value if ignoring errors
+                }
+            };
+    
+            let mut axis_offset = curaxis;
+            axis_offset[0] -= zeros[0];
+            axis_offset[1] -= zeros[1];
+            let mut motor_offsets = self.orbita2d_inverse_kinematics(axis_offset);
+
+            // read the current motor posiitons
+            let curpos = self.get_current_position()?;
+            motor_offsets[0] += curpos[0];
+            motor_offsets[1] += curpos[1];
+            // set the offset
+            self.set_current_position(motor_offsets)?;
+        }
+        return Ok(HomingErrorFlag::None);
+    }
+
+    #[cfg(feature = "orbita2d")]
+    pub fn orbita2d_inverse_kinematics(&mut self, axis: [f32; N]) -> [f32; N] {
+        let r = 1.0; // no axis ratio for Orbita2D
+        #[cfg(feature = "ec45")]
+        let r = 1.0 / BrushlessMotor::ec45().axis_ratio();
+        #[cfg(feature = "ec60")]
+        let r = 1.0 / BrushlessMotor::ec60().axis_ratio();
+
+        let axis_pos= [
+            wrap_to_pi(axis[0]),
+            wrap_to_pi(axis[1]),
+        ];
+
+        let mut motor_pos = [0.0; N];
+        // inverse kinematics
+        motor_pos[0] = -(r * axis_pos[0] + r * axis_pos[1]);
+        motor_pos[1] = -(r * axis_pos[0] - r * axis_pos[1]);
+
+        motor_pos
+    }
+
+    #[cfg(feature = "orbita2d")]
+    pub fn orbita2d_forward_kinematics(&mut self, motor_pos: [f32; N]) -> [f32; N] {
+        let r = 1.0; // no axis ratio for Orbita2D
+        #[cfg(feature = "ec45")]
+        let r = 1.0 / BrushlessMotor::ec45().axis_ratio();
+        #[cfg(feature = "ec60")]
+        let r = 1.0 / BrushlessMotor::ec60().axis_ratio();
+
+        let mut axis_pos = [0.0; N];
+        // forward kinematics
+        axis_pos[0] = (-motor_pos[0] - motor_pos[1]) / r / 2.0;
+        axis_pos[1] = (-motor_pos[0] + motor_pos[1]) / r / 2.0;
+
+        axis_pos[0] = wrap_to_pi(axis_pos[0]);
+        axis_pos[1] = wrap_to_pi(axis_pos[1]);
+        axis_pos
+    }
+
+}
+
+
+// function wrapping an angle in radians to
+// the range [-pi, pi]
+pub fn wrap_to_pi(angle: f32) -> f32 {
+    const PI: f32 = 3.14159265359;
+    (((angle + PI) % (2.0 * PI)) + (2.0 * PI)) % (2.0 * PI) - PI
 }
 
 pub fn angle_diff(angle_a: f32, angle_b: f32) -> f32 {

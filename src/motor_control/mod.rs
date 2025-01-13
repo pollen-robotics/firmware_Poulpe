@@ -1,4 +1,4 @@
-mod actuator;
+pub mod actuator;
 pub use actuator::Actuator;
 pub mod driver;
 pub use driver::{DriverDRV8316, DriverTMC6200};
