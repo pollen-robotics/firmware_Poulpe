@@ -5,6 +5,7 @@
 #![feature(generic_const_exprs)]
 #![feature(async_fn_in_trait)]
 #![feature(array_methods)]
+#![feature(error_in_core)]
 
 use defmt::{error, info, unwrap};
 use embassy_executor::Spawner;
@@ -39,6 +40,14 @@ use firmware_poulpe::{
 use firmware_poulpe::config::TemperatureSensingConfig;
 #[cfg(feature = "use_flash")]
 use firmware_poulpe::utils::flash::{FlashData, FlashManager};
+
+// use embassy_stm32::peripherals as p;
+// use embassy_stm32::peripherals::FLASH;
+// use embassy_boot_stm32::{AlignedBuffer, BlockingFirmwareUpdater, FirmwareUpdaterConfig};
+// use embassy_stm32::flash::{Flash, WRITE_SIZE};
+// use core::cell::RefCell;
+// use embassy_sync::blocking_mutex::Mutex;
+// use embedded_storage::nor_flash::NorFlash;
 
 // from build.rs
 // include!(concat!(env!("OUT_DIR"), "/constants.rs"));
@@ -117,54 +126,66 @@ async fn main(spawner: Spawner) {
     let mut board_id = config::DXL_ID;
     let mut hardware_zeros: [f32; config::N_AXIS] = config::HARDWARE_ZEROS;
 
-    #[cfg(feature = "use_flash")]
-    {
-        let mut flash_manager = FlashManager::new(p.FLASH).await;
-        #[cfg(feature = "write_flash")]
-        {
-            info!("Writing to flash");
-            // user want to use these values
-            // and write them to flash
-            let mut poulpe_config = FlashData {
-                board_id: board_id,
-                sensor_offsets: hardware_zeros,
-            };
-            match flash_manager.lazy_checked_write(poulpe_config, 5).await {
-                Ok(()) => info!("Write to flash OK"),
-                Err(e) => error!("Error writing to flash: {:?}", e),
-            }
-        }
-        #[cfg(not(feature = "write_flash"))]
-        {
-            info!("Reading from flash");
-            match flash_manager.read() {
-                Ok(b) => {
-                    info!("Read from flash: {:?}", b);
-                    // check if empty data
-                    if b.is_valid() {
-                        error!(
-                            "Data in flash is empty or corrupted, using default values! {}, {:?}",
-                            board_id, hardware_zeros
-                        );
-                    } else {
-                        info!("Data in flash valid, using values from flash");
-                        board_id = b.board_id;
-                        hardware_zeros = b.sensor_offsets;
-                        info!(
-                            "board id: {:?} hardware_zeros: {:?}",
-                            board_id, hardware_zeros
-                        );
-                    }
-                }
-                Err(e) => {
-                    error!(
-                        "Error reading from flash: {:?}, Using default values! {}, {:?}",
-                        e, board_id, hardware_zeros
-                    );
-                }
-            }
-        }
-    }
+    // #[cfg(feature = "use_flash")]
+    // {
+    //     let mut flash_manager = FlashManager::new(p.FLASH).await;
+    //     #[cfg(feature = "write_flash")]
+    //     {
+    //         info!("Writing to flash");
+    //         // user want to use these values
+    //         // and write them to flash
+    //         let mut poulpe_config = FlashData {
+    //             board_id: board_id,
+    //             sensor_offsets: hardware_zeros,
+    //         };
+    //         match flash_manager.lazy_checked_write(poulpe_config, 5).await {
+    //             Ok(()) => info!("Write to flash OK"),
+    //             Err(e) => error!("Error writing to flash: {:?}", e),
+    //         }
+    //     }
+    //     #[cfg(not(feature = "write_flash"))]
+    //     {
+    //         info!("Reading from flash");
+    //         match flash_manager.read() {
+    //             Ok(b) => {
+    //                 info!("Read from flash: {:?}", b);
+    //                 // check if empty data
+    //                 if b.is_valid() {
+    //                     error!(
+    //                         "Data in flash is empty or corrupted, using default values! {}, {:?}",
+    //                         board_id, hardware_zeros
+    //                     );
+    //                 } else {
+    //                     info!("Data in flash valid, using values from flash");
+    //                     board_id = b.board_id;
+    //                     hardware_zeros = b.sensor_offsets;
+    //                     info!(
+    //                         "board id: {:?} hardware_zeros: {:?}",
+    //                         board_id, hardware_zeros
+    //                     );
+    //                 }
+    //             }
+    //             Err(e) => {
+    //                 error!(
+    //                     "Error reading from flash: {:?}, Using default values! {}, {:?}",
+    //                     e, board_id, hardware_zeros
+    //                 );
+    //             }
+    //         }
+    //     }
+    // }
+
+    // let flash = Flash::new_blocking(p.FLASH);
+    // let flash = Mutex::new(RefCell::new(flash));
+
+    //Timer::after(Duration::from_millis(1000)).await;
+
+    // let config = FirmwareUpdaterConfig::from_linkerfile_blocking(&flash);
+    // let mut magic = AlignedBuffer([0; WRITE_SIZE]);
+    // let mut updater = BlockingFirmwareUpdater::new(config, &mut magic.0);
+    // let writer = updater.prepare_update().unwrap();
+
+    info!("after slahe");
 
     // Spawn the control loop
     #[cfg(feature = "orbita3d")]
@@ -297,10 +318,11 @@ async fn main(spawner: Spawner) {
         ltc4332ring: LTC4332RingConfig { cs: p.PD1 },
     };
 
-    unwrap!(spawner.spawn(motor_control::task::control_loop(
-        actuator_config,
-        hardware_zeros
-    )));
+    // unwrap!(spawner.spawn(motor_control::task::control_loop(
+    //     actuator_config,
+    //     hardware_zeros,
+    //     board_id
+    // )));
 
     #[cfg(feature = "dynamixel")]
     {
@@ -360,8 +382,8 @@ async fn main(spawner: Spawner) {
             miso: p.PC11,
             cs: p.PD0,
         };
-
-        unwrap!(spawner.spawn(ethercat::task::messsage_handler(
+        info!("Ethercat starting!");
+        unwrap!(spawner.spawn(ethercat::task1::messsage_handler(
             ethconfig,
             lan9252_spi_config
         )));

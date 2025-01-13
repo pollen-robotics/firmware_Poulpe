@@ -39,6 +39,10 @@ pub enum Lan9252Registers {
     ECAT_PRAM_RD_CMD = 0x30C,
     ECAT_PRAM_WR_ADDR_LEN = 0x310,
     ECAT_PRAM_WR_CMD = 0x314,
+
+    ECAT_EEPROM_CONTROL_STATUS = 0x502,
+    ECAT_EEPROM_ADDR = 0x504,
+    ECAT_EEPROM_DATA = 0x508,   
 }
 
 // LAN9252 flags
@@ -282,7 +286,42 @@ where
             .await
     }
 
-    //FIXME! Only if <64Bytes
+
+    pub async fn read_bytes_large(
+        &mut self,
+        len: usize,
+        buffer: &mut [u8], // Caller provides a fixed-size buffer
+        address: u16,
+    ) -> Result<(), embassy_stm32::spi::Error> {
+        const MAX_CHUNK_SIZE: usize = 64;
+        let mut current_address = address;
+        let mut remaining_len = len;
+        let mut offset = 0;
+    
+        while remaining_len > 0 {
+            let chunk_size = if remaining_len > MAX_CHUNK_SIZE {
+                MAX_CHUNK_SIZE
+            } else {
+                remaining_len
+            };
+    
+            match self.read_bytes(chunk_size, current_address).await {
+                Ok(data) => {
+                    buffer[offset..offset + chunk_size].copy_from_slice(data);
+                    current_address += chunk_size as u16; // Increment address by the chunk size
+                    offset += chunk_size;
+                    remaining_len -= chunk_size;
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
+    
+        Ok(())
+    }
+
+    // FIXME! Only if < 64 bytes read
     pub async fn read_bytes(
         &mut self,
         len: usize,
@@ -344,6 +383,41 @@ where
             }
             Err(e) => Err(e),
         }
+    }
+
+
+    // writing the data to the memory 
+    pub async fn write_bytes_large(
+        &mut self,
+        data: &[u8],
+        address: u16,
+    ) -> Result<(), embassy_stm32::spi::Error> {
+        const MAX_CHUNK_SIZE: usize = 64;
+        let mut current_address = address;
+        let mut remaining_len = data.len();
+        let mut offset = 0;
+    
+        while remaining_len > 0 {
+            let chunk_size = if remaining_len > MAX_CHUNK_SIZE {
+                MAX_CHUNK_SIZE
+            } else {
+                remaining_len
+            };
+    
+            // Write each chunk of data
+            match self.write_bytes(&data[offset..offset + chunk_size], current_address).await {
+                Ok(()) => {
+                    current_address += chunk_size as u16; // Increment address by the chunk size
+                    offset += chunk_size;
+                    remaining_len -= chunk_size;
+                }
+                Err(e) => {
+                    return Err(e); // Return error if writing fails
+                }
+            }
+        }
+    
+        Ok(())
     }
 
     //TODO Only if data.len()<=64
