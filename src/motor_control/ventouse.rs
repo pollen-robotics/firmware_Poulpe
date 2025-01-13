@@ -207,7 +207,7 @@ where
         Ok(())
     }
     //check motors
-    pub async fn check_motors_1(&mut self) -> Result<()> {
+    pub async fn check_motors_1(&mut self, stop: bool) -> Result<()> {
         //Assume that the registers are already initialized and the motors aligned
 
         // - Read the initial position and axis sensors
@@ -304,6 +304,28 @@ where
         } else {
             info!("[Ventouse{:?}] Motor has moved: {}", self.kind, diff);
         }
+
+
+
+        // Stop
+        info!("[Ventouse{:?}] Stop...", self.kind);
+        self.foc
+            .tmc4671_set_target_velocity(0)
+            .map_err(IOError::SpiError)?;
+        self.foc
+            .tmc4671_set_mode(MotionMode::Stopped)
+            .map_err(IOError::SpiError)?;
+
+        //Start everything at 0
+        self.foc
+            .tmc4671_set_actual_position(0)
+            .map_err(IOError::SpiError)?;
+        self.foc
+            .tmc4671_set_target_position(0)
+            .map_err(IOError::SpiError)?;
+        self.foc
+            .tmc4671_set_mode(MotionMode::Position)
+            .map_err(IOError::SpiError)?;
 
         Ok(())
     }

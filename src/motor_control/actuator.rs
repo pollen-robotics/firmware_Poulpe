@@ -401,7 +401,7 @@ impl<'d, const N: usize> Actuator<'d, N> {
 
     #[cfg(feature = "orbita2d")]
     pub async fn find_index_orbita2d(&mut self)  -> Result<HomingErrorFlag> {
-        self.set_torque([false; N])?; //be sure to torque off to avoid noise in axis sensors?
+        // self.set_torque([false; N])?; //be sure to torque off to avoid noise in axis sensors?
         Timer::after(Duration::from_millis(10));
         let zeros = self.get_hardware_zeros()?;
 
