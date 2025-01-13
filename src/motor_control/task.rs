@@ -343,7 +343,10 @@ pub async fn set_error_led() {
 pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; config::N_AXIS], board_id: u8) {
 
     // invert the init movement for the left arm
-    let invert_init_movement = board_id > 50;
+    let invert_init_movement = board_id < 50;
+    if invert_init_movement {
+        warn!("Invert init movement for left arm: {:?}", invert_init_movement);
+    }
 
     let mut spi_config = spi::Config::default();
     spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);

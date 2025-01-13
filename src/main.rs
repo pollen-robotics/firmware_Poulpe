@@ -141,7 +141,7 @@ async fn main(spawner: Spawner) {
                 Ok(b) => {
                     info!("Read from flash: {:?}", b);
                     // check if empty data
-                    if b.is_valid() {
+                    if b.is_empty() {
                         error!(
                             "Data in flash is empty or corrupted, using default values! {}, {:?}",
                             board_id, hardware_zeros
@@ -299,7 +299,8 @@ async fn main(spawner: Spawner) {
 
     unwrap!(spawner.spawn(motor_control::task::control_loop(
         actuator_config,
-        hardware_zeros
+        hardware_zeros,
+        board_id
     )));
 
     #[cfg(feature = "dynamixel")]

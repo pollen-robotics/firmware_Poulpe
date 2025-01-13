@@ -71,7 +71,7 @@ impl FlashData {
      *
      * @return bool
      */
-    pub fn is_valid(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.board_id == 255 || self.sensor_offsets.iter().any(|&x| x.is_nan())
     }
 }
