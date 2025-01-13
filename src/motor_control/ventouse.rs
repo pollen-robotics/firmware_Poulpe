@@ -207,7 +207,7 @@ where
         Ok(())
     }
     //check motors
-    pub async fn check_motors_1(&mut self, stop: bool) -> Result<()> {
+    pub async fn check_motors_1(&mut self) -> Result<()> {
         //Assume that the registers are already initialized and the motors aligned
 
         // - Read the initial position and axis sensors
