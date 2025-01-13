@@ -403,7 +403,6 @@ impl<'d, const N: usize> Actuator<'d, N> {
     pub async fn find_index_orbita2d(&mut self)  -> Result<HomingErrorFlag> {
         self.set_torque([false; N])?; //be sure to torque off to avoid noise in axis sensors?
         Timer::after(Duration::from_millis(10));
-        // let zeros = [5.236674785614014, 1.6637036800384521]; //Orbita domain
         let zeros = self.get_hardware_zeros()?;
 
         if zeros[0] == zeros[1] && zeros[0] == 0.0 {
