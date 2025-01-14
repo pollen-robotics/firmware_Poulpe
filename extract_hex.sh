@@ -2,6 +2,6 @@
 set -e
 
 # Convert the binary to a hex file
-llvm-objcopy target/thumbv7em-none-eabihf/release/firmware_poulpe firmware.hex --output-target=ihex
+llvm-objcopy target/thumbv7em-none-eabihf/release/firmware_poulpe firmware.bin --output-target=binary
 
-echo "Hex file generated: firmware.hex"
+echo "Bin file generated: firmware.bin"

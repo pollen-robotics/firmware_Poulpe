@@ -22,9 +22,12 @@ use embassy_time::Ticker;
 use crate::motor_control::foc::MotionMode;
 use crate::state_machine::cia402_registers::CiA402ModeOfOperation;
 
-//import flash
-use embassy_stm32::flash::Flash;
-
+// firmware update imports
+use embassy_stm32::peripherals::FLASH;
+use embassy_boot_stm32::{AlignedBuffer, BlockingFirmwareUpdater, FirmwareUpdaterConfig};
+use embassy_stm32::flash::{Flash, WRITE_SIZE};
+use embedded_storage::nor_flash::NorFlash;
+use embassy_boot_stm32::State;
 
 // the addresses of the motors in the LAN9252 memory
 pub enum Lan9252Memory {
@@ -50,8 +53,37 @@ pub fn write_watchdog_counter(statusword: [u8; 2], counter: u8) -> [u8; 2] {
 }
 
 #[embassy_executor::task]
-pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
+pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, flash: FLASH) {
     warn!("ETHERCAT TASK");
+
+    error!("Firmware updater initalisaiton");
+
+    let flash = Flash::new_blocking(flash);
+    let flash = Mutex::new(RefCell::new(flash));
+    // a bit of delay to avoid the firmware updater to start before Flash is ready
+    Timer::after(Duration::from_micros(100)).await; 
+    // // Firmware updater
+    let config = FirmwareUpdaterConfig::from_linkerfile_blocking(&flash);
+    let mut magic = AlignedBuffer([0; WRITE_SIZE]);
+    let mut updater = BlockingFirmwareUpdater::new(config, &mut magic.0);
+    match updater.get_state(){
+        Ok(state) => {
+            match state {
+                State::Boot => {
+                    info!("Bootloader state: Boot");
+                },
+                State::Swap => {
+                    info!("Bootloader state: Swap");
+                    updater.mark_booted().unwrap();
+                },
+            }
+        }
+        Err(e) => {
+            error!("Bootloader state error {:?}", e);
+        }
+    }
+
+    let writer = updater.prepare_update().unwrap();
 
     let spi = spi::Spi::new(
         ethconf.peri,
@@ -148,6 +180,11 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
     let mut t_display = Instant::now();
 
     let mut no_received_bytes: u32 = 0;
+
+    let mut buf = AlignedBuffer([0; 4096]);
+    let mut data_in_buf: usize  = 0;
+    let mut written_bytes: u32 = 0;
+    let mut firmware_update_done: bool = false;
     loop {
 
         
@@ -155,7 +192,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
         // by checking the watchdog status
         let master_connected: bool = match lan9252.read_register_indirect(0x805 as u16, 1).await {
             Ok(al) => {
-                debug!("Watchdog Status: {:#x}", al[0]&0b1000);
+                // debug!("Watchdog Status: {:#x}", al[0]&0b1000);
                 al[0] & 0b1000 != 0  // if the watchdog is not 0, the master is connected
             }
             Err(e) => {
@@ -173,7 +210,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
             .await
             {
                 Ok(_) => {
-                    debug!("OrbitaIn: {:?}", data_copy);
+                    info!("OrbitaIn: {:?}", data_copy);
                 }
                 Err(e) => {
                     error!("Read data error! {:?}", e);
@@ -191,6 +228,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                 continue;
             }
 
+
             if data[6] == 0x2 {
                 info!("New file write request!");
                 let filename_size = u16::from_le_bytes(data[0..2].try_into().unwrap()) - 6;
@@ -204,10 +242,37 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                     }
                 }
                 no_received_bytes = 0; 
+                buf = AlignedBuffer([0; 4096]);
+                data_in_buf = 0;
+                written_bytes = 0;
             }else if data[6] == 0x3 {
-                let data_chunk = u16::from_le_bytes(data[0..2].try_into().unwrap()) - 6;
-                no_received_bytes = no_received_bytes + data_chunk as u32;
-                info!("Received data in bytes: {:?}B", no_received_bytes);
+                let data_chunk_lenght = u16::from_le_bytes(data[0..2].try_into().unwrap()) - 6;
+
+
+                if data_in_buf + (data_chunk_lenght as usize) > 4096 {
+                    let rest_in_buf = 4096 - data_in_buf;
+                    buf.as_mut()[data_in_buf..4096].copy_from_slice(data[12..(12 + rest_in_buf) as usize].as_ref());
+                    writer.write(written_bytes, buf.as_ref()).unwrap();
+                    written_bytes = written_bytes + 4096;
+                    buf.as_mut().fill(255);
+                    buf.as_mut()[0..(data_chunk_lenght as usize - rest_in_buf)].copy_from_slice(data[(12 + rest_in_buf) as usize..(12 + data_chunk_lenght) as usize].as_ref());
+                    data_in_buf = data_chunk_lenght as usize - rest_in_buf;
+                }
+                else{
+                    buf.as_mut()[data_in_buf..(data_in_buf + data_chunk_lenght as usize)].copy_from_slice(data[12..(12 + data_chunk_lenght) as usize].as_ref());
+                    data_in_buf = data_in_buf + data_chunk_lenght as usize;
+                }
+                no_received_bytes = no_received_bytes + data_chunk_lenght as u32;
+                info!("Received data in bytes: {:?}B, written bytes: {:?}B", no_received_bytes, written_bytes);
+                info!("Data chunk length: {:?}", data_chunk_lenght);
+                if data_chunk_lenght < 116 {
+                    if data_in_buf > 0 {
+                        writer.write(written_bytes, &buf.as_ref()[0..4096]).unwrap();
+                        written_bytes = written_bytes + data_in_buf as u32;
+                    }
+                    firmware_update_done = true;
+                    info!("End of file received!");
+                }
             }else{
                 error!("Unknown command! {:?}", data[6]);
             }
@@ -229,6 +294,13 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config) {
                 Err(e) => {
                     error!("Write data error! {:?}", e)
                 }
+            }
+
+            if firmware_update_done {
+                updater.mark_updated().unwrap();
+                Timer::after(Duration::from_millis(1000)).await;
+                info!("Rebooting the device!");
+                cortex_m::peripheral::SCB::sys_reset();
             }
         }
         

@@ -80,11 +80,11 @@ allow_quickstop = []
 
 [dependencies]
 # rustypot = "0.4.2"
-# stm32h742vg
+# stm32h743vg
 
 
 #embassy which seems ok
-# embassy-stm32 = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy", rev="74683c7", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x", "unstable-pac", "unstable-traits"] }
+# embassy-stm32 = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy", rev="74683c7", features = ["nightly", "defmt", "stm32h743vg", "time-driver-any", "exti", "memory-x", "unstable-pac", "unstable-traits"] }
 # embassy-sync = { version = "0.4.0", git = "https://github.com/embassy-rs/embassy", rev="74683c7", features = ["defmt"] }
 # embassy-executor = { version = "0.3.0", git = "https://github.com/embassy-rs/embassy", rev="74683c7", features = ["nightly", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers"] }
 
@@ -98,7 +98,7 @@ allow_quickstop = []
 
 
 #local
-# embassy-stm32 = { version = "0.1.0", path = "../embassy_tests/embassy-stm32", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x", "unstable-pac", "unstable-traits"] }
+# embassy-stm32 = { version = "0.1.0", path = "../embassy_tests/embassy-stm32", features = ["nightly", "defmt", "stm32h743vg", "time-driver-any", "exti", "memory-x", "unstable-pac", "unstable-traits"] }
 # embassy-sync = { version = "0.4.0", path = "../embassy_tests/embassy-sync", features = ["defmt"] }
 # embassy-executor = { version = "0.3.0", path = "../embassy_tests/embassy-executor", features = ["nightly", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers"] }
 
@@ -112,7 +112,7 @@ allow_quickstop = []
 
 
 #Pollen fork...
-embassy-stm32 = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x","unstable-pac", "unstable-traits"] }
+embassy-stm32 = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["nightly", "defmt", "stm32h743vg", "time-driver-any", "exti", "memory-x","unstable-pac", "unstable-traits"] }
 embassy-sync = { version = "0.4.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["defmt"] }
 embassy-executor = { version = "0.3.0", git = "https://github.com/pollen-robotics/embassy", branch="poulpe_beta", features = ["nightly", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers"] }
 
@@ -126,7 +126,7 @@ embassy-boot-stm32 = { version = "0.1.0", git = "https://github.com/pollen-robot
 
 
 #Specific commit which works
-# embassy-stm32 = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", rev="9472b7beeda62c856726686b695359b37ffb120c", features = ["nightly", "defmt", "stm32h742vg", "time-driver-any", "exti", "memory-x","unstable-pac", "unstable-traits"] }
+# embassy-stm32 = { version = "0.1.0", git = "https://github.com/pollen-robotics/embassy", rev="9472b7beeda62c856726686b695359b37ffb120c", features = ["nightly", "defmt", "stm32h743vg", "time-driver-any", "exti", "memory-x","unstable-pac", "unstable-traits"] }
 # embassy-sync = { version = "0.4.0", git = "https://github.com/pollen-robotics/embassy", rev="9472b7beeda62c856726686b695359b37ffb120c", features = ["defmt"] }
 # embassy-executor = { version = "0.3.0", git = "https://github.com/pollen-robotics/embassy", rev="9472b7beeda62c856726686b695359b37ffb120c", features = ["nightly", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers"] }
 

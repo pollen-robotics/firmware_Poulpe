@@ -8,7 +8,7 @@ use crate::config::N_AXIS;
 
 // the address of the 5th sector of the flash memory
 // it can be any other sector that is not used by the program
-const ADDR: u32 = 5 * 128 * 1024; // This is the offset into bank 1
+const ADDR: u32 = 7 * 128 * 1024; // This is the offset into bank 1
 
 // data structure to be stored in flash
 // this structure can be as big as necessary
@@ -71,7 +71,7 @@ impl FlashData {
      *
      * @return bool
      */
-    pub fn is_valid(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.board_id == 255 || self.sensor_offsets.iter().any(|&x| x.is_nan())
     }
 }
@@ -81,7 +81,7 @@ pub struct FlashManager<'d> {
 }
 
 impl<'d> FlashManager<'d> {
-    pub async fn new(flash_config: p::FLASH) -> Self {
+    pub async fn new(flash_config:  &'d mut p::FLASH) -> Self {
         let flash = Flash::new_blocking(flash_config)
             .into_blocking_regions()
             .bank1_region;
@@ -91,6 +91,10 @@ impl<'d> FlashManager<'d> {
         Self {
             flash_region: flash,
         }
+    }
+
+    pub async fn destroy(self) -> Bank1Region<'d, Blocking> {
+        self.flash_region
     }
 
     /**
