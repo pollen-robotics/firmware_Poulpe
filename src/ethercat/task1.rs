@@ -5,7 +5,7 @@ use crate::{
 };
 use core::{cell::RefCell, default, error, str, f32::consts::E, mem::take};
 use defmt::{debug, error, info, trace, warn};
-use embassy_embedded_hal::{flash, shared_bus::blocking::spi::SpiDeviceWithConfig};
+use embassy_embedded_hal::{adapter, flash, shared_bus::blocking::spi::SpiDeviceWithConfig};
 use embassy_stm32::spi;
 use embassy_stm32::{
     dma::NoDma,
@@ -30,6 +30,9 @@ use embedded_storage::nor_flash::NorFlash;
 use embassy_boot_stm32::State;
 
 use super::lan9252::{self, ESM_PREOP};
+use super::coe::{coe_prepare_dataframe, coe_prepare_down_response, coe_prepare_up_response, CoEFrame};
+use super::mailbox::*;
+use super::foe::*;
 
 // the addresses of the motors in the LAN9252 memory
 pub enum Lan9252Memory {
@@ -176,26 +179,25 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
 
     loop {
 
-        // // check if the lan9252 is in boot mode
-        // match lan9252.read_register_indirect(AL_STATUS, 1).await {
-        //     Ok(al) => {
-        //         debug!("Status: {:#x}", al[0] & 0x0F);
-        //         if al[0] != ESM_BOOT{
-        //             warn!("LAN9252 is not in boot mode!");
-        //             Timer::after(Duration::from_millis(1000)).await;
-        //             continue;
-        //         }
-        //     }
-        //     Err(e) => {
-        //         error!("Read status error {:?}", e)
-        //     }
-        // }
+        // check if the lan9252 is in boot mode
+        match lan9252.read_register_indirect(AL_STATUS, 1).await {
+            Ok(al) => {
+                debug!("Status: {:#x}", al[0] & 0x0F);
+                if al[0] != ESM_PREOP{
+                    warn!("LAN9252 is not in PREOP mode!");
+                    Timer::after(Duration::from_millis(1000)).await;
+                    continue;
+                }
+            }
+            Err(e) => {
+                error!("Read status error {:?}", e)
+            }
+        }
 
         Timer::after(Duration::from_micros(1)).await;
         
-        // check if the master if the master is connected 
-        // by checking the watchdog status
-        let master_connected: bool = match lan9252.read_register_indirect(0x805 as u16, 1).await {
+        // check if the master sent a new mailbox data
+        let mailbox_data_received: bool = match lan9252.read_register_indirect(0x805 as u16, 1).await {
             Ok(al) => {
                 // debug!("Watchdog Status: {:#x}", al[0]&0b1000);
                 al[0] & 0b1000 != 0  // if the watchdog is not 0, the master is connected
@@ -208,7 +210,8 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
         // a a microsecond delay to avoid reading the same data
         Timer::after(Duration::from_micros(1)).await;
 
-        if master_connected {
+        // if mailbox data received, read the data and respond
+        if mailbox_data_received {
             let mut data_copy = [0; 128];
             match lan9252
             .read_bytes_large(128, &mut data_copy, Lan9252Memory::OrbitaIn as u16)
@@ -223,124 +226,163 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
             };
 
             let data = data_copy.clone();
-
+            let mailbox_frame = match MailboxFrame::new(&data){
+                Ok(frame) => frame,
+                Err(_) => {
+                    error!("Error parsing mailbox frame!");
+                    continue;
+                }
+            };
 
             // let datagram_header: [u8; 6] = data[0..6].try_into().unwrap();
             // let mbox_header: [u8; 6] = data[6..12].try_into().unwrap();
 
-            // parse the datagram 
-            if data[5] == 3{
-                info!("CoE protocol received: {:?}", data[5]);
+            match mailbox_frame.get_mailbox_type() {
+                MailboxType::CoE => {
+                    info!("CoE protocol received!");
+                               
+                    let coe_frame = match CoEFrame::new(&data){
+                        Ok(frame) => frame,
+                        Err(_) => {
+                            error!("Error parsing CoE frame!");
+                            continue;
+                        }
+                    };
+                    info!("CoE header received: {:?}", coe_frame);
 
-                info!("Data: {:?}", data);
-                let address = u16::from_le_bytes(data[9..11].try_into().unwrap());
-                let sub_index = data[11];
-                let data_rec = u32::from_le_bytes(data[12..16].try_into().unwrap());
-                info!("Address: {:?}, subindex: {:?}, data: {:?}", address, sub_index, data_rec);
-
-                if address == 0x100 && sub_index == 0x01{
-                    info!("Firmware upload end command!");
-                    let firmware_upload_size = data_rec;
-                    if firmware_upload_size == 0{
-                        error!("Firmware upload size is 0!");
-                    }else if no_received_bytes == 0 {
-                        error!("No data received yet!");
-                    }else if firmware_upload_size == no_received_bytes {
-                        firmware_update_done = true;
-                        info!("Received file size: {:?}, expected: {:?}", no_received_bytes, firmware_upload_size);
-                        info!("Proceeding to firmware update!");
-                    }else{
-                        error!("Received file size: {:?}, expected: {:?}", no_received_bytes, firmware_upload_size);
+                    if !coe_frame.is_request() {
+                        warn!("Not SDO request, skipping! Type: {}", coe_frame.header.request_type);
+                        continue;
                     }
-                }
+                    let (index,sub_index) = coe_frame.get_sdo_entry();
+
+                    debug!("Mailbox data received (CoE): {:?}", &data);
+                    let mut data_write = coe_prepare_dataframe(index, sub_index, true);                
                     
-                // // construct the datagram to send to the master
-                
+                    if coe_frame.is_download(){
 
-                let mut data_write = [0x00u8; 128];
-                // construct the datagram to acknowledge the data received
-                data_write[0] = 10; // data length
-                data_write[5] = 0x03; // set the CoE protocol
-                let data_start_ind:usize = 6;
-                data_write[data_start_ind..data_start_ind+2].copy_from_slice(&u16::to_le_bytes(12288));
-                data_write[data_start_ind+2] = 0x60;
-                data_write[data_start_ind+3..data_start_ind+5].copy_from_slice(&u16::to_le_bytes(address));
-                data_write[data_start_ind+5] = sub_index;
-
-                Timer::after(Duration::from_millis(1)).await;
-                // heder is 6 bytes and then the 
-                match lan9252.write_bytes_large(&data_write, Lan9252Memory::OrbitaInAck as u16).await {
-                    Ok(_) => {}
-                    Err(e) => {
-                        error!("Write data error! {:?}", e)
+                        if index == 0x100 && sub_index == 0x01{
+                            let data_rec = u32::from_le_bytes(coe_frame.data.try_into().unwrap_or([0u8;4]));
+                            info!("Firmware upload end command!");
+                            let firmware_upload_size = data_rec;
+                            if firmware_upload_size == 0{
+                                error!("Firmware upload size is 0!");
+                            }else if no_received_bytes == 0 {
+                                error!("No data received yet!");
+                            }else if firmware_upload_size == no_received_bytes {
+                                firmware_update_done = true;
+                                info!("Received file size: {:?}, expected: {:?}", no_received_bytes, firmware_upload_size);
+                                info!("Proceeding to firmware update!");
+                            }else{
+                                error!("Received file size: {:?}, expected: {:?}", no_received_bytes, firmware_upload_size);
+                            }
+                        }
+                        coe_prepare_down_response(&mut data_write);
+                    }else if coe_frame.is_upload(){
+                        if index == 0x100 && sub_index == 0x01 {
+                            coe_prepare_up_response(&mut data_write, &no_received_bytes.to_le_bytes(), true);    
+                        }else if index == 0x200 && sub_index == 0x01 {
+                            coe_prepare_up_response(&mut data_write, &config::GIT_HASH.as_bytes(), false);    
+                        }else if index == 0x201 && sub_index == 0x01 {
+                            coe_prepare_up_response(&mut data_write, &config::DXL_ID.to_le_bytes(), true);
+                        }else if index == 0x202 {
+                            if sub_index >= config::N_AXIS as u8 {
+                                error!("Subindex out of range! {:?}", sub_index);
+                            }else{
+                                coe_prepare_up_response(&mut data_write, &config::HARDWARE_ZEROS[sub_index as usize].to_le_bytes(), true);
+                            }
+                        }
+                    }else{
+                        error!("Unknown command! {:?}", coe_frame.header.request_type);
                     }
-                }
-
-            }else if data[5] == 4 {
-                info!("FoE protocol received: {:?}", data[5]);
-                if data[6] == 0x2 {
-                    info!("New file write request!");
-                    let filename_size = u16::from_le_bytes(data[0..2].try_into().unwrap()) - 6;
-                    let file_name_str = &data[12..12+filename_size as usize];
-                    match str::from_utf8(file_name_str.try_into().unwrap()){
-                        Ok(string) => {
-                            info!("File name: {}", string);
-                        },
+                    
+                    // construct the datagram to acknowledge the data received
+                    debug!("Mailbox data response (CoE): {:?}", &data_write);
+                    Timer::after(Duration::from_millis(1)).await;
+                    // heder is 6 bytes and then the 
+                    match lan9252.write_bytes_large(&data_write, Lan9252Memory::OrbitaInAck as u16).await {
+                        Ok(_) => {}
                         Err(e) => {
-                            error!("Error parsing file name: {:?}", file_name_str);
+                            error!("Write data error! {:?}", e)
                         }
                     }
-                    no_received_bytes = 0; 
-                    buf = AlignedBuffer([0; 4096]);
-                    data_in_buf = 0;
-                    written_bytes = 0;
-                }else if data[6] == 0x3 {
-                    let data_chunk_lenght = u16::from_le_bytes(data[0..2].try_into().unwrap()) - 6;
+                },
+                MailboxType::FoE => {
+                    info!("FoE protocol received!");
 
-
-                    if data_in_buf + (data_chunk_lenght as usize) > 4096 {
-                        let rest_in_buf = 4096 - data_in_buf;
-                        buf.as_mut()[data_in_buf..4096].copy_from_slice(data[12..(12 + rest_in_buf) as usize].as_ref());
-                        writer.write(written_bytes, buf.as_ref()).unwrap();
-                        written_bytes = written_bytes + 4096;
-                        buf.as_mut().fill(255);
-                        buf.as_mut()[0..(data_chunk_lenght as usize - rest_in_buf)].copy_from_slice(data[(12 + rest_in_buf) as usize..(12 + data_chunk_lenght) as usize].as_ref());
-                        data_in_buf = data_chunk_lenght as usize - rest_in_buf;
-                    }
-                    else{
-                        buf.as_mut()[data_in_buf..(data_in_buf + data_chunk_lenght as usize)].copy_from_slice(data[12..(12 + data_chunk_lenght) as usize].as_ref());
-                        data_in_buf = data_in_buf + data_chunk_lenght as usize;
-                    }
-                    no_received_bytes = no_received_bytes + data_chunk_lenght as u32;
-                    info!("Received data in bytes: {:?}B, written bytes: {:?}B", no_received_bytes, written_bytes);
-                    info!("Data chunk length: {:?}", data_chunk_lenght);
-                    if data_chunk_lenght < 116 {
-                        if data_in_buf > 0 {
-                            writer.write(written_bytes, &buf.as_ref()[0..4096]).unwrap();
-                            written_bytes = written_bytes + data_in_buf as u32;
+                    let foe_frame = match FoEFrame::new(&data){
+                        Ok(frame) => frame,
+                        Err(_) => {
+                            error!("Error parsing FoE frame!");
+                            continue;
                         }
-                        info!("End of file received!");
+                    };
+
+                    match foe_frame.get_request_type(){
+                        FoERequestType::WriteRequest => {
+                            info!("New file write request!");
+                            let filename_size = foe_frame.get_data_size();
+                            let file_name_str = foe_frame.data;
+                            match str::from_utf8(file_name_str.try_into().unwrap()){
+                                Ok(string) => {
+                                    info!("File name: {}", string);
+                                },
+                                Err(e) => {
+                                    error!("Error parsing file name: {:?}", file_name_str);
+                                }
+                            }
+                            no_received_bytes = 0; 
+                            buf = AlignedBuffer([0; 4096]);
+                            data_in_buf = 0;
+                            written_bytes = 0;
+                        },
+                        FoERequestType::Data => {
+                            let data_chunk_lenght = foe_frame.get_data_size();
+
+
+                            if data_in_buf + (data_chunk_lenght as usize) > 4096 {
+                                let rest_in_buf = 4096 - data_in_buf;
+                                buf.as_mut()[data_in_buf..4096].copy_from_slice(foe_frame.data[0..rest_in_buf].as_ref());
+                                writer.write(written_bytes, buf.as_ref()).unwrap();
+                                written_bytes = written_bytes + 4096;
+                                buf.as_mut().fill(255);
+                                buf.as_mut()[0..(data_chunk_lenght as usize - rest_in_buf)].copy_from_slice(foe_frame.data[rest_in_buf..data_chunk_lenght as usize].as_ref());
+                                data_in_buf = data_chunk_lenght as usize - rest_in_buf;
+                            }
+                            else{
+                                buf.as_mut()[data_in_buf..(data_in_buf + data_chunk_lenght as usize)].copy_from_slice(foe_frame.data.as_ref());
+                                data_in_buf = data_in_buf + data_chunk_lenght as usize;
+                            }
+                            no_received_bytes = no_received_bytes + data_chunk_lenght as u32;
+                           info!("Data chunk length: {:?}", data_chunk_lenght);
+                            if data_chunk_lenght < 116 {
+                                if data_in_buf > 0 {
+                                    writer.write(written_bytes, &buf.as_ref()[0..4096]).unwrap();
+                                    written_bytes = written_bytes + data_in_buf as u32;
+                                }
+                                info!("End of file received! Received data in bytes: {:?}B, written bytes: {:?}B", no_received_bytes, written_bytes);
+                            }
+                        },
+                        _ =>{
+                            warn!("Unsupported FoE request type! {:?}", foe_frame.get_request_type());
+                            continue;
+                        }
                     }
-                }else{
-                    error!("Unknown command! {:?}", data[6]);
-                }
 
-                let mut data_write = [0x00u8; 128];
-                // construct the datagram to send to the master
-                data_write[5] = 0x04; // set the FoE protocol
+                    let mut data_write = [0x00u8; 128];
+                    foe_prepare_acknowledge(data_write.as_mut());
 
-                data_write[0] = 0x01; // set the data size to 1
-                data_write[6] = 0x04; // acknowledge the data received
-
-                // heder is 6 bytes and then the 
-                match lan9252.write_bytes_large(&data_write, Lan9252Memory::OrbitaInAck as u16).await {
-                    Ok(_) => {info!("Data ack sent!");}
-                    Err(e) => {
-                        error!("Write data error! {:?}", e)
+                    // heder is 6 bytes and then the 
+                    match lan9252.write_bytes_large(&data_write, Lan9252Memory::OrbitaInAck as u16).await {
+                        Ok(_) => {info!("Data ack sent!");}
+                        Err(e) => {
+                            error!("Write data error! {:?}", e)
+                        }
                     }
+                },
+                _ => {
+                    error!("Unknown protocol! {:?}", data[5]);
                 }
-            }else{
-                error!("Wrong protocol! Protocol: {}", data[5]);
             }
 
             // a a microsecond delay to avoid reading the same data
@@ -355,6 +397,5 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
                 cortex_m::peripheral::SCB::sys_reset();
             }
         }
-        
     }
 }
