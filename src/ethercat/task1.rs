@@ -30,7 +30,7 @@ use embedded_storage::nor_flash::NorFlash;
 use embassy_boot_stm32::State;
 
 use super::lan9252::{self, ESM_PREOP};
-use super::coe::{coe_prepare_dataframe, coe_prepare_down_response, coe_prepare_up_response, CoEFrame};
+use super::coe::*;
 use super::mailbox::*;
 use super::foe::*;
 
@@ -79,7 +79,14 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
                 },
                 State::Swap => {
                     info!("Bootloader state: Swap");
-                    updater.mark_booted().unwrap();
+                    match updater.mark_booted(){
+                        Ok(_) => {
+                            info!("Marked booted!");
+                        },
+                        Err(e) => {
+                            error!("Mark booted error: {:?}", e);
+                        }
+                    }
                 },
             }
         }
@@ -87,8 +94,12 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
             error!("Bootloader state error {:?}", e);
         }
     }
-
-    let writer = updater.prepare_update().unwrap();
+    
+    // TODO
+    // this unwrap is problematic as it can end up in a panic
+    // but this unwrap is unlikely to fail if the previous lines pass. 
+    // I left it this way because I did not know what to do if the writer fails. 
+    let writer     = updater.prepare_update().unwrap();
 
     let spi = spi::Spi::new(
         ethconf.peri,
@@ -170,11 +181,9 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
     let mut loop_cnt_display: u32 = 0;
     let mut t_display = Instant::now();
 
-    let mut no_received_bytes: u32 = 0;
 
+    let mut file = FoEObject::empty(); 
     let mut buf = AlignedBuffer([0; 4096]);
-    let mut data_in_buf: usize  = 0;
-    let mut written_bytes: u32 = 0;
     let mut firmware_update_done: bool = false;
 
     loop {
@@ -234,9 +243,6 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
                 }
             };
 
-            // let datagram_header: [u8; 6] = data[0..6].try_into().unwrap();
-            // let mbox_header: [u8; 6] = data[6..12].try_into().unwrap();
-
             match mailbox_frame.get_mailbox_type() {
                 MailboxType::CoE => {
                     info!("CoE protocol received!");
@@ -254,44 +260,60 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
                         warn!("Not SDO request, skipping! Type: {}", coe_frame.header.request_type);
                         continue;
                     }
-                    let (index,sub_index) = coe_frame.get_sdo_entry();
 
+                    let (index,sub_index) = coe_frame.get_sdo_entry();
                     debug!("Mailbox data received (CoE): {:?}", &data);
                     let mut data_write = coe_prepare_dataframe(index, sub_index, true);                
                     
                     if coe_frame.is_download(){
 
-                        if index == 0x100 && sub_index == 0x01{
-                            let data_rec = u32::from_le_bytes(coe_frame.data.try_into().unwrap_or([0u8;4]));
-                            info!("Firmware upload end command!");
-                            let firmware_upload_size = data_rec;
-                            if firmware_upload_size == 0{
-                                error!("Firmware upload size is 0!");
-                            }else if no_received_bytes == 0 {
-                                error!("No data received yet!");
-                            }else if firmware_upload_size == no_received_bytes {
-                                firmware_update_done = true;
-                                info!("Received file size: {:?}, expected: {:?}", no_received_bytes, firmware_upload_size);
-                                info!("Proceeding to firmware update!");
-                            }else{
-                                error!("Received file size: {:?}, expected: {:?}", no_received_bytes, firmware_upload_size);
+                        match (index, sub_index){
+                            (0x100, 1) => {
+                                let data_rec = u32::from_le_bytes(coe_frame.data.try_into().unwrap_or([0u8;4]));
+                                info!("Firmware upload end received command!");
+                                let firmware_upload_size = data_rec;
+                                if firmware_upload_size == 0{
+                                    error!("Firmware upload size is 0!");
+                                }else if file.no_received_bytes == 0 {
+                                    error!("No data received yet!");
+                                }else if firmware_upload_size == file.no_received_bytes {
+                                    firmware_update_done = true;
+                                    info!("Received file size: {:?}, expected: {:?}", file.no_received_bytes, firmware_upload_size);
+                                    info!("Proceeding to firmware update!");
+                                }else{
+                                    error!("Received file size: {:?}, expected: {:?}", file.no_received_bytes, firmware_upload_size);
+                                }
+                            },
+                            _ => {
+                                error!("Unknown index and subindex! {:?}", (index, sub_index));
                             }
                         }
                         coe_prepare_down_response(&mut data_write);
+                    
                     }else if coe_frame.is_upload(){
-                        if index == 0x100 && sub_index == 0x01 {
-                            coe_prepare_up_response(&mut data_write, &no_received_bytes.to_le_bytes(), true);    
-                        }else if index == 0x200 && sub_index == 0x01 {
-                            coe_prepare_up_response(&mut data_write, &config::GIT_HASH.as_bytes(), false);    
-                        }else if index == 0x201 && sub_index == 0x01 {
-                            coe_prepare_up_response(&mut data_write, &config::DXL_ID.to_le_bytes(), true);
-                        }else if index == 0x202 {
-                            if sub_index >= config::N_AXIS as u8 {
-                                error!("Subindex out of range! {:?}", sub_index);
-                            }else{
-                                coe_prepare_up_response(&mut data_write, &config::HARDWARE_ZEROS[sub_index as usize].to_le_bytes(), true);
+
+                        match (index, sub_index){
+                            (0x100, 1) => {
+                                coe_prepare_up_response(&mut data_write, &file.no_received_bytes.to_le_bytes(), true);    
+                            },
+                            (0x200, 1) => {
+                                coe_prepare_up_response(&mut data_write, &config::GIT_HASH.as_bytes(), false);    
+                            },
+                            (0x201, 1) => {
+                                coe_prepare_up_response(&mut data_write, &config::DXL_ID.to_le_bytes(), true);
+                            },
+                            (0x202, _) => {
+                                if sub_index >= config::N_AXIS as u8 {
+                                    error!("Subindex out of range! {:?}", sub_index);
+                                }else{
+                                    coe_prepare_up_response(&mut data_write, &config::HARDWARE_ZEROS[sub_index as usize].to_le_bytes(), true);
+                                }
+                            },
+                            _ => {
+                                error!("Unknown index and subindex! {:?}", (index, sub_index));
                             }
                         }
+                    
                     }else{
                         error!("Unknown command! {:?}", coe_frame.header.request_type);
                     }
@@ -321,46 +343,58 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
                     match foe_frame.get_request_type(){
                         FoERequestType::WriteRequest => {
                             info!("New file write request!");
-                            let filename_size = foe_frame.get_data_size();
-                            let file_name_str = foe_frame.data;
-                            match str::from_utf8(file_name_str.try_into().unwrap()){
-                                Ok(string) => {
-                                    info!("File name: {}", string);
+                            file = match FoEObject::new(){//foe_frame.data){
+                                Ok(file) => {
+                                    info!("New file: {:?}", file.name);
+                                    file
                                 },
-                                Err(e) => {
-                                    error!("Error parsing file name: {:?}", file_name_str);
+                                Err(_) => {
+                                    error!("Error parsing file name!");
+                                    continue;
                                 }
-                            }
-                            no_received_bytes = 0; 
-                            buf = AlignedBuffer([0; 4096]);
-                            data_in_buf = 0;
-                            written_bytes = 0;
+                            };
                         },
                         FoERequestType::Data => {
                             let data_chunk_lenght = foe_frame.get_data_size();
+                            debug!("Data chunk length: {:?}", data_chunk_lenght);
 
-
-                            if data_in_buf + (data_chunk_lenght as usize) > 4096 {
-                                let rest_in_buf = 4096 - data_in_buf;
-                                buf.as_mut()[data_in_buf..4096].copy_from_slice(foe_frame.data[0..rest_in_buf].as_ref());
-                                writer.write(written_bytes, buf.as_ref()).unwrap();
-                                written_bytes = written_bytes + 4096;
-                                buf.as_mut().fill(255);
-                                buf.as_mut()[0..(data_chunk_lenght as usize - rest_in_buf)].copy_from_slice(foe_frame.data[rest_in_buf..data_chunk_lenght as usize].as_ref());
-                                data_in_buf = data_chunk_lenght as usize - rest_in_buf;
-                            }
-                            else{
-                                buf.as_mut()[data_in_buf..(data_in_buf + data_chunk_lenght as usize)].copy_from_slice(foe_frame.data.as_ref());
-                                data_in_buf = data_in_buf + data_chunk_lenght as usize;
-                            }
-                            no_received_bytes = no_received_bytes + data_chunk_lenght as u32;
-                           info!("Data chunk length: {:?}", data_chunk_lenght);
-                            if data_chunk_lenght < 116 {
-                                if data_in_buf > 0 {
-                                    writer.write(written_bytes, &buf.as_ref()[0..4096]).unwrap();
-                                    written_bytes = written_bytes + data_in_buf as u32;
+                            
+                            let added_to_buffer = file.fill_buffer(&foe_frame.data[0..data_chunk_lenght as usize]) as u16;
+                            if data_chunk_lenght > added_to_buffer {
+                                // buffer is full
+                                let rest_in_buf = data_chunk_lenght - added_to_buffer;
+                                buf.as_mut().copy_from_slice(file.buffer.data.as_ref());
+                                //match updater.write_firmware(file.no_written_bytes as usize, buf.as_ref()){
+                                match writer.write(file.no_written_bytes, buf.as_ref()){
+                                    Ok(_) => {
+                                        file.no_written_bytes += file.buffer.size as u32;
+                                        file.clear_buffer();
+                                        file.fill_buffer(&foe_frame.data[(added_to_buffer as usize)..(added_to_buffer + rest_in_buf) as usize]);
+                                    },
+                                    Err(e) => {
+                                        error!("Write data error! {:?}", e);
+                                    }
                                 }
-                                info!("End of file received! Received data in bytes: {:?}B, written bytes: {:?}B", no_received_bytes, written_bytes);
+                                
+                            }      
+
+                            // if the data chunk is less than 116 bytes, it is the end of the file
+                            if foe_frame.is_full_packet() {
+                                if file.buffer.data_len > 0 {
+                                    buf.as_mut().fill(255);
+                                    buf.as_mut()[0..file.buffer.data_len as usize].copy_from_slice(&file.buffer.data[0..file.buffer.data_len as usize]);
+                                    //match updater.write_firmware(file.no_written_bytes  as usize, buf.as_ref()){
+                                    match writer.write(file.no_written_bytes, &buf.as_ref()){
+                                        Ok(_) => {
+                                            file.no_written_bytes += file.buffer.data_len as u32;
+                                            info!("End of file {} received! Received data in bytes: {:?}B, written bytes: {:?}B", file.name, file.no_received_bytes, file.no_written_bytes);
+                                        },
+                                        Err(e) => {
+                                            error!("End of fileWrite data error! {:?}", e);
+                                        }
+                                    }
+                                    
+                                }
                             }
                         },
                         _ =>{
@@ -374,7 +408,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
 
                     // heder is 6 bytes and then the 
                     match lan9252.write_bytes_large(&data_write, Lan9252Memory::OrbitaInAck as u16).await {
-                        Ok(_) => {info!("Data ack sent!");}
+                        Ok(_) => {debug!("Data ack sent!");}
                         Err(e) => {
                             error!("Write data error! {:?}", e)
                         }
@@ -388,10 +422,18 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
             // a a microsecond delay to avoid reading the same data
             Timer::after(Duration::from_micros(1)).await;
     
-
+            // if the firmare has been downloaded, and the firmware update signal is received
+            // mark the firmware as updated and reboot the device
             if firmware_update_done {
                 firmware_update_done= false;
-                updater.mark_updated().unwrap();
+                match updater.mark_updated(){
+                    Ok(_) => {
+                        info!("Firmware ready for update!");
+                    },
+                    Err(e) => {
+                        error!("Firmware update error: {:?}", e);
+                    }
+                }
                 Timer::after(Duration::from_millis(1000)).await;
                 info!("Rebooting the device!");
                 cortex_m::peripheral::SCB::sys_reset();
