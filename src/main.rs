@@ -47,6 +47,9 @@ use core::cell::RefCell;
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 
+// ethercat task restructuring
+use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
+
 // from build.rs
 // include!(concat!(env!("OUT_DIR"), "/constants.rs"));
 
@@ -173,7 +176,12 @@ async fn main(spawner: Spawner) {
         }
     };
 
-
+    // write the hardware zeros and the board id to the shared memory
+    {
+        let mut shared_memory = SHARED_MEMORY.lock().await;
+        shared_memory.set_board_id(board_id);
+        shared_memory.set_hardware_zeros(hardware_zeros);
+    }
 
     // Spawn the control loop
     #[cfg(feature = "orbita3d")]
@@ -306,11 +314,9 @@ async fn main(spawner: Spawner) {
         ltc4332ring: LTC4332RingConfig { cs: p.PD1 },
     };
 
-    // unwrap!(spawner.spawn(motor_control::task::control_loop(
-    //     actuator_config,
-    //     hardware_zeros,
-    //     board_id
-    // )));
+    unwrap!(spawner.spawn(motor_control::task::control_loop(
+        actuator_config
+    )));
 
     #[cfg(feature = "dynamixel")]
     {
@@ -360,7 +366,7 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "ethercat")]
     {
         let mut lan9252_spi_config = spi::Config::default();
-        lan9252_spi_config.frequency = mhz(15);
+        lan9252_spi_config.frequency = mhz(25);
         lan9252_spi_config.mode = spi::MODE_0;
 
         let ethconfig: LAN9252Config = EthercatConfig {
@@ -370,13 +376,19 @@ async fn main(spawner: Spawner) {
             miso: p.PC11,
             cs: p.PD0,
         };
-        info!("Ethercat starting!");
 
-        unwrap!(spawner.spawn(ethercat::task1::messsage_handler(
+        // task for the ethercat communication
+        // implementing:
+        //  - PDO communication
+        //  -  Mailbox communication
+        //      - SDO communication
+        //      - FoE communication for firmware update 
+        unwrap!(spawner.spawn(ethercat::task::messsage_handler(
             ethconfig,
             lan9252_spi_config,
-            p.FLASH
+            p.FLASH 
         )));
+
     }
     // Prepare and spawn the main task
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);

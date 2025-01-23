@@ -1,4 +1,4 @@
-use defmt::{debug, error, info, trace, warn};
+use defmt::*;
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_stm32::{
     dma::NoDma,
@@ -58,13 +58,29 @@ pub const DIGITAL_RST: u32 = 0x00000001;
 pub const ALEVENT_CONTROL: u16 = 0x0001;
 pub const ALEVENT_SM: u16 = 0x0010;
 
-//state machine
+#[derive(Debug, PartialEq, Format, Copy, Clone)]
+pub enum EthercatState {
+    Unknown = 0x00,
+    INIT = 0x01, 
+    PREOP = 0x02, // state machine control
+    BOOT = 0x03, 
+    SAFEOP = 0x05, // safe-operational
+    OP = 0x08, // operational
+}
 
-pub const ESM_INIT: u8 = 0x01; // state machine control
-pub const ESM_PREOP: u8 = 0x02; // (state request)
-pub const ESM_BOOT: u8 = 0x03; //
-pub const ESM_SAFEOP: u8 = 0x04; // safe-operational
-pub const ESM_OP: u8 = 0x08; // operational
+impl EthercatState{
+    pub fn from_u8(state: u8) -> Self {
+        match state {
+            0x01 => EthercatState::INIT,
+            0x02 => EthercatState::PREOP,
+            0x03 => EthercatState::BOOT,
+            0x05 => EthercatState::SAFEOP,
+            0x08 => EthercatState::OP,
+            _ => EthercatState::Unknown,
+        }
+    }
+}
+
 
 // SPI Command
 pub const SPI_READ: u8 = 0x03;
@@ -87,6 +103,7 @@ pub const WDOG_STATUS: u16 = 0x0440; // watch dog status
 pub const SM0_BASE: u16 = 0x0800; // SM0 base address (output)
 pub const SM1_BASE: u16 = 0x0808; // SM1 base address (input)
 
+#[derive(Debug, Clone, Copy)]
 pub struct EthercatConfig<T, SCK, MOSI, MISO, CS>
 where
     T: spi::Instance,
@@ -279,7 +296,7 @@ where
             if (ret[3] & ECAT_CSR_BUSY) != ECAT_CSR_BUSY {
                 break;
             }
-            Timer::after(Duration::from_micros(1)).await;
+            // Timer::after(Duration::from_micros(1)).await;
         }
 
         self.read_register_direct(Lan9252Registers::ECAT_CSR_DATA as u16, len)
@@ -332,7 +349,7 @@ where
         self.write_register_direct(Lan9252Registers::ECAT_PRAM_RD_CMD as u16, &tmp_data)
             .await?;
 
-        Timer::after(Duration::from_micros(1)).await;
+        // Timer::after(Duration::from_micros(1)).await;
 
         // align the data to 4 bytes
         let round_len = match len % 4 {
@@ -354,7 +371,7 @@ where
         self.write_register_direct(Lan9252Registers::ECAT_PRAM_RD_CMD as u16, &tmp_data)
             .await?;
 
-        Timer::after(Duration::from_micros(1)).await;
+        // Timer::after(Duration::from_micros(1)).await;
 
         // LAN9252 Data Sheet page 220
         // 12.13.6 ETHERCAT PROCESS RAM READ COMMAND REGISTER (ECAT_PRAM_RD_CMD)
@@ -371,7 +388,7 @@ where
                 //
                 break;
             }
-            Timer::after(Duration::from_micros(1)).await;
+            // Timer::after(Duration::from_micros(1)).await;
         }
 
         match self
@@ -432,7 +449,7 @@ where
         self.write_register_direct(Lan9252Registers::ECAT_PRAM_WR_CMD as u16, &tmp_data)
             .await?;
 
-        Timer::after(Duration::from_micros(1)).await;
+        // Timer::after(Duration::from_micros(1)).await;
 
         // align the data to 4 bytes
         let round_length = match data.len() % 4 {
@@ -461,7 +478,7 @@ where
         self.write_register_direct(Lan9252Registers::ECAT_PRAM_WR_CMD as u16, &tmp_data)
             .await?;
 
-        Timer::after(Duration::from_micros(1)).await;
+        // Timer::after(Duration::from_micros(1)).await;
 
         //TODO?
         loop {
@@ -472,7 +489,7 @@ where
             if ret[1] >= ceil((data.len() as f64) / 4.0) as u8 {
                 break;
             }
-            Timer::after(Duration::from_micros(1)).await;
+            // Timer::after(Duration::from_micros(1)).await;
         }
 
         // write the data

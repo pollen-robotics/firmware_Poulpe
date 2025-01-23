@@ -90,11 +90,11 @@ impl<'a> CoEFrame<'a>{
         self.header.request_type == 0x3
     }
 
-    pub fn is_download(&self) -> bool {
+    pub fn is_sdo_write(&self) -> bool {
         self.header.download
     }
 
-    pub fn is_upload(&self) -> bool {
+    pub fn is_sdo_read(&self) -> bool {
         !self.header.download
     }
 

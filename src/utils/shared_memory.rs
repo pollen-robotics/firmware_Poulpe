@@ -47,6 +47,7 @@ pub struct Memory<const N: usize> {
 
     axis_sensor: [f32; N],
     hardware_zeros: [f32; N],
+    board_id: u8,
 
     #[cfg(feature = "orbita3d")]
     index_sensor: [u8; N],
@@ -153,6 +154,13 @@ impl<const N: usize> SharedMemory<N> {
 
     pub fn set_axis_sensor(&self, sensor: [f32; N]) {
         self.inner.borrow_mut().axis_sensor = sensor;
+    }
+
+    pub fn get_board_id(&self) -> u8 {
+        self.inner.borrow().board_id
+    }
+    pub fn set_board_id(&self, id: u8) {
+        self.inner.borrow_mut().board_id = id;
     }
 
     pub fn get_hardware_zeros(&self) -> [f32; N] {
@@ -325,6 +333,7 @@ impl<const N: usize> SharedMemory<N> {
                 target_torque: [0.0; N],
                 axis_sensor: [0.0; N],
                 hardware_zeros: [0.0; N],
+                board_id: 0,
 
                 velocity_feedforward_timestamp: None,
                 get_target_set_timestamp: None,
@@ -385,6 +394,7 @@ impl<const N: usize> SharedMemory<N> {
 
             axis_sensor: actuator.get_axis_sensors().unwrap_or([f32::NAN; N]),
             hardware_zeros: actuator.get_hardware_zeros().unwrap_or([f32::NAN; N]),
+            board_id: 0,
 
             flux_pid_gains: actuator
                 .get_flux_pid_gains()

@@ -255,7 +255,7 @@ macro_rules! update_limit_setting {
 }
 
 #[cfg(feature = "orbita3d")]
-pub fn check_moved_sensors(moved_sensors: &[f32; 3], init_sensors: &[f32; 3], inverted : bool) -> [bool; 3] {
+pub fn check_moved_sensors(moved_sensors: &[f32; 3], init_sensors: &[f32; 3]) -> [bool; 3] {
     let mut diff = [0.0; 3];
     // check if the sensors moved enough
     let mut moved_success: [bool; 3] = [true; 3];
@@ -271,29 +271,19 @@ pub fn check_moved_sensors(moved_sensors: &[f32; 3], init_sensors: &[f32; 3], in
 
         debug!("diff: {:?}", diff[i]);
         
-        if !inverted{
-            if (diff[i] <= 0.0 && diff[i] > -0.08) || (diff[i] > 0.0 || diff[i].is_nan()) {
-                error!(
-                    "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
-                    i, diff[i]
-                );
-                moved_success[i] = false;
-            }
-        }else{
-            if (diff[i] >= 0.0 && diff[i] < 0.08) || (diff[i] < 0.0 || diff[i].is_nan()) {
-                error!(
-                    "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
-                    i, diff[i]
-                );
-                moved_success[i] = false;
-            }
+        if (diff[i] <= 0.0 && diff[i] > -0.08) || (diff[i] > 0.0 || diff[i].is_nan()) {
+            error!(
+                "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
+                i, diff[i]
+            );
+            moved_success[i] = false;
         }
     }
     moved_success
 }
 
 #[cfg(feature = "orbita2d")]
-pub fn check_moved_sensors(moved_sensors: &[f32; 2], init_sensors: &[f32; 2], inverted : bool) -> [bool; 2] {
+pub fn check_moved_sensors(moved_sensors: &[f32; 2], init_sensors: &[f32; 2]) -> [bool; 2] {
     let mut diff = [0.0; 2];
     // check if the sensors moved enough
     let mut moved_success: [bool; 2] = [true; 2];
@@ -315,9 +305,6 @@ pub fn check_moved_sensors(moved_sensors: &[f32; 2], init_sensors: &[f32; 2], in
         debug!("diff: {:?}", diff[i]);
 
         let delta = libm::fabs(should_move[i] as f64) as f32;
-        if inverted {
-            should_move[i] = -should_move[i];
-        }
         if (diff[i] > should_move[i] + delta)
             || (diff[i] < should_move[i] - delta)
             || diff[i].is_nan()
@@ -340,10 +327,8 @@ pub async fn set_error_led() {
 
 
 #[embassy_executor::task]
-pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; config::N_AXIS], board_id: u8) {
+pub async fn control_loop(mut config: ActuatorConfig) {
 
-    // invert the init movement for the left arm
-    let invert_init_movement = board_id > 50;
 
     let mut spi_config = spi::Config::default();
     spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
@@ -599,14 +584,12 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
         [ad5047top, ad5047mid, ad5047bot],
     );
 
+    // get the hardware zeros and the board id
+    let hardware_zeros  = {SHARED_MEMORY.lock().await.get_hardware_zeros()};
+    let board_id = {SHARED_MEMORY.lock().await.get_board_id()};
+
     // set the hardware zeros
     actuator.set_hardware_zeros(hardware_zeros);
-    {
-        SHARED_MEMORY
-            .lock()
-            .await
-            .set_hardware_zeros(hardware_zeros);
-    };
 
     // trying to init the actuator
     // let mut init_error: BoardStatus = BoardStatus::Init;
@@ -717,10 +700,7 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
 
         
         // motor check - move the motors and check if the sensors are moving
-        let res_check1 = match invert_init_movement {
-            true => actuator.check_motors_2().await,
-            _ => actuator.check_motors_1().await,
-        };
+        let res_check1 = actuator.check_motors_1().await;
 
         // verify that the motors moved correctly
         res_check1
@@ -771,10 +751,7 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
         }
 
         // motor check - move the motors and check if the sensors are moving
-        let res_check2 = match invert_init_movement {
-            true => actuator.check_motors_1().await,
-            _ => actuator.check_motors_2().await,
-        };
+        let res_check2 = actuator.check_motors_2().await;
 
         // verify that the motors moved correctly
         res_check2
@@ -799,7 +776,7 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
 
         // verify that the sensors have moved
         // checking if the sensors are read properly and they are in the correct direction
-        let move_check = check_moved_sensors(&moved_sensors, &init_sensors, invert_init_movement);
+        let move_check = check_moved_sensors(&moved_sensors, &init_sensors);
         move_check
             .iter()
             .enumerate()
@@ -913,6 +890,11 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
 
     // Init SharedMemory with real values before actually running the control loop
     SHARED_MEMORY.lock().await.init(&mut actuator);
+
+    // rewrite the hardware zeros to the shared memory
+    SHARED_MEMORY.lock().await.set_hardware_zeros(hardware_zeros);
+    // rewrite the board id to the shared memory
+    SHARED_MEMORY.lock().await.set_board_id(board_id);
 
     if board_state.is_fault() {
         SHARED_MEMORY.lock().await.set_error_led(true);
@@ -1583,11 +1565,15 @@ pub async fn control_loop(mut config: ActuatorConfig, hardware_zeros: [f32; conf
         #[cfg(feature = "debug_execution_time")]
         {
             let elapsed = t_loop.elapsed().as_micros();
-            info!("Motor control loop elapsed time: {}us \t time between loops: {}us",elapsed, t0.elapsed().as_micros());
+            warn!("Motor control loop elapsed time: {}us \t time between loops: {}us",elapsed, t0.elapsed().as_micros());
             t0 = Instant::now();
         }
-        // Timer::after(Duration::from_micros(1000-elapsed)).await;
-        // Timer::after(Duration::from_millis(1)).await;
+        
+        // TODO do not remove this delay
+        // it is necessary for thread sincronization
+        // I dont understand why though
+        Timer::after(Duration::from_micros(1)).await;
+        // 1ms frequency
         ticker.next().await;
     }
 }
