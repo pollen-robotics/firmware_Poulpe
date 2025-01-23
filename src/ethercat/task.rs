@@ -617,17 +617,30 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
                                 //
                                 match (index, sub_index){
                                     (0x100, 1) => {
-                                        // FoE protocol, number of received bytes in the file
-                                        coe_prepare_up_response(&mut data_write, &file.no_received_bytes.to_le_bytes(), true);    
+                                        // FoE protocol, read the number of received bytes in the file
+                                        // number of firmware bytes received
+                                        coe_prepare_up_response(
+                                            &mut data_write, 
+                                            &file.no_received_bytes.to_le_bytes(), 
+                                            true
+                                        );    
                                     },
                                     (0x200, 1) => {
                                         // display the current git hash of the firmware in the device
-                                        coe_prepare_up_response(&mut data_write, &config::GIT_HASH.as_bytes(), false);    
+                                        coe_prepare_up_response(
+                                            &mut data_write, 
+                                            &config::GIT_HASH.as_bytes(), 
+                                            false
+                                        );    
                                     },
                                     (0x201, 1) => {
                                         // display the current Dynamixel ID]
                                         let id = {SHARED_MEMORY.lock().await.get_board_id()};
-                                        coe_prepare_up_response(&mut data_write, &id.to_le_bytes(), true);
+                                        coe_prepare_up_response(
+                                            &mut data_write, 
+                                            &id.to_le_bytes(), 
+                                            true
+                                        );
                                     },
                                     (0x202, _) => {
                                         // display the hardware zeros
@@ -635,12 +648,20 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
                                         if sub_index >= config::N_AXIS as u8 {
                                             error!("Subindex out of range! {:?}", sub_index);
                                         }else{
-                                            coe_prepare_up_response(&mut data_write, &hardware_zeros[sub_index as usize].to_le_bytes(), true);
+                                            coe_prepare_up_response(
+                                                &mut data_write, 
+                                                &hardware_zeros[sub_index as usize].to_le_bytes(), 
+                                                true
+                                            );
                                         }
                                     }
                                     (0x203, 1) => {
                                         // display the axis number of the slave
-                                        coe_prepare_up_response(&mut data_write, &config::N_AXIS.to_le_bytes(), true);
+                                        coe_prepare_up_response(
+                                            &mut data_write, 
+                                            &config::N_AXIS.to_le_bytes(), 
+                                            true
+                                        );
                                     },
                                     _ => {
                                         error!("Unknown index and subindex! {:?}", (index, sub_index));
