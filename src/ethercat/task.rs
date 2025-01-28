@@ -738,7 +738,6 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
                                         // buffer is full
                                         let rest_in_buf = data_chunk_lenght - added_to_buffer;
                                         buf.as_mut().copy_from_slice(file.buffer.data.as_ref());
-                                        //match updater.write_firmware(file.no_written_bytes as usize, buf.as_ref()){
                                         match writer.write(file.no_written_bytes, buf.as_ref()){
                                             Ok(_) => {
                                                 file.no_written_bytes += file.buffer.size as u32;
