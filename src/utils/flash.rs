@@ -8,7 +8,7 @@ use crate::config::N_AXIS;
 
 // the address of the 5th sector of the flash memory
 // it can be any other sector that is not used by the program
-const ADDR: u32 = 5 * 128 * 1024; // This is the offset into bank 1
+const ADDR: u32 = 7 * 128 * 1024; // This is the offset into bank 1
 
 // data structure to be stored in flash
 // this structure can be as big as necessary
