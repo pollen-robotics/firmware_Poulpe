@@ -66,7 +66,7 @@ async fn main(_spawner: Spawner) {
         stm32_conf.rcc.voltage_scale = VoltageScale::Scale0;
     }
 
-    let p = embassy_stm32::init(stm32_conf);
+    let mut p = embassy_stm32::init(stm32_conf);
 
     info!("----------------- LEDs config -----------------");
     let mut led_green = Output::new(p.PC9, Level::High, Speed::Low);
