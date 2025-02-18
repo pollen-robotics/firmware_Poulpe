@@ -150,7 +150,7 @@ async fn main(_spawner: Spawner) {
     match flash_manager.read() {
         Ok(b) => {
             // check if empty data
-            if b.is_valid() {
+            if b.is_empty() {
                 warn!(
                     "Data in flash is empty or corrupted, bord id:{}, hardware_zeros: {:?}",
                     b.board_id,  b.sensor_offsets
@@ -200,7 +200,7 @@ async fn main(_spawner: Spawner) {
     match flash_manager.read() {
         Ok(b) => {
             // check if empty data
-            if b.is_valid() {
+            if b.is_empty() {
                 error!(
                     "Data in flash is empty or corrupted, bord id:{}, hardware_zeros: {:?}",
                     b.board_id,  b.sensor_offsets
