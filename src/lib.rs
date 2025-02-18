@@ -5,6 +5,7 @@
 #![feature(generic_const_exprs)]
 #![feature(async_fn_in_trait)]
 #![feature(array_methods)]
+#![feature(error_in_core)]
 
 pub mod config;
 pub mod dynamixel;

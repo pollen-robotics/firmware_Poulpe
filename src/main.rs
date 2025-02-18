@@ -5,6 +5,7 @@
 #![feature(generic_const_exprs)]
 #![feature(async_fn_in_trait)]
 #![feature(array_methods)]
+#![feature(error_in_core)]
 
 use defmt::{error, info, unwrap};
 use embassy_executor::Spawner;
@@ -39,6 +40,15 @@ use firmware_poulpe::{
 use firmware_poulpe::config::TemperatureSensingConfig;
 #[cfg(feature = "use_flash")]
 use firmware_poulpe::utils::flash::{FlashData, FlashManager};
+
+use embassy_stm32::peripherals::FLASH;
+use embassy_stm32::flash::Flash;
+use core::cell::RefCell;
+use embassy_sync::blocking_mutex::Mutex;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+
+// ethercat task restructuring
+use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 
 // from build.rs
 // include!(concat!(env!("OUT_DIR"), "/constants.rs"));
@@ -111,7 +121,7 @@ async fn main(spawner: Spawner) {
         stm32_conf.rcc.voltage_scale = VoltageScale::Scale0;
     }
 
-    let p = embassy_stm32::init(stm32_conf);
+    let mut p = embassy_stm32::init(stm32_conf);
 
     // set the default values into the memory
     let mut board_id = config::DXL_ID;
@@ -119,7 +129,7 @@ async fn main(spawner: Spawner) {
 
     #[cfg(feature = "use_flash")]
     {
-        let mut flash_manager = FlashManager::new(p.FLASH).await;
+        let mut flash_manager = FlashManager::new(&mut p.FLASH).await;
         #[cfg(feature = "write_flash")]
         {
             info!("Writing to flash");
@@ -141,7 +151,7 @@ async fn main(spawner: Spawner) {
                 Ok(b) => {
                     info!("Read from flash: {:?}", b);
                     // check if empty data
-                    if b.is_valid() {
+                    if b.is_empty() {
                         error!(
                             "Data in flash is empty or corrupted, using default values! {}, {:?}",
                             board_id, hardware_zeros
@@ -164,6 +174,13 @@ async fn main(spawner: Spawner) {
                 }
             }
         }
+    };
+
+    // write the hardware zeros and the board id to the shared memory
+    {
+        let mut shared_memory = SHARED_MEMORY.lock().await;
+        shared_memory.set_board_id(board_id);
+        shared_memory.set_hardware_zeros(hardware_zeros);
     }
 
     // Spawn the control loop
@@ -298,8 +315,7 @@ async fn main(spawner: Spawner) {
     };
 
     unwrap!(spawner.spawn(motor_control::task::control_loop(
-        actuator_config,
-        hardware_zeros
+        actuator_config
     )));
 
     #[cfg(feature = "dynamixel")]
@@ -350,7 +366,7 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "ethercat")]
     {
         let mut lan9252_spi_config = spi::Config::default();
-        lan9252_spi_config.frequency = mhz(15);
+        lan9252_spi_config.frequency = mhz(25);
         lan9252_spi_config.mode = spi::MODE_0;
 
         let ethconfig: LAN9252Config = EthercatConfig {
@@ -361,10 +377,18 @@ async fn main(spawner: Spawner) {
             cs: p.PD0,
         };
 
+        // task for the ethercat communication
+        // implementing:
+        //  - PDO communication
+        //  -  Mailbox communication
+        //      - SDO communication
+        //      - FoE communication for firmware update 
         unwrap!(spawner.spawn(ethercat::task::messsage_handler(
             ethconfig,
-            lan9252_spi_config
+            lan9252_spi_config,
+            p.FLASH 
         )));
+
     }
     // Prepare and spawn the main task
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);

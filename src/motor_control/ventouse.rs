@@ -309,6 +309,28 @@ where
     }
 
     pub async fn check_motors_2(&mut self) -> Result<()> {
+        //Assume that the registers are already initialized and the motors aligned
+
+        // - Read the initial position and axis sensors
+        // - Move the motors
+        // - Read the final position and axis sensors
+        // - check that it has moved "accordingly"
+
+        // Get initial position
+        let initial_position = self
+            .foc
+            .tmc4671_get_actual_position()
+            .map_err(IOError::SpiError)?;
+        info!(
+            "[Ventouse{:?}] Initial position: {}",
+            self.kind, initial_position
+        );
+
+        // Move!
+        self.foc
+            .tmc4671_set_mode(MotionMode::Velocity)
+            .map_err(IOError::SpiError)?;
+        
         let mut target: i32 = -1000;
         //Assume that check_motors_1 has been called
         #[cfg(all(feature = "orbita2d", any(feature = "gamma", feature = "pvt")))]

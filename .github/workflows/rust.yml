@@ -13,17 +13,17 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Build Orbita3d beta
-      run: cargo build --release --features orbita3d_beta
+      run: cargo build --release --bin firmware_poulpe --features orbita3d_beta
     - name: Build Orbita2d beta
-      run: cargo build --release --features orbita2d_beta
+      run: cargo build --release --bin firmware_poulpe --features orbita2d_beta
     - name: Build Orbita3d gamma
-      run: cargo build --release --features orbita3d_gamma
+      run: cargo build --release --bin firmware_poulpe --features orbita3d_gamma
     - name: Build Orbita2d gamma
-      run: cargo build --release --features orbita2d_gamma
+      run: cargo build --release --bin firmware_poulpe --features orbita2d_gamma
     - name: Build Orbita3d pvt
-      run: cargo build --release --features orbita3d_pvt
+      run: cargo build --release --bin firmware_poulpe --features orbita3d_pvt
     - name: Build Orbita2d pvt
-      run: cargo build --release --features orbita2d_pvt
+      run: cargo build --release --bin firmware_poulpe --features orbita2d_pvt
     # - name: Run tests
     #   run: cargo test --verbose 
 

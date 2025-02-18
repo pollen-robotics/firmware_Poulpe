@@ -1,4 +1,4 @@
-use defmt::{debug, error, info, trace, warn};
+use defmt::*;
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_stm32::{
     dma::NoDma,
@@ -39,6 +39,10 @@ pub enum Lan9252Registers {
     ECAT_PRAM_RD_CMD = 0x30C,
     ECAT_PRAM_WR_ADDR_LEN = 0x310,
     ECAT_PRAM_WR_CMD = 0x314,
+
+    ECAT_EEPROM_CONTROL_STATUS = 0x502,
+    ECAT_EEPROM_ADDR = 0x504,
+    ECAT_EEPROM_DATA = 0x508,   
 }
 
 // LAN9252 flags
@@ -54,13 +58,29 @@ pub const DIGITAL_RST: u32 = 0x00000001;
 pub const ALEVENT_CONTROL: u16 = 0x0001;
 pub const ALEVENT_SM: u16 = 0x0010;
 
-//state machine
+#[derive(Debug, PartialEq, Format, Copy, Clone)]
+pub enum EthercatState {
+    Unknown = 0x00,
+    INIT = 0x01, 
+    PREOP = 0x02, // state machine control
+    BOOT = 0x03, 
+    SAFEOP = 0x05, // safe-operational
+    OP = 0x08, // operational
+}
 
-pub const ESM_INIT: u8 = 0x01; // state machine control
-pub const ESM_PREOP: u8 = 0x02; // (state request)
-pub const ESM_BOOT: u8 = 0x03; //
-pub const ESM_SAFEOP: u8 = 0x04; // safe-operational
-pub const ESM_OP: u8 = 0x08; // operational
+impl EthercatState{
+    pub fn from_u8(state: u8) -> Self {
+        match state {
+            0x01 => EthercatState::INIT,
+            0x02 => EthercatState::PREOP,
+            0x03 => EthercatState::BOOT,
+            0x05 => EthercatState::SAFEOP,
+            0x08 => EthercatState::OP,
+            _ => EthercatState::Unknown,
+        }
+    }
+}
+
 
 // SPI Command
 pub const SPI_READ: u8 = 0x03;
@@ -83,6 +103,7 @@ pub const WDOG_STATUS: u16 = 0x0440; // watch dog status
 pub const SM0_BASE: u16 = 0x0800; // SM0 base address (output)
 pub const SM1_BASE: u16 = 0x0808; // SM1 base address (input)
 
+#[derive(Debug, Clone, Copy)]
 pub struct EthercatConfig<T, SCK, MOSI, MISO, CS>
 where
     T: spi::Instance,
@@ -275,14 +296,49 @@ where
             if (ret[3] & ECAT_CSR_BUSY) != ECAT_CSR_BUSY {
                 break;
             }
-            Timer::after(Duration::from_micros(1)).await;
+            // Timer::after(Duration::from_micros(1)).await;
         }
 
         self.read_register_direct(Lan9252Registers::ECAT_CSR_DATA as u16, len)
             .await
     }
 
-    //FIXME! Only if <64Bytes
+
+    pub async fn read_bytes_large(
+        &mut self,
+        len: usize,
+        buffer: &mut [u8], // Caller provides a fixed-size buffer
+        address: u16,
+    ) -> Result<(), embassy_stm32::spi::Error> {
+        const MAX_CHUNK_SIZE: usize = 64;
+        let mut current_address = address;
+        let mut remaining_len = len;
+        let mut offset = 0;
+    
+        while remaining_len > 0 {
+            let chunk_size = if remaining_len > MAX_CHUNK_SIZE {
+                MAX_CHUNK_SIZE
+            } else {
+                remaining_len
+            };
+    
+            match self.read_bytes(chunk_size, current_address).await {
+                Ok(data) => {
+                    buffer[offset..offset + chunk_size].copy_from_slice(data);
+                    current_address += chunk_size as u16; // Increment address by the chunk size
+                    offset += chunk_size;
+                    remaining_len -= chunk_size;
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
+    
+        Ok(())
+    }
+
+    // FIXME! Only if < 64 bytes read
     pub async fn read_bytes(
         &mut self,
         len: usize,
@@ -293,7 +349,7 @@ where
         self.write_register_direct(Lan9252Registers::ECAT_PRAM_RD_CMD as u16, &tmp_data)
             .await?;
 
-        Timer::after(Duration::from_micros(1)).await;
+        // Timer::after(Duration::from_micros(1)).await;
 
         // align the data to 4 bytes
         let round_len = match len % 4 {
@@ -315,7 +371,7 @@ where
         self.write_register_direct(Lan9252Registers::ECAT_PRAM_RD_CMD as u16, &tmp_data)
             .await?;
 
-        Timer::after(Duration::from_micros(1)).await;
+        // Timer::after(Duration::from_micros(1)).await;
 
         // LAN9252 Data Sheet page 220
         // 12.13.6 ETHERCAT PROCESS RAM READ COMMAND REGISTER (ECAT_PRAM_RD_CMD)
@@ -332,7 +388,7 @@ where
                 //
                 break;
             }
-            Timer::after(Duration::from_micros(1)).await;
+            // Timer::after(Duration::from_micros(1)).await;
         }
 
         match self
@@ -344,6 +400,41 @@ where
             }
             Err(e) => Err(e),
         }
+    }
+
+
+    // writing the data to the memory 
+    pub async fn write_bytes_large(
+        &mut self,
+        data: &[u8],
+        address: u16,
+    ) -> Result<(), embassy_stm32::spi::Error> {
+        const MAX_CHUNK_SIZE: usize = 64;
+        let mut current_address = address;
+        let mut remaining_len = data.len();
+        let mut offset = 0;
+    
+        while remaining_len > 0 {
+            let chunk_size = if remaining_len > MAX_CHUNK_SIZE {
+                MAX_CHUNK_SIZE
+            } else {
+                remaining_len
+            };
+    
+            // Write each chunk of data
+            match self.write_bytes(&data[offset..offset + chunk_size], current_address).await {
+                Ok(()) => {
+                    current_address += chunk_size as u16; // Increment address by the chunk size
+                    offset += chunk_size;
+                    remaining_len -= chunk_size;
+                }
+                Err(e) => {
+                    return Err(e); // Return error if writing fails
+                }
+            }
+        }
+    
+        Ok(())
     }
 
     //TODO Only if data.len()<=64
@@ -358,7 +449,7 @@ where
         self.write_register_direct(Lan9252Registers::ECAT_PRAM_WR_CMD as u16, &tmp_data)
             .await?;
 
-        Timer::after(Duration::from_micros(1)).await;
+        // Timer::after(Duration::from_micros(1)).await;
 
         // align the data to 4 bytes
         let round_length = match data.len() % 4 {
@@ -387,7 +478,7 @@ where
         self.write_register_direct(Lan9252Registers::ECAT_PRAM_WR_CMD as u16, &tmp_data)
             .await?;
 
-        Timer::after(Duration::from_micros(1)).await;
+        // Timer::after(Duration::from_micros(1)).await;
 
         //TODO?
         loop {
@@ -398,7 +489,7 @@ where
             if ret[1] >= ceil((data.len() as f64) / 4.0) as u8 {
                 break;
             }
-            Timer::after(Duration::from_micros(1)).await;
+            // Timer::after(Duration::from_micros(1)).await;
         }
 
         // write the data
