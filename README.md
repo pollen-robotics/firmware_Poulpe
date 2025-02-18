@@ -1,20 +1,22 @@
 # Poulpe board firmware using Embassy-rs
 
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/pollen-robotics/firmware_Poulpe)  ![GitHub Release Date](https://img.shields.io/github/release-date/pollen-robotics/firmware_Poulpe) ![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/pollen-robotics/firmware_Poulpe)
+
 <a href="https://github.com/pollen-robotics/elec_Poulpe"><img src="./docs/carte_Poulpe_2d.png" width="120px"></a><img src="./docs/carte_Poulpe_3d.png" width="120px"></a><img src="./docs/Poulpe_3d.png" width="120px"></a>
 
 
 A complete firmware stack for the **Poulpe** boards in combination with **Venouse** boards, using the Rust programming language and the [Embassy-rs](https://github.com/embassy-rs/embassy) framework. The firmware is designed to work with the Orbita2d and Orbita3d actuator setups. 
 
-- [Poulpe](https://github.com/pollen-robotics/elec_Poulpe) + [Sponge](https://github.com/pollen-robotics/elec_Sponge) + [TMC4671+TMC6100 BOB](https://www.analog.com/en/resources/evaluation-hardware-and-software/evaluation-boards-kits/tmc4671-tmc6100-bob.html)
-- [Poulpe 2d](https://github.com/pollen-robotics/elec_Poulpe_2d)  + [Ventouse 2d](https://github.com/pollen-robotics/elec_Ventouse_2d)
-- [Poulpe 3d ](https://github.com/pollen-robotics/elec_Poulpe_3d) + [Ventouse 3d](https://github.com/pollen-robotics/elec_Ventouse_3d)
-
 
 ## Table of contents
 
-- [Installation](#installation)
-- [Build](#build)
-- [Run/Flush](#runflush)
+- [Installation](#installation-and-pre-requisites)
+    - [Rust and probe-rs installation](#rust-and-probe-rs-installation)
+    - [Bootloader installation](#bootloader-installation)
+- [Build and program](#build-and-program)
+    - [Run/Fush](#runflush)
+    - [USB Stlink](#usb-stlink)
+    - [EtherCAT firmware update (FoE)](#ethercat-firmware-update-foe)
 - [Firmware architecture](#firmware-architecture)
     - [Firmware real-time tasks](#firmware-real-time-tasks)
     - [Orbita2d architecture](#orbita2d-architecture)
@@ -22,12 +24,17 @@ A complete firmware stack for the **Poulpe** boards in combination with **Venous
 - [Firmware configuration](#firmware-configuration)
 - [Safety features](#safety-features)
 - [Firmware state machine](#firmware-state-machine)
+- [LED blinking patterns](#led-blinking-patterns)
+- [Related repositories](#related-repositories)
 
+## Installation and Pre-requisites
 
+In order to build and flush this firmware to the boards there are two main pre-requisites:
 
+- Rust toolchain installed on your computer
+- `bootloader_Pouple` already flushed to the board - [see the bootloader repo](https://github.com/pollen-robotics/bootloader_Poulpe)
 
-
-## Installation
+## Rust and probe-rs installation
 
 - `rustup default nightly`
 - `rustup update`
@@ -35,8 +42,44 @@ A complete firmware stack for the **Poulpe** boards in combination with **Venous
 - `cargo install probe-rs --features cli`
 - Setup the st-link v2 device permisions: [more info in probe docs](https://probe.rs/docs/getting-started/probe-setup/)
 
-### Build
+## Bootloader installation
 
+See how to install the bootloader on the board in the [bootloader repo](https://github.com/pollen-robotics/bootloader_Poulpe)
+
+In short
+- Clone the repository 
+    ```sh
+    git clone git@github.com:pollen-robotics/bootloader_Poulpe.git`
+    cd bootloader_Poulpe
+    ```
+- Flush the bootloader to the board
+    ```sh
+    cargo flash --release --chip STM32H743VGTx
+    ```
+
+Once this is done you can proceed with the firmware installation.
+
+## Build and program
+
+Clone the repository and navigate to the root of the repository. 
+
+```sh
+git clone git@github.com:pollen-robotics/firmware_Poulpe.git
+```
+
+<details markdown="1"><summary>Use the desired fimrware version</summary>
+
+For exmaple, to use the v0.9.0 version
+
+```sh
+cd firmware_Poulpe
+git checkout v0.9.0 
+```
+
+</details>
+
+
+Then run the following command to build the firmware:
 ```sh
 cargo build --release --features # hardware version ex. orbita3d_beta
 ```
@@ -49,7 +92,18 @@ PVT | `orbita2d_pvt` | `orbita3d_pvt` | EtherCAT | [Poulpe 2d](https://github.co
 
 <b>Note</b>: The first build will take a long time because it will download the dependencies and compile them.
 
-### Run/Flush
+### Run/Flush 
+
+There are two ways of flushing the firmware to the board:
+
+Type  | Pros | Cons
+----| ---- | ------
+USB  Stlink based flashing | ✅ Debugging and logging <br> ✅ Has to be used for the first flash <br> ✅ No firmware corruption possible | ❌ One board at the time <br> ❌ You need the Stlink <br> ❌ Connector hard to access
+EtherCAT FoE  firmware upload | ✅ No special hardware <br> ✅ All borads at once | ❌ No debugging output <br> ❌ Only for the firmware update <br> ❌ Can result in the board bricking
+
+
+####  USB Stlink
+1) Make sure that the bootloader is already flushed to the board
 1) Make sure that the stlink is connected to the board and to the computer
 2) Make sure that you selected the proper version of your hardware as indicated in the table above
 3) Run the command to flush the board:
@@ -68,6 +122,65 @@ It can also be set to <code>trace</code> or <code>info</code>. For the release v
 </pre>
 </details>
 
+#### EtherCAT firmware update (FoE)
+
+1) Make sure that the bootloader is already flushed to the board
+2) Make sure that the firmware is version v1.5 or higher
+4) Make sure that the ehterca tool is installed on your computer
+    `ethercat master` - [installation guide](https://pollen-robotics.github.io/poulpe_ethercat_controller/installation/installation_ethercat/)
+3) Make sure that the board is connected to the EtherCAT network
+    `ethercat slaves` - to see the connected slaves
+4) Build your firmware 
+    for example:
+    ```sh
+    cargo build --release --features orbita2d_pvt
+    ```
+5) Extract the firmware binary using `extract_hex` script
+    ```sh
+    > sh extract_hex.sh
+    Bin file generated: firmware.bin
+    ```
+7) Upload the firmware to the board using the `update_firmware_ethercat.sh` script
+    ```sh
+    > sh update_firmware_ethercat.sh firmware.bin
+    Starting firmware update with firmware.bin...
+    Writing firmware...
+    Read 22152 bytes of FoE data.
+    FoE writing finished.
+    Verifying bytes received...
+    Firmware size: 22152
+    Bytes received: 22152
+    Confirming firmware update...
+    Firmware update completed successfully
+    ```
+    If the firmware is uploaded successfully the board will reboot and the new firmware will be loaded.
+
+> The step 7) can be done only once, and if you try to update the firmware the second time, you will receive an error `Failed to write via FoE: FOE_ACK_ERROR`. In order to upload the new firmware you have to reset the board. This is a safety feature to avoid the firmware corruption.
+
+<details markdown="1" ><summary> <b>Manually upload the firmware to the board</b> (avoid the step 7)</summary>
+
+
+
+Instead of using the `update_firmware_ethercat` script you can manually upload the firmware to the board using the `ethercat` tool.
+
+> IMPORTANT!!! Next steps are critical and can result in the board being bricked if not properly followed! 
+> Make sure to follow the procedure exactly
+
+7) Flash the firmware to the board `ethercat foe_write -p0 firmware.bin  --verbose `
+    ```sh
+    > ethercat foe_write -p0 firmware.bin  --verbose 
+    Read 124320 bytes of FoE data.
+    FoE writing finished.
+    ```
+8) Send the exact number of bytes written to the firmware to the board on the address `0x1000` and subindex `1` using the SDO protocol
+    ```sh
+    ethercat download -p0 0x100 1 -t uint32 # number of bytes ex. 124320
+    ```
+    You can find the number of bytes of the file with `stat -c %s firmware.bin`
+
+    If this step has went well the board will reboot and the new firmware will be loaded.
+
+</details>
 
 ## Firmware architecture
 
@@ -313,21 +426,6 @@ Read more in the [state machine module](src/state_machine/README.md)
 The blinking of the LED on the board is used to indicate the state of the board. There are two colors of the LED - green and red. The LED can be solid or blinking. The LED is blinking with a period of 500ms. The pattern of blinking is as follows:
 
 
- state            | green         | red
- -----------------|---------------|------
- init             | blinks        | blinks
- preop            | solid         | off
- preop  + warning | solid         | blinks
- op               | solid         | off
- op  + warning    | solid         | blinks
- fault            | off           | solid
- fault_reaction   | off           | blinks
- quick_stop_reaction   | solid           | solid
-## LED blinking patterns
-
-The blinking of the LED on the board is used to indicate the state of the board. There are two colors of the LED - green and red. The LED can be solid or blinking. The LED is blinking with a period of 500ms. The pattern of blinking is as follows:
-
-
  state           | CiA402 state | green         | red
  ----------------|--------------|---------------|---------
  init            | `NotReadyToSwitchOn`  | blinks        | blinks
@@ -338,6 +436,41 @@ The blinking of the LED on the board is used to indicate the state of the board.
  fault            |`Fault`| off           | solid
  fault_reaction   |`FaultReactionActive`| off           | blinks
  quick_stop_reaction   |`QuickStopActive`| solid           | solid
+
+
+## Related repositories
+
+This firmware repo is closely related to different software and hardware repositories. 
+
+### Firmware
+
+- [bootloader_Poulpe](https://github.com/pollen-robotics/bootloader_Poulpe) - A bootloader for the Poulpe board
+
+### Software
+
+- [poulpe_ethercat_controller](https://github.com/pollen-robotics/poulpe_ethercat_controller) - The complete EtherCAT master stack for the Poulpe boards
+- [orbita2d_control](https://github.com/pollen-robotics/orbita2d_control) - The orbita2d control software
+- [orbita3d_control](https://github.com/pollen-robotics/orbita3d_control) - The orbita3d control software
+
+The firmware implmenets the ethercat slave and the master is implemented in the `poulpe_ethercat_controller` repository. Therefore the compatibility between the firmware and the `poulpe_ethercat_controller` is important and is as follows:
+
+`firmware_poulpe` version | `poulpe_ethercat_controller` version
+----| ----
+v0.9.0 | v0.9.0 or higher
+v1.0.x | v1.0.x or higher
+v1.5.x | v1.5.x
+
+So in general, the `poulpe_ethercat_controller` version has to be the same or higher than the `firmware_poulpe` version. See  available `poulpe_ethercat_controller` releases [here](https://github.com/pollen-robotics/poulpe_ethercat_controller/releases). More details about the master-slave communicaiton protocol can be found in the ethercat crate [README.md](src/ethercat/README.md)
+
+### Hardware
+
+- [elec_Poulpe](https://github.com/pollen-robotics/elce_Poulpe) - The Poulpe board (`beta` version)
+- [elec_Sponge](https://github.com/pollen-robotics/elec_Sponge) - The driver board (`beta` version)
+- [elec_Poulpe_2d](https://github.com/pollen-robotics/elec_Poulpe_2d) - The Poulpe board for orbita2d (`DVT` and `PVT` versions)
+- [elec_Ventouse_2d](https://github.com/pollen-robotics/elec_Ventouse_2d) - The Ventouse board for orbita2d (`DVT` and `PVT` versions)
+- [elec_Poulpe_3d](https://github.com/pollen-robotics/elec_Poulpe_3d) - The Poulpe board for orbita3d (`DVT` and `PVT` versions)
+- [elec_Ventouse_3d](https://github.com/pollen-robotics/elec_Ventouse_3d) - The Ventouse board for orbita3d (`DVT` and `PVT` versions)
+
 
 ## Future work and improvements
 

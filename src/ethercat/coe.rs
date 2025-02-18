@@ -1,6 +1,4 @@
-use defmt::info;
-
- // - CoE has the Mailbox type 0x3.
+// - CoE has the Mailbox type 0x3.
 //     - It has 3 Byte header
 //         - bytes 0-1: request type (uint16)
 //             - 0x2 << 12 (0x40) SDO request
@@ -27,7 +25,11 @@ use defmt::info;
 //              - the size indicator is 0x1 and the data size is set to 0
 //              - first 4 bytes after the index and the index are the size of the data
 //              - the data follows after the size
-
+//
+// The full mailbox request then looks like this:
+//  Bytes    |     0 - 5      |      6-9   | 9-10  |    11     | 12-128 |
+//  Contents | mailbox header | CoE header | index | sub-index | data   |
+use defmt::info;
 #[derive(Debug, defmt::Format)]
 pub struct CoEFrame<'a> {
     pub header: CoEFrameHeader,

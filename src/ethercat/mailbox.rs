@@ -1,5 +1,9 @@
-use defmt::error;
+// - The Mailbox has a 6 Byte header
+//     - 2 Byte data size
+//     - 5th Byte frame type (0x3 for CoE, 0x4 for FoE)
+// - The data follows the header
 
+use defmt::error;
 
 #[derive(Debug, defmt::Format)]
 pub struct MailboxFrame {

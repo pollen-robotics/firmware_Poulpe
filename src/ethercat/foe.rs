@@ -1,8 +1,22 @@
+// - FoE has the Mailbox type 0x4.
+//     - It has 6 Byte header
+//        - 1 Byte request type
+//            - 0x1 - read request  (WRQ)
+//            - 0x2 - write request (RRQ)
+//            - 0x3 - data (DATA)
+//            - 0x4 - acknowledge (ACK)
+//            - 0x5 - error
+//            - 0x6 busy
+//        - 1 Byte Empty
+//        - 4 Byte packet number
+//     - The data follows the header
+//
+//
+// The full mailbox request then looks like this:
+//  Bytes    |     0 - 5      |  6 - 11    | 12- 128|
+//  Contents | mailbox header | Foe header | data   |
 use defmt::{error, info, debug};
 use core::str;
- // - FoE has the Mailbox type 0x4.
-//     - It has 6 Byte header
-
 
 
 #[derive(Debug, defmt::Format, Copy, Clone)]

@@ -654,7 +654,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
                                                 true
                                             );
                                         }
-                                    }
+                                    },
                                     (0x203, 1) => {
                                         // display the axis number of the slave
                                         coe_prepare_up_response(
@@ -714,20 +714,30 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
                                     continue;
                                 }
                             };
+
+                            // by default we send an acknowledge
+                            let mut data_write = [0x00u8; 128];
+                            foe_prepare_acknowledge(data_write.as_mut());
         
                             match foe_frame.get_request_type(){
                                 FoERequestType::WriteRequest => {
                                     info!("New file write request!");
-                                    file = match FoEObject::new(){//foe_frame.data){
-                                        Ok(file) => {
-                                            info!("New file: {:?}", file.name);
-                                            file
-                                        },
-                                        Err(_) => {
-                                            error!("Error parsing file name!");
-                                            continue;
-                                        }
-                                    };
+                                    if file.no_written_bytes == 0 {
+                                        file = match FoEObject::new(){
+                                            Ok(file) => {
+                                                info!("New file: {:?}", file.name);
+                                                file
+                                            },
+                                            Err(_) => {
+                                                error!("Error parsing file name!");
+                                                continue;
+                                            }
+                                        };
+                                    }else{
+                                        error!("File already written, rejecting new file!");
+                                        // send an error message
+                                        foe_prepare_error(data_write.as_mut());
+                                    }
                                 },
                                 FoERequestType::Data => {
                                     let data_chunk_lenght = foe_frame.get_data_size();
@@ -746,6 +756,8 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
                                             },
                                             Err(e) => {
                                                 error!("Write data error! {:?}", e);
+                                                // send an error message
+                                                foe_prepare_error(data_write.as_mut());
                                             }
                                         }
                                         
@@ -764,6 +776,8 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
                                                 },
                                                 Err(e) => {
                                                     error!("End of fileWrite data error! {:?}", e);
+                                                    // send an error message
+                                                    foe_prepare_error(data_write.as_mut());
                                                 }
                                             }
                                             
@@ -775,10 +789,7 @@ pub async fn messsage_handler(ethconf: LAN9252Config, spi_config: spi::Config, f
                                     continue;
                                 }
                             }
-        
-                            let mut data_write = [0x00u8; 128];
-                            foe_prepare_acknowledge(data_write.as_mut());
-        
+                
                             // heder is 6 bytes and then the 
                             match lan9252.write_bytes_large(&data_write, Lan9252Memory::MBoxOutput as u16).await {
                                 Ok(_) => {debug!("Data ack sent!");}
