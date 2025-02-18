@@ -169,7 +169,7 @@ async fn main(_spawner: Spawner) {
 
 
     info!("----------------- Flash config -----------------");
-    let mut flash_manager = FlashManager::new(p.FLASH).await;
+    let mut flash_manager = FlashManager::new(&mut p.FLASH).await;
 
     info!("Reading from flash");
     match flash_manager.read() {
