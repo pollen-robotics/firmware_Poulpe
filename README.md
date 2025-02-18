@@ -1,4 +1,4 @@
-# Poulpe board firmware using Embassy-rs
+# Firmware stack for poulpe boards built in Rust
 
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/pollen-robotics/firmware_Poulpe)  ![GitHub Release Date](https://img.shields.io/github/release-date/pollen-robotics/firmware_Poulpe) ![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/pollen-robotics/firmware_Poulpe)
 
