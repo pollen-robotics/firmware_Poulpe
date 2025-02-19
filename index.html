@@ -8,6 +8,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
   <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify@4/lib/themes/vue.css">
   <link rel="icon" href="docs/favicon.ico" type="image/x-icon">
+
 </head>
 <body>
     <body>
@@ -18,14 +19,21 @@
     </body>
   <script>
     window.$docsify = {
-      name: '<b>Poulpe firmware stack</b>',
-      repo: 'https://github.com/pollen-robotics/firmware_Poulpe',
-    //   logo: 'docs/favicon.ico',
-      homepage: 'README.md',
-      themeColor: '#2980b9',
+        name: '<b>Poulpe firmware stack</b>',
+        repo: 'https://github.com/pollen-robotics/firmware_Poulpe',
+        relativePath: true,
+        homepage: 'README.md',
+        themeColor: '#2980b9',
+        search: {
+            paths: [
+                '/', '/src/ethercat/', '/src/state_machine/' , '/src/dynamixel/' , '/src/config/', '/src/utils/', '/src/motor_control/'
+            ],
+        },
     }
   </script>
   <!-- Docsify v4 -->
   <script src="//cdn.jsdelivr.net/npm/docsify@4"></script>
+  <script src="//cdn.jsdelivr.net/npm/docsify/lib/plugins/search.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/docsify-copy-code/dist/docsify-copy-code.min.js"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-# Firmware stack for poulpe boards built in Rust
+# Poulpe firmware stack 
 
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/pollen-robotics/firmware_Poulpe)  ![GitHub Release Date](https://img.shields.io/github/release-date/pollen-robotics/firmware_Poulpe) ![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/pollen-robotics/firmware_Poulpe)
 
@@ -14,7 +14,7 @@ A complete firmware stack for the **Poulpe** boards in combination with **Venous
     - [Rust and probe-rs installation](#rust-and-probe-rs-installation)
     - [Bootloader installation](#bootloader-installation)
 - [Build and program](#build-and-program)
-    - [Run/Fush](#runflush)
+    - [Run/Fash](#runflash)
     - [USB Stlink](#usb-stlink)
     - [EtherCAT firmware update (FoE)](#ethercat-firmware-update-foe)
 - [Firmware architecture](#firmware-architecture)
@@ -22,6 +22,10 @@ A complete firmware stack for the **Poulpe** boards in combination with **Venous
     - [Orbita2d architecture](#orbita2d-architecture)
     - [Orbita3d architecture](#orbita3d-architecture)
 - [Firmware configuration](#firmware-configuration)
+    - [Main features](#main-features)
+    - [All features](#all-features)
+    - [Axis absolute zeros configuration](#axis-absolute-zeros-configuration)
+    - [EtherCAT configuration](#ethercat-configuration)
 - [Safety features](#safety-features)
 - [Firmware state machine](#firmware-state-machine)
 - [LED blinking patterns](#led-blinking-patterns)
@@ -92,7 +96,7 @@ PVT | `orbita2d_pvt` | `orbita3d_pvt` | EtherCAT | [Poulpe 2d](https://github.co
 
 <b>Note</b>: The first build will take a long time because it will download the dependencies and compile them.
 
-### Run/Flush 
+### Run/Flash 
 
 There are two ways of flushing the firmware to the board:
 
@@ -136,14 +140,28 @@ It can also be set to <code>trace</code> or <code>info</code>. For the release v
     cargo build --release --features orbita2d_pvt
     ```
 5) Extract the firmware binary using `extract_hex` script
+    ```shell
+    sh firmware_update_scripts/extract_hex.sh
+    ```
+    <details markdown="1">
+    <summary>Example output</summary>
+
     ```sh
-    > sh extract_hex.sh
+    > sh firmware_update_scripts/extract_hex.sh
     Bin file generated: firmware.bin
     ```
-7) Upload the firmware to the board using the `update_firmware_ethercat.sh` script
+
+    </details>
+7) Upload the firmware to the board using the `update_firmware` script
     ```sh
-    > sh update_firmware_ethercat.sh firmware.bin
-    Starting firmware update with firmware.bin...
+    sh firmware_update_scripts/update_firmware.sh firmware.bin 0 # slave id
+    ```
+    <details markdown="1">
+    <summary>Example output</summary>
+
+    ```
+    > sh firmware_update_scripts/update_firmware.sh firmware.bin 0
+    Starting firmware update for slave 0 with firmware.bin...
     Writing firmware...
     Read 22152 bytes of FoE data.
     FoE writing finished.
@@ -153,6 +171,8 @@ It can also be set to <code>trace</code> or <code>info</code>. For the release v
     Confirming firmware update...
     Firmware update completed successfully
     ```
+    
+    </details>
     If the firmware is uploaded successfully the board will reboot and the new firmware will be loaded.
 
 > The step 7) can be done only once, and if you try to update the firmware the second time, you will receive an error `Failed to write via FoE: FOE_ACK_ERROR`. In order to upload the new firmware you have to reset the board. This is a safety feature to avoid the firmware corruption.
@@ -344,8 +364,40 @@ Used to enable the debugging features
 
 In order to use the absolute zero position of the actuators the absolute zero values need to be writen to the flash memory of the poulpe boards. These values are written to the memory once and are used on the boot of the board. The absolute zeros can be set using the `ZEROS` command line argument. The values are written to the flash memory using the `write_flash` feature.
 
+The orbita2d and 3d actuators have dedicated absolute sensors for each axis that are used for their positioning. In order to provide the firmware with the mechanical zero position of the actuators, the axis sensors' position at the mechanical zero position has to be set. 
+These values are written to the FLASH memory and require to be set only once. 
 
-- If the `use_flash` feature is enabled the configuration will be read from the flash memory on the boot. If the configuration is not found in the flash memory the default configuration  will be used. (`HARDWARE_ZEROS=[0, 0, 0]` for orbita3d and `HARDWARE_ZEROS=[0, 0]` for orbita2d)
+There are couple of ways to set the axis zeros:
+
+- Directly from the terminal to the firmware using the `ZEROS` command line argument (in combination with `write_flash` feature)
+- Using the provided binary files in the `src/bin` folder
+
+#### Using the binary files
+
+The binary files are specific to the actuator type
+- `bench_Orbita2dWriteZeros.rs` - for the orbita2d actuator
+- `bench_Orbita3dWriteZeros.rs` - for the orbita3d actuator
+
+The binary files read the current axis positions and write them to the flash memory directly. No need to set the `ZEROS` command line argument. 
+
+To write the zeros to the flash memory use the following command (example `PVT` version of the orbita2d)
+```bash
+cargo run --release -bin bench_Orbita2dWriteZeros --features orbita2d_pvt
+```
+
+Then just flash the firmware to the board and the zeros will be read from the flash memory on the next boot.
+
+```bash
+cargo run --release --features orbita2d_pvt
+```
+
+> IMPORTANT!
+> The binary programs `bench_OrbitaXdWriteZeros` will write current axis sensor values as the axis zeros to the flash memory on each run. So make sure to run them only once and make sure to flash the firmware to the board right after the zeros are written to the flash memory. 
+
+
+#### Using the command line arguments
+
+- This way of flashing the axis zeros requires you to have determined the axis zero positions values determined in advance
 
 - To write the configuration to the flash memory use the `write_flash` feature and set the command line arguments `ZEROS` to the desired values. The configuration will be written to the flash memory and will be read from it on the next boot. 
 
@@ -376,6 +428,12 @@ cargo run --release --features orbita3d_beta
 ```
 
 
+### EtherCAT configuration 
+
+Poulpe boards have to be configured as EtherCAT slaves in order to work with the EtherCAT master. The slave configuration is done using ESI XML files where the PDO, SDO and FoE protocols are defined. These files are compiled to the bunary format and written to the EEPROM memory of the LAN9252 chip, using the `ethercat` tool. The configuration is done only once and is stored in the EEPROM memory.
+See a bit mode information in the [ethercat module](src/ethercat/README.md)
+
+
 ## Safety features
 
 The firmware has implemented several safety features to ensure the safety of the motor and the user. The safety features are implemented in the `motor_control` module and are executed in the `control_loop` real-time task. The safety features are:
@@ -398,7 +456,7 @@ Only if all the checks are passed the board will pass the initialization and wil
 The poulpe will stop disable the motors if any of the safety checks failed are triggered. 
 
 
-## Frimware state machine
+## Firmware state machine
 
 The state machine of the poulpe board is implemented in the `state_machine` module. The state machine is responsible for the initialization of the board and the safety features. The state machine follows the CiA 402 standard for the motor control. 
 
