@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Document</title>
+  <title>Poulpe firmware stack</title>
   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
   <meta name="description" content="Description">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
@@ -21,7 +21,7 @@
     window.$docsify = {
         name: '<b>Poulpe firmware stack</b>',
         repo: 'https://github.com/pollen-robotics/firmware_Poulpe',
-        relativePath: true,
+        relativePath: false,
         homepage: 'README.md',
         themeColor: '#2980b9',
         search: {
@@ -29,6 +29,7 @@
                 '/', '/src/ethercat/', '/src/state_machine/' , '/src/dynamixel/' , '/src/config/', '/src/utils/', '/src/motor_control/'
             ],
         },
+        routerMode: 'history' // Add this line to enable history mode
     }
   </script>
   <!-- Docsify v4 -->
