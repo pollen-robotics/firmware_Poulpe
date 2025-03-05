@@ -183,7 +183,7 @@ async fn main(_spawner: Spawner) {
     );
 
     info!("----------------- Writing zeros to flash -----------------");
-    let motor_config = BrushlessMotor::ecx22();
+/*    let motor_config = BrushlessMotor::ecx22();
     let axis_ratio = motor_config.axis_ratio();
     let sensor_offsets = FlashData {
         board_id: DXL_ID,
@@ -219,7 +219,7 @@ async fn main(_spawner: Spawner) {
             led_red.set_high();
             return;
         }
-    }
+    }*/
     
 
     info!("----------------- Done : SUCCESS -----------------");

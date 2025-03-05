@@ -30,6 +30,7 @@ use firmware_poulpe::{
     motor_control,
     motor_control::ventouse::VentouseConfig,
     sensors::sensors::I2cHallConfig,
+    sensors::ads124s0x,
     state_machine::poulpe_state,
     utils,
     utils::flash,
