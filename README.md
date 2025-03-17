@@ -127,6 +127,8 @@ It can also be set to <code>trace</code> or <code>info</code>. For the release v
 </details>
 
 #### EtherCAT firmware update (FoE)
+ 
+See the [full guide on how to flash the entire robot](firmware_update_scripts/guide.md).
 
 1) Make sure that the bootloader is already flushed to the board
 2) Make sure that the firmware is version v1.5 or higher

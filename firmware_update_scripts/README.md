@@ -8,6 +8,8 @@ This directory contains utility scripts for updating the firmware over EtherCAT.
 
 The folder also contains a simple example firmware binary file `firmware_blinky.bin` that once uploaded will blink the red LED on the board.
 
+See the [full guide on how to flash the entire robot](guide.md).
+
 ## Usage
 
 ### Extract the firmware hex file
