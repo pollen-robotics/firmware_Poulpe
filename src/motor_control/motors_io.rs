@@ -42,6 +42,10 @@ pub trait RawMotorsIO<const N: usize> {
     // Set the velocity feedforward of the motors (in radians per second)
     fn set_velocity_feedforward(&mut self, velocity: [f32; N]) -> Result<()>;
     fn get_velocity_feedforward(&mut self) -> Result<[f32; N]>;
+ 
+    // set torque feedforward of the motors 
+    fn set_torque_feedforward(&mut self, torque: [f32; N]) -> Result<()>;
+    fn get_torque_feedforward(&mut self) -> Result<[f32; N]>;
 
     fn get_board_temperature(&mut self) -> Result<[f32; N]>;
     fn get_bus_voltage(&mut self) -> Result<[f32; N]>;

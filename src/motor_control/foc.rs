@@ -648,6 +648,28 @@ where
         self.tmc4671_get_lower_i16(Tmc4671Registers::PID_TORQUE_FLUX_TARGET as u8)
     }
 
+
+
+    pub fn tmc4671_set_torque_offset(
+        &mut self,
+        torque_offset: i16,
+    ) -> Result<u32, embassy_stm32::spi::Error> {
+        // read current state first -> bits 15-0 is flux_target and should be kept.
+        let mut torque_and_flux =
+            self.tmc4671_read_register(Tmc4671Registers::PID_TORQUE_FLUX_OFFSET as u8)?;
+        torque_and_flux &= 0x0000FFFFu32; // clear actual torque
+        torque_and_flux |= (torque_offset as u32) << 16;
+        self.tmc4671_write_register(
+            Tmc4671Registers::PID_TORQUE_FLUX_OFFSET as u8,
+            torque_and_flux,
+        )
+    }
+    pub fn tmc4671_get_torque_offset(&mut self) -> Result<i32, embassy_stm32::spi::Error> {
+        let mut torque_and_flux = self.tmc4671_read_register(Tmc4671Registers::PID_TORQUE_FLUX_OFFSET as u8)?;
+        Ok((torque_and_flux >> 16) as i32)
+    }
+
+
     pub fn tmc4671_set_torque_target(
         &mut self,
         torque_target: i16,
