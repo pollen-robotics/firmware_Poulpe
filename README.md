@@ -45,6 +45,7 @@ In order to build and flush this firmware to the boards there are two main pre-r
 - `rustup target add thumbv7em-none-eabihf`
 - `cargo install probe-rs --features cli`
 - Setup the st-link v2 device permisions: [more info in probe docs](https://probe.rs/docs/getting-started/probe-setup/)
+(You might want to install probe-rs v0.21.1: `curl --proto '=https' --tlsv1.2 -LsSf https://github.com/probe-rs/probe-rs/releases/download/v0.20.0/probe-rs-tools-installer.sh | sh`)
 
 ## Bootloader installation
 
