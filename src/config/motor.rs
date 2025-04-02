@@ -22,7 +22,7 @@ pub struct BrushlessMotor {
 
 impl BrushlessMotor {
     #[allow(dead_code)]
-    #[cfg(all( any(feature="ecx22", feature="ecx22l"), feature = "orbita3d"))]
+    #[cfg(all(any(feature = "ecx22", feature = "ecx22l"), feature = "orbita3d"))]
     pub fn ecx22() -> Self {
         Self {
             // 4 pole pairs for the ecx22
@@ -33,19 +33,19 @@ impl BrushlessMotor {
             // PI controller params
             #[cfg(feature = "beta")]
             pid_flux: Pid { p: 80, i: 200 },
-            #[cfg(any(feature = "gamma",feature = "pvt"))]
+            #[cfg(any(feature = "gamma", feature = "pvt"))]
             pid_flux: Pid { p: 200, i: 500 },
             #[cfg(feature = "beta")]
             pid_torque: Pid { p: 80, i: 200 },
-            #[cfg(any(feature = "gamma",feature = "pvt"))]
+            #[cfg(any(feature = "gamma", feature = "pvt"))]
             pid_torque: Pid { p: 200, i: 500 },
             #[cfg(feature = "beta")]
             pid_velocity: Pid { p: 500, i: 200 },
-            #[cfg(any(feature = "gamma",feature = "pvt"))]
+            #[cfg(any(feature = "gamma", feature = "pvt"))]
             pid_velocity: Pid { p: 500, i: 100 },
             #[cfg(feature = "beta")]
             pid_position: Pid { p: 50, i: 0 },
-            #[cfg(any(feature = "gamma",feature = "pvt"))]
+            #[cfg(any(feature = "gamma", feature = "pvt"))]
             pid_position: Pid { p: 100, i: 0 },
             torque_flux_limit_max: 2500, // 2.5 amps
             velocity_limit_max: 40,      // 40 rad/s
@@ -53,8 +53,11 @@ impl BrushlessMotor {
             #[cfg(feature = "ecx22")]
             gearbox_ratio: 1.0 / 35.0,
             #[cfg(feature = "ecx22l")]
-            gearbox_ratio: 169.0/4761.0,
+            gearbox_ratio: 169.0 / 4761.0,
+            #[cfg(not(feature = "orbita3d_m"))]
             axis_ratio: 12.0 / 64.0,
+            #[cfg(feature = "orbita3d_m")]
+            axis_ratio: 16.0 / 85.0,
         }
     }
     #[allow(dead_code)]
@@ -95,7 +98,7 @@ impl BrushlessMotor {
             torque_flux_limit_max: 6000, // 6 amps
             velocity_limit_max: 10,      // 410 rad/s
             // gearing ratios
-            gearbox_ratio: 130.0/4554.0,
+            gearbox_ratio: 130.0 / 4554.0,
             axis_ratio: 20.0 / 38.0,
         }
     }
