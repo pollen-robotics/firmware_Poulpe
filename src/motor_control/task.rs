@@ -922,9 +922,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
     let mut init_target_position = { SHARED_MEMORY.lock().await.get_target_position() };
 
     // a variable used for the safe fault handling
-    let emergency_stop_torque_limits = [0.75, 0.5, 0.3, 0.1, 0.05];
-    let emergency_stop_time_per_torque_secs = 1.75; // seconds
-    let emergency_stop_response_counter_max = emergency_stop_torque_limits.len()*((emergency_stop_time_per_torque_secs*1000.0) as usize); // 3secs per torque limit (1000 loops at 1kHz)
+    let emergency_stop_response_counter_max: usize = 7000; // 7secs (1000 loops at 1kHz)
     let mut quick_stop_response_counter  = 0;
     let mut fault_response_counter = 0; 
 
@@ -1105,9 +1103,11 @@ pub async fn control_loop(mut config: ActuatorConfig) {
 
                 // if velocity is almost zero and the torque is almost zero, stop the operation
                 // dont stop if the fault response counter is not yet at the maximum
+                // and stop right away if the fault response counter is at the two times the maximum (emergency stop)
                 if (velocity.iter().all(|v| v.abs() < 0.05)) && 
                     (torque.iter().all(|t| t.abs() < 100.0) && 
-                    (quick_stop_response_counter >= emergency_stop_response_counter_max)){
+                    (quick_stop_response_counter >= emergency_stop_response_counter_max)) ||
+                    quick_stop_response_counter >= 2*emergency_stop_response_counter_max {
                     torque_on = [false; config::N_AXIS];
                     {
                         SHARED_MEMORY.lock().await.set_torque_on(torque_on)
@@ -1230,6 +1230,13 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                 // set the target position (filtered or not)
                 actuator.set_target_position(target).unwrap_or_else(|e| {
                     error!("Error setting target pos: {:?}", e);
+                    loop_communication_error = true;
+                });
+
+                
+                let torque_ff = { SHARED_MEMORY.lock().await.get_target_torque() };
+                actuator.set_torque_feedforward(torque_ff).unwrap_or_else(|e| {
+                    error!("Error setting torque feedforward: {:?}", e);
                     loop_communication_error = true;
                 });
             }
