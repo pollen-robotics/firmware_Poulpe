@@ -54,9 +54,9 @@ impl BrushlessMotor {
             gearbox_ratio: 1.0 / 35.0,
             #[cfg(feature = "ecx22l")]
             gearbox_ratio: 169.0 / 4761.0,
-            #[cfg(not(feature = "orbita3d_m"))]
+            #[cfg(not(feature = "orbita3d_maxon"))]
             axis_ratio: 12.0 / 64.0,
-            #[cfg(feature = "orbita3d_m")]
+            #[cfg(feature = "orbita3d_maxon")]
             axis_ratio: 16.0 / 85.0,
         }
     }

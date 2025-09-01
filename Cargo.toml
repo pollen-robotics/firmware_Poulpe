@@ -24,7 +24,7 @@ orbita3d_gamma = ["orbita3d", "gamma", "ecx22l", "cmd_filter", "gearbox_output",
 ## pvt
 orbita2d_pvt = ["orbita2d", "pvt", "ec45", "cmd_filter", "gearbox_output" , "use_flash", "allow_quickstop", "allow_mode_change", "ethercat"]
 orbita3d_pvt = ["orbita3d", "pvt", "ecx22l", "cmd_filter", "gearbox_output", "use_flash", "allow_quickstop", "allow_mode_change", "ethercat"]
-orbita3d_m = ["orbita3d", "pvt", "ecx22l", "cmd_filter", "gearbox_output", "use_flash", "allow_quickstop", "allow_mode_change", "ethercat"] # Maxon developpement version
+orbita3d_maxon = ["orbita3d", "pvt", "ecx22l", "cmd_filter", "gearbox_output", "use_flash", "allow_quickstop", "allow_mode_change", "ethercat"] # Maxon developpement version
 
 # default = ["orbita2d_gamma"]
 orbita2d = []

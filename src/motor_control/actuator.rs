@@ -4,19 +4,18 @@ use embassy_futures::join;
 
 use super::foc::MotionMode;
 use super::motors_io::{Pid, RawMotorsIO};
-use crate::config::{self, BrushlessMotor};
 use crate::config::DonutHall;
+use crate::config::{self, BrushlessMotor};
 
 use super::ventouse::VentouseKind;
 use crate::sensors::{sensors::SensorKind, sensors_io::RawSensorsIO};
 use crate::utils::errors::{IOError, Result};
 use defmt::{debug, error, info, warn};
+use embassy_time::{Duration, Timer};
 use micromath::F32Ext;
-use embassy_time::{Timer,Duration};
 
 use crate::state_machine::poulpe_state::HomingErrorFlag;
 use crate::SHARED_MEMORY;
-
 
 const PI: f32 = 3.141592653589793;
 const TAU: f32 = 6.283185307179586;
@@ -155,7 +154,10 @@ impl<'d, const N: usize> Actuator<'d, N> {
                     found_turn[i] = res.1;
                 },
             );
-        debug!("Offsets: {:?}, turns: {:?}", offsets, found_turn);
+        info!(
+            "Offsets: {:?}, turns: {:?} (reduction: {:?})",
+            offsets, found_turn, reductions
+        );
 
         // // Security, did we found the same number of turn for each arm? (FIXME?)
         // if !(found_turn[0] == found_turn[1] && found_turn[1] == found_turn[2]) {
@@ -186,7 +188,6 @@ impl<'d, const N: usize> Actuator<'d, N> {
         Ok(())
     }
 
-
     // read the axis sensors
     // disables the torque to avoid the noise
     // make a few tries to avoid nan values and errors
@@ -196,7 +197,6 @@ impl<'d, const N: usize> Actuator<'d, N> {
         n_read_tries: u8,
         n_read: u8,
     ) -> Result<[f32; N]> {
-
         Timer::after(Duration::from_micros(100000)).await;
 
         let mut n_read_tries = n_read_tries;
@@ -264,10 +264,12 @@ impl<'d, const N: usize> Actuator<'d, N> {
         Ok(sensor_reads)
     }
 
-
     //Find index for Orbita3D motors
     #[cfg(feature = "orbita3d")]
-    pub async fn find_index_orbita3d(&mut self, donut_hall: &mut config::DonutHall<'d>) -> Result<HomingErrorFlag> {
+    pub async fn find_index_orbita3d(
+        &mut self,
+        donut_hall: &mut config::DonutHall<'d>,
+    ) -> Result<HomingErrorFlag> {
         //FIXME:
         // - Maybe torque off is not so good, moving motor can induce motion in the torque off motor...
 
@@ -400,7 +402,7 @@ impl<'d, const N: usize> Actuator<'d, N> {
     }
 
     #[cfg(feature = "orbita2d")]
-    pub async fn find_index_orbita2d(&mut self)  -> Result<HomingErrorFlag> {
+    pub async fn find_index_orbita2d(&mut self) -> Result<HomingErrorFlag> {
         self.set_torque([false; N])?; //be sure to torque off to avoid noise in axis sensors?
         Timer::after(Duration::from_millis(10));
         // let zeros = [5.236674785614014, 1.6637036800384521]; //Orbita domain
@@ -426,7 +428,7 @@ impl<'d, const N: usize> Actuator<'d, N> {
                     [0.0; N] // use the default value if ignoring errors
                 }
             };
-    
+
             let mut axis_offset = curaxis;
             axis_offset[0] -= zeros[0];
             axis_offset[1] -= zeros[1];
@@ -450,10 +452,7 @@ impl<'d, const N: usize> Actuator<'d, N> {
         #[cfg(feature = "ec60")]
         let r = 1.0 / BrushlessMotor::ec60().axis_ratio();
 
-        let axis_pos= [
-            wrap_to_pi(axis[0]),
-            wrap_to_pi(axis[1]),
-        ];
+        let axis_pos = [wrap_to_pi(axis[0]), wrap_to_pi(axis[1])];
 
         let mut motor_pos = [0.0; N];
         // inverse kinematics
@@ -480,9 +479,7 @@ impl<'d, const N: usize> Actuator<'d, N> {
         axis_pos[1] = wrap_to_pi(axis_pos[1]);
         axis_pos
     }
-
 }
-
 
 // function wrapping an angle in radians to
 // the range [-pi, pi]
