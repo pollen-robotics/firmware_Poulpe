@@ -701,6 +701,24 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
         Ok(())
     }
 
+    // torque feedforward
+    fn set_torque_feedforward(&mut self, torque: [f32; N]) -> Result<()> {
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            axis.set_torque_feedforward([self.inverted * torque[i]])?;
+        }
+
+        Ok(())
+    }
+    // get torque feedforward
+    fn get_torque_feedforward(&mut self) -> Result<[f32; N]> {
+        let mut res = [0.0; N];
+        for (i, axis) in self.axes.iter_mut().enumerate() {
+            res[i] = self.inverted * axis.get_torque_feedforward()?[0];
+        }
+
+        Ok(res)
+    }
+
     // Set velocity feedforward
     fn set_velocity_feedforward(&mut self, velocity: [f32; N]) -> Result<()> {
         for (i, axis) in self.axes.iter_mut().enumerate() {

@@ -513,6 +513,31 @@ where
             .map_err(IOError::SpiError)
     }
 
+    /// Set the torque feedforward
+    fn set_torque_feedforward(&mut self, torque: [f32; 1]) -> Result<()> {
+        // torque from mAmps to ADC counts
+        let torque_adc = self
+            .foc
+            .current_sensing_config
+            .mAmps_to_adc(torque[0], self.foc.adc_resolution);
+        self.foc
+            .tmc4671_set_torque_offset(torque_adc as i16)
+            .map(|_| ())
+            .map_err(IOError::SpiError)
+    }
+
+    fn get_torque_feedforward(&mut self) -> Result<[f32; 1]> {
+        let torque_adc = self
+            .foc
+            .tmc4671_get_torque_offset()
+            .map_err(IOError::SpiError)?;
+        let torque = self
+            .foc
+            .current_sensing_config
+            .adc_to_mAmps(torque_adc as f32, self.foc.adc_resolution);
+        Ok([torque])
+    }
+
     /// Set the current velocity feedforward (in radians per second)
     fn set_velocity_feedforward(&mut self, velocity: [f32; 1]) -> Result<()> {
         let vel_rpm = self
@@ -1254,6 +1279,23 @@ impl<'d> RawMotorsIO<1> for VentouseKind<'d> {
             VentouseKind::A(va) => va.get_velocity_feedforward(),
             VentouseKind::B(vb) => vb.get_velocity_feedforward(),
             VentouseKind::C(vc) => vc.get_velocity_feedforward(),
+        }
+    }
+
+    // Set torque feedforward
+    fn set_torque_feedforward(&mut self, torque: [f32; 1]) -> Result<()> {
+        match self {
+            VentouseKind::A(va) => va.set_torque_feedforward(torque),
+            VentouseKind::B(vb) => vb.set_torque_feedforward(torque),
+            VentouseKind::C(vc) => vc.set_torque_feedforward(torque),
+        }
+    }
+    // get torque feedforward
+    fn get_torque_feedforward(&mut self) -> Result<[f32; 1]> {
+        match self {
+            VentouseKind::A(va) => va.get_torque_feedforward(),
+            VentouseKind::B(vb) => vb.get_torque_feedforward(),
+            VentouseKind::C(vc) => vc.get_torque_feedforward(),
         }
     }
 
