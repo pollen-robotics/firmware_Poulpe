@@ -1,6 +1,6 @@
+use std::path::PathBuf;
 use std::process::Command;
 use std::{env, fs::File, io::Write, path::Path};
-use std::path::PathBuf;
 fn main() {
     //! This build script copies the `memory.x` file from the crate root into
     //! a directory where the linker can always find it at build time.
@@ -24,7 +24,7 @@ fn main() {
     // here, we ensure the build script is only re-run when
     // `memory.x` is changed.
     println!("cargo:rerun-if-changed=memory.x");
-    
+
     println!("cargo:rustc-link-arg-bins=--nmagic");
     println!("cargo:rustc-link-arg-bins=-Tlink.x");
     println!("cargo:rustc-link-arg-bins=-Tdefmt.x");
@@ -39,10 +39,10 @@ fn main() {
     if !feature_enabled {
         panic!(
             "At least one feature ( orbita2d or orbita3d ) must be enabled.\n
-        Please specify a feature in Cargo.toml or with `cargo build --features`. 
-        Example:  \n 
+        Please specify a feature in Cargo.toml or with `cargo build --features`.
+        Example:  \n
           cargo build --features orbita2d_pvt # for pvt version on orbita2d \n
-        or \n 
+        or \n
          cargo build --features orbita3d_beta # for beta version on orbita3d \n"
         );
     }
