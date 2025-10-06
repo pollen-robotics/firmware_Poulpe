@@ -41,11 +41,11 @@ use firmware_poulpe::config::TemperatureSensingConfig;
 #[cfg(feature = "use_flash")]
 use firmware_poulpe::utils::flash::{FlashData, FlashManager};
 
-use embassy_stm32::peripherals::FLASH;
-use embassy_stm32::flash::Flash;
 use core::cell::RefCell;
-use embassy_sync::blocking_mutex::Mutex;
+use embassy_stm32::flash::Flash;
+use embassy_stm32::peripherals::FLASH;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::blocking_mutex::Mutex;
 
 // ethercat task restructuring
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
@@ -62,12 +62,14 @@ async fn main(spawner: Spawner) {
     info!("Poulpe: Orbita 2D");
 
     #[cfg(feature = "pvt")]
-    info!("Verison: PVT");
+    info!("Version: PVT");
     #[cfg(feature = "beta")]
-    info!("Verison: Beta");
+    info!("Version: Beta");
     #[cfg(feature = "gamma")]
-    info!("Verison: Gamma");
+    info!("Version: Gamma");
 
+    #[cfg(feature = "ecx42")]
+    info!("Motors: ECX42");
     #[cfg(feature = "ec45")]
     info!("Motors: EC45");
     #[cfg(feature = "ec60")]
@@ -267,6 +269,8 @@ async fn main(spawner: Spawner) {
             foc_enable: p.PE0,
             driver_cs: p.PC15,
             driver_status_pin: p.PC14,
+            #[cfg(feature = "ecx42")]
+            motor_config: BrushlessMotor::ecx42(),
             #[cfg(feature = "ec45")]
             motor_config: BrushlessMotor::ec45(),
             #[cfg(feature = "ec60")]
@@ -285,6 +289,8 @@ async fn main(spawner: Spawner) {
             foc_enable: p.PD5,
             driver_cs: p.PD6,
             driver_status_pin: p.PD3,
+            #[cfg(feature = "ecx42")]
+            motor_config: BrushlessMotor::ecx42(),
             #[cfg(feature = "ec45")]
             motor_config: BrushlessMotor::ec45(),
             #[cfg(feature = "ec60")]
@@ -314,9 +320,7 @@ async fn main(spawner: Spawner) {
         ltc4332ring: LTC4332RingConfig { cs: p.PD1 },
     };
 
-    unwrap!(spawner.spawn(motor_control::task::control_loop(
-        actuator_config
-    )));
+    unwrap!(spawner.spawn(motor_control::task::control_loop(actuator_config)));
 
     #[cfg(feature = "dynamixel")]
     {
@@ -382,13 +386,12 @@ async fn main(spawner: Spawner) {
         //  - PDO communication
         //  -  Mailbox communication
         //      - SDO communication
-        //      - FoE communication for firmware update 
+        //      - FoE communication for firmware update
         unwrap!(spawner.spawn(ethercat::task::messsage_handler(
             ethconfig,
             lan9252_spi_config,
-            p.FLASH 
+            p.FLASH
         )));
-
     }
     // Prepare and spawn the main task
     let mut led_hello = Output::new(p.PC9, Level::High, Speed::Low);
@@ -432,7 +435,7 @@ async fn main(spawner: Spawner) {
         } else if poulpe_state.is_fault_reaction_state() {
             red = LedState::Blink;
             green = LedState::Off;
-        } else if poulpe_state.is_quick_stop_active()  {
+        } else if poulpe_state.is_quick_stop_active() {
             red = LedState::Solid;
             green = LedState::Solid;
         } else if poulpe_state.is_init() {

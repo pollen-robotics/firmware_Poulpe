@@ -28,7 +28,7 @@ impl BrushlessMotor {
             // 4 pole pairs for the ecx22
             n_pole_pairs: 4,
 
-            // the encoder with 4096 ppr
+            // the encoder with 024 count per turn =>  4096 ppr
             abn_decoder_ppr: 0x00001000,
             // PI controller params
             #[cfg(feature = "beta")]
@@ -66,7 +66,7 @@ impl BrushlessMotor {
             // 7 pole pairs for the ec60
             n_pole_pairs: 7,
 
-            // the encoder with 4096 ppr
+            // the encoder with 1024 count per turn => 4096 ppr
             abn_decoder_ppr: 0x00001000,
             // PI controller params
             pid_flux: Pid { p: 44, i: 120 },
@@ -86,7 +86,7 @@ impl BrushlessMotor {
             // 8 pole pairs for the ec45
             n_pole_pairs: 8,
 
-            // the encoder with 4096 ppr
+            // the encoder with 1024 count per turn => 4096 ppr
             abn_decoder_ppr: 0x00001000,
 
             // PI controller params
@@ -99,6 +99,28 @@ impl BrushlessMotor {
             velocity_limit_max: 10,      // 410 rad/s
             // gearing ratios
             gearbox_ratio: 130.0 / 4554.0,
+            axis_ratio: 20.0 / 38.0,
+        }
+    }
+    #[allow(dead_code)]
+    pub fn ecx42() -> Self {
+        Self {
+            // 8 pole pairs for the ecx42
+            n_pole_pairs: 8,
+
+            // 2048 count per turn => 4x2024 ppr
+            abn_decoder_ppr: 0x00002000,
+
+            // PI controller params
+            pid_flux: Pid { p: 200, i: 500 },
+            pid_torque: Pid { p: 200, i: 500 },
+            pid_velocity: Pid { p: 500, i: 600 },
+            pid_position: Pid { p: 50, i: 0 },
+
+            torque_flux_limit_max: 7310, // 7.31 amps
+            velocity_limit_max: 10,      // 410 rad/s
+            // gearing ratios
+            gearbox_ratio: 6859.0 / 421875.0,
             axis_ratio: 20.0 / 38.0,
         }
     }
