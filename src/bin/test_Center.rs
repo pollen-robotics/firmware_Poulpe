@@ -125,7 +125,8 @@ pub async fn main(_spawner: Spawner) {
         led_green.set_low();
         Timer::after_millis(500).await;
 
-        let angle_center = match center.read_angle() {
+        let angle_center = center.read_angle();
+        match &angle_center[0] {
             Ok(a) => a,
             Err(e) => {
                 error!("Error reading center angle: {:?}", e);

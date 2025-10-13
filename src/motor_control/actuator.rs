@@ -4,11 +4,12 @@ use embassy_futures::join;
 
 use super::foc::MotionMode;
 use super::motors_io::{Pid, RawMotorsIO};
-use crate::config::DonutHall;
+
 use crate::config::{self, BrushlessMotor};
+use crate::config::DonutHall;
 
 use super::ventouse::VentouseKind;
-use crate::sensors::{sensors::SensorKind, sensors_io::RawSensorsIO};
+use crate::sensors::{sensors::SensorKind, sensors_io::RawSensorsIO, sensors_io};
 use crate::utils::errors::{IOError, Result};
 use defmt::{debug, error, info, warn};
 use embassy_time::{Duration, Timer};
@@ -78,6 +79,15 @@ impl<'d, const N: usize> Actuator<'d, N> {
         })
     }
 
+    pub fn check_driver_communication(&mut self) -> [bool; N] {
+        array::from_fn(|i| match self.axes[i].get_control_mode() {
+            Ok(_) => true,
+            Err(_) => false,
+        })
+    }
+
+
+
     pub fn get_axis(&mut self, idx: usize) -> &mut dyn RawMotorsIO<1> {
         &mut self.axes[idx]
     }
@@ -117,9 +127,19 @@ impl<'d, const N: usize> Actuator<'d, N> {
         let mut found_turn: [i16; N] = [0; N];
 
         //TODO match and check errors NaN
-        let mut current_pos = self.get_axis_sensors()?; //gearbox domain
-        if current_pos.iter().any(|&x| x.is_nan()) {
-            return Err(IOError::InitError);
+        let mut current_pos = [0.0; N];
+        let axis_read = self.get_axis_sensors(); //gearbox domain
+        for (i, val) in axis_read.iter().enumerate() {
+            match val {
+                Ok(v) => {
+                    // check if nan 
+                    if v.is_nan() {
+                        return Err(IOError::InitError);
+                    }
+                    current_pos[i] = *v;
+                },
+                Err(e) => return Err(IOError::InitError),
+            }
         }
 
         let reductions = 1.0 / self.axes[0].get_ratio(); //5.3333
@@ -197,67 +217,14 @@ impl<'d, const N: usize> Actuator<'d, N> {
         n_read_tries: u8,
         n_read: u8,
     ) -> Result<[f32; N]> {
-        Timer::after(Duration::from_micros(100000)).await;
 
-        let mut n_read_tries = n_read_tries;
-        // make a few tries to avoid nan values:
-        let sensor_reads = loop {
-            n_read_tries = n_read_tries - 1;
-            if n_read_tries == 0 {
-                error!("Error reading axis sensors: too many tries (10), retrying...");
-                return Err(IOError::SpiError(embassy_stm32::spi::Error::ModeFault));
-            }
-
-            // We read n_read time the sensor and take the average and deviation to check if the sensor is stable
-            let mut sensor_reads_avg: [f32; N] = [0.0; N];
-            let mut sensor_reads_std: [f32; N] = [0.0; N];
-            let mut sensor_reads_M2: [f32; N] = [0.0; N];
-
-            let mut n: f32 = 0.0;
-            for _ in 0..n_read {
-                n = n + 1.0;
-                match self.get_axis_sensors() {
-                    Ok(sensors) => {
-                        if sensors.iter().any(|x| x.is_nan()) {
-                            error!("Nan values in sensors, retrying...");
-                            #[cfg(not(feature = "ignore_errors"))] // dont wait if ignoring errors
-                            Timer::after(Duration::from_micros(10000)).await; // wait for a bit
-                            continue;
-                        }
-                        // break sensors;
-                        let mut delta: [f32; N] = [0.0; N];
-                        for s in 0..N {
-                            delta[s] = sensors[s] - sensor_reads_avg[s];
-                            sensor_reads_avg[s] = sensor_reads_avg[s] + delta[s] / n;
-                            sensor_reads_M2[s] = sensor_reads_M2[s]
-                                + F32Ext::sqrt(delta[s] * (sensors[s] - sensor_reads_avg[s]));
-                            sensor_reads_std[s] = sensor_reads_M2[s] / n;
-                        }
-                    }
-                    Err(e) => {
-                        error!("Error reading axis sensors: {:?}", e);
-                        #[cfg(not(feature = "ignore_errors"))] // dont wait if ignoring errors
-                        Timer::after(Duration::from_micros(10000)).await;
-                        continue; //  retry the init if the read
-                    }
-                }
-            }
-            info!(
-                "Sensor avg: {:?} sensor deviation: {:?}",
-                sensor_reads_avg, sensor_reads_std
-            );
-            let mut should_retry: bool = false;
-            for s in 0..N {
-                if sensor_reads_std[s] > 1e-3 {
-                    error!("Sensor deviation is to high!");
-                    should_retry = true;
-                }
-            }
-            if should_retry {
-                continue;
-            }
-            break sensor_reads_avg;
-        };
+        let mut sensor_reads: [f32; N] = [0.0; N];
+        for (i, s) in self.sensors.iter_mut().enumerate(){
+            sensor_reads[i] = sensors_io::get_axis_sensors_robust(s, n_read_tries, n_read as u32).await?[0];
+        } 
+        #[cfg(feature = "orbita3d")]
+        sensor_reads.swap(1, 2); // because of the wiring in Orbita3D
+        
         // wait a bit to make sure the torque is enabled
         Timer::after(Duration::from_micros(100000)).await;
 
@@ -1034,22 +1001,23 @@ impl<'d, const N: usize> RawMotorsIO<N> for Actuator<'d, N> {
         }
         Ok(indices)
     }
+
+   
 }
 
 impl<'d, const N: usize> RawSensorsIO<N> for Actuator<'d, N> {
     /// The axis sensor
-    fn get_axis_sensors(&mut self) -> Result<[f32; N]> {
-        let mut res = [0.0; N];
-        for (i, sensor) in self.sensors.iter_mut().enumerate() {
-            match sensor.get_axis_sensors() {
-                Ok(val) => res[i] = val[0],
-                Err(e) => return Err(e),
+    fn get_axis_sensors(&mut self) -> [Result<f32>; N] {
+        let mut res = array::from_fn(|i| {
+            match self.sensors[i].get_axis_sensors()[0] {
+                Ok(val) => Ok(val),
+                Err(_) => Err(IOError::SensorError),
             }
-        }
+        });
 
         // FIXME: reordering the sensors because the Donut board is not in the same order as the motors...
         #[cfg(feature = "orbita3d")]
         res.swap(1, 2);
-        Ok(res)
+        return res;
     }
 }

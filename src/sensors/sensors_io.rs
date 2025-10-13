@@ -13,7 +13,7 @@ use defmt::*;
 
 pub trait RawSensorsIO<const N: usize> {
     /// Get sensors value
-    fn get_axis_sensors(&mut self) -> Result<[f32; N]>;
+    fn get_axis_sensors(&mut self) -> [Result<f32>; N];
     // fn get_index_sensors(&mut self) -> Result<[u16; N]>;
 
 }
@@ -47,34 +47,46 @@ pub async fn get_axis_sensors_robust<'d, const N: usize>(
         let mut sensor_reads_M2: [f32; N] = [0.0; N];
 
         let mut n: f32 = 0.0;
-        for _ in 0..n_read {
+        'read_loop: for _ in 0..n_read {
             n = n + 1.0;
-            match sensor.get_axis_sensors() {
-                Ok(sensors) => {
-                    if sensors.iter().any(|x| x.is_nan()) {
-                        error!("Nan values in sensors, retrying...");
+            let sensor_val = sensor.get_axis_sensors();
+            // check if any error or nan
+            for (i, val) in sensor_val.iter().enumerate() { 
+                match val {
+                    Ok(val) => {
+                        if val.is_nan() {
+                            error!("Nan value in sensor read, retrying...");
+                            #[cfg(not(feature = "ignore_errors"))] // dont wait if ignoring errors
+                            Timer::after(Duration::from_micros(100000)).await; // wait for a bit
+                            continue 'read_loop; // retry the read
+                        }
+                    },
+                    Err(_) => {
+                        error!("Error reading sensor {}, retrying...", i);
                         #[cfg(not(feature = "ignore_errors"))] // dont wait if ignoring errors
                         Timer::after(Duration::from_micros(100000)).await; // wait for a bit
-                        continue;
+                        continue 'read_loop; // retry the read
                     }
-                    // break sensors;
-                    let mut delta: [f32; N] = [0.0; N];
-                    for s in 0..N {
-                        delta[s] = sensors[s] - sensor_reads_avg[s];
-                        sensor_reads_avg[s] = sensor_reads_avg[s] + delta[s] / n;
+                }
+            };
+            // if all good, process the values
+            sensor_val.iter().enumerate().for_each(|(s, val)| {
+                match val {
+                    Ok(value) => {
+                        // break sensors;
+                        let mut delta: f32 = 0.0;
+                        delta += value - sensor_reads_avg[s];
+                        sensor_reads_avg[s] = sensor_reads_avg[s] + delta / n;
                         sensor_reads_M2[s] = sensor_reads_M2[s]
-                            + F32Ext::sqrt(delta[s] * (sensors[s] - sensor_reads_avg[s]));
+                            + F32Ext::sqrt(delta * (value - sensor_reads_avg[s]));
                         sensor_reads_std[s] = sensor_reads_M2[s] / n;
-                    }
+                       
+                    },
+                    _ => (), // already checked for errors
                 }
-                Err(e) => {
-                    error!("Error reading axis sensors: {:?}", e);
-                    #[cfg(not(feature = "ignore_errors"))] // dont wait if ignoring errors
-                    Timer::after(Duration::from_micros(100000)).await;
-                    continue; //  retry the init if the read
-                }
-            }
+            })
         }
+        
         info!(
             "Sensor avg: {:?} sensor deviation: {:?}",
             sensor_reads_avg, sensor_reads_std

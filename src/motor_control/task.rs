@@ -11,6 +11,7 @@ use embassy_stm32::{
     spi,
 };
 
+use crate::sensors::axis_sensor;
 use crate::utils::errors::IOError;
 
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex};
@@ -44,6 +45,42 @@ use super::{
 };
 
 use super::driver::{DriverDRV8316, DriverTMC6200};
+
+// macro that checks if the communication with the motor controller is down for too long
+// or with an axis sensor
+// if the communication is down for too long, set the fault state and stop the operation
+macro_rules! verify_communication_timeout {
+    (
+        $communication_down:expr,
+        $last_communication_timestamp:expr,
+        $board_state:expr,
+        $motor_error_flag:expr,
+        $motor_id:expr,
+        $homing_error_flag:expr,
+        $error_message:expr
+    ) => {
+        if $communication_down {
+            let communication_down_duration = $last_communication_timestamp.elapsed().as_secs() as u32;
+            if communication_down_duration > config::MAX_COMMUNICATION_DOWN_TIME {
+                $board_state.set_fault_state();
+                {
+                    SHARED_MEMORY.lock().await.set_poulpe_state($board_state)
+                };
+                if $homing_error_flag != HomingErrorFlag::None {
+                    $board_state.set_homing_error_flag($homing_error_flag);
+                }
+                if $motor_error_flag != MotorErrorFlag::None {
+                    $board_state.set_motor_error_flag($motor_id, $motor_error_flag);
+                }
+                error!(
+                    "{} communication error for more than allowed {} secs, stopping operation!",
+                    $error_message,
+                    config::MAX_COMMUNICATION_DOWN_TIME
+                );
+            }
+        }
+    };
+}
 
 // macro that creates a new AD5047 sensor from the configuration
 // the sensor is created with the SPI bus, the chip select pin and the SPI configuration
@@ -178,20 +215,20 @@ macro_rules! verify_temperatures_and_update_state {
 // if the error is true, set the communication error flag and the timestamp
 // if not reset the communication error flag
 macro_rules! notify_communication_status {
-    (
-        $error: ident,
-        $communication_down: ident,
-        $last_communication_timestamp: ident
+    (   
+        $error: expr, 
+        $driver_communication_down: expr, 
+        $last_driver_communication_timestamp: expr
     ) => {
         let now = Instant::now();
         if $error {
             // if this is the first time set the communication error flag and the timestamp
             // this is used to track the time since the last communication error
-            if !$communication_down {
-                $last_communication_timestamp = now;
+            if !$driver_communication_down {
+                $last_driver_communication_timestamp = now;
             }
         }
-        $communication_down = $error;
+        $driver_communication_down = $error;
     };
 }
 
@@ -643,34 +680,6 @@ pub async fn control_loop(mut config: ActuatorConfig) {
             }
         }
 
-        #[cfg(all(feature = "pvt", feature = "orbita2d"))]
-        match center_ltc4332.setup(LTC4332Config::Center) {
-            Ok(_) => {
-                info!("Center LTC4322 setup ok");
-            }
-            Err(e) => {
-                board_state.set_fault_state();
-                board_state.set_homing_error_flag(HomingErrorFlag::AxisSensorReadFail);
-                error!("Center LTC4322 setup error: {:?}", e);
-                #[cfg(not(feature = "ignore_errors"))]
-                continue 'init_loop;
-            }
-        }
-
-        #[cfg(all(feature = "pvt", feature = "orbita2d"))]
-        match ring_ltc4332.setup(LTC4332Config::Ring) {
-            Ok(_) => {
-                info!("Ring LTC4322 setup ok");
-            }
-            Err(e) => {
-                board_state.set_fault_state();
-                board_state.set_homing_error_flag(HomingErrorFlag::AxisSensorReadFail);
-                error!("Ring LTC4322 setup error: {:?}", e);
-                #[cfg(not(feature = "ignore_errors"))]
-                continue 'init_loop;
-            }
-        }
-
         // read the axis sensors
         // this function makes a few tries to avoid nan values and errors
         // it disables the torque to avoid the noise (during the read - enable it after)
@@ -957,11 +966,14 @@ pub async fn control_loop(mut config: ActuatorConfig) {
 
     // communication error tracking flags
     // flag to track if there was a communication error in the loop
-    let mut loop_communication_error = false;
+    let mut loop_driver_communication_error = false;
+    let mut loop_axis_sensors_communication_error = [false; config::N_AXIS];
     // flag to track if the communicaiton is down at the moment
-    let mut communication_down = false;
+    let mut driver_communication_down = false;
+    let mut axis_sensors_communication_down = [false; config::N_AXIS];
     // flag to track if the communication was down in the last loop
-    let mut last_communication_timestamp = Instant::now();
+    let mut last_driver_communication_timestamp = Instant::now();
+    let mut last_axis_sensors_communication_timestamp = [Instant::now(); config::N_AXIS];
 
     #[cfg(feature = "dynamixel")]
     {
@@ -984,11 +996,12 @@ pub async fn control_loop(mut config: ActuatorConfig) {
     loop {
         let t_loop = Instant::now();
         // reset the communication problem flag
-        loop_communication_error = false;
+        loop_driver_communication_error = false;
+        loop_axis_sensors_communication_error = [false; config::N_AXIS];
 
         let pos = actuator.get_current_position().unwrap_or_else(|e| {
             error!("Error reading position: {:?}", e);
-            loop_communication_error = true;
+            loop_driver_communication_error = true;
             [f32::NAN; config::N_AXIS]
         });
         {
@@ -1036,12 +1049,10 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                 // otherwise, the control mode will be changed later in code
                 #[cfg(not(feature = "allow_mode_change"))]
                 {
-                    actuator
-                        .set_control_mode(MotionMode::Stopped)
-                        .unwrap_or_else(|e| {
-                            error!("Error setting control mode: {:?}", e);
-                            loop_communication_error = true;
-                        });
+                    actuator.set_control_mode(MotionMode::Stopped).unwrap_or_else(|e| {
+                        error!("Error setting control mode: {:?}", e);
+                        loop_driver_communication_error = true;
+                    });
                 }
 
                 // get the latest velociyt and torque
@@ -1095,12 +1106,10 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                 // otherwise, the control mode will be changed later in code
                 #[cfg(not(feature = "allow_mode_change"))]
                 {
-                    actuator
-                        .set_control_mode(MotionMode::Stopped)
-                        .unwrap_or_else(|e| {
-                            error!("Error setting control mode: {:?}", e);
-                            loop_communication_error = true;
-                        });
+                    actuator.set_control_mode(MotionMode::Stopped).unwrap_or_else(|e| {
+                        error!("Error setting control mode: {:?}", e);
+                        loop_driver_communication_error = true;
+                    });
                 }
 
                 // get the latest velociyt and torque
@@ -1133,18 +1142,11 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                     // go back to the position mode only if the mode change is not allowed
                     #[cfg(not(feature = "allow_mode_change"))]
                     {
-                        {
-                            SHARED_MEMORY
-                                .lock()
-                                .await
-                                .set_control_mode(MotionMode::Position);
-                        }
-                        actuator
-                            .set_control_mode(MotionMode::Position)
-                            .unwrap_or_else(|e| {
-                                error!("Error setting control mode: {:?}", e);
-                                loop_communication_error = true;
-                            });
+                        {SHARED_MEMORY.lock().await.set_control_mode(MotionMode::Position);}
+                        actuator.set_control_mode(MotionMode::Position).unwrap_or_else(|e| {
+                            error!("Error setting control mode: {:?}", e);
+                            loop_driver_communication_error = true;
+                        });
                     }
                     warn!("Quick stop done, stopping operation",);
                     // notify that the quick stop is done
@@ -1160,7 +1162,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
         if init_torque_on != torque_on {
             actuator.set_torque(torque_on).unwrap_or_else(|e| {
                 error!("Error setting torque: {:?}", e);
-                loop_communication_error = true;
+                loop_driver_communication_error = true;
             });
             init_torque_on = torque_on;
         }
@@ -1171,7 +1173,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
             if init_control_mode.to_u8() != control_mode.to_u8() {
                 actuator.set_control_mode(control_mode).unwrap_or_else(|e| {
                     error!("Error setting control mode: {:?}", e);
-                    loop_communication_error = true;
+                    loop_driver_communication_error = true;
                 });
                 init_control_mode = control_mode;
             }
@@ -1186,7 +1188,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
             }
             Err(e) => {
                 error!("Error reading control mode: {:?}", e);
-                loop_communication_error = true;
+                loop_driver_communication_error = true;
             }
         }
 
@@ -1247,30 +1249,28 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                         .set_velocity_feedforward(velocity_ff)
                         .unwrap_or_else(|e| {
                             error!("Error setting velocity feedforward: {:?}", e);
-                            loop_communication_error = true;
+                            loop_driver_communication_error = true;
                         });
                 }
 
                 // set the target position (filtered or not)
                 actuator.set_target_position(target).unwrap_or_else(|e| {
                     error!("Error setting target pos: {:?}", e);
-                    loop_communication_error = true;
+                    loop_driver_communication_error = true;
                 });
 
                 let torque_ff = { SHARED_MEMORY.lock().await.get_target_torque() };
-                actuator
-                    .set_torque_feedforward(torque_ff)
-                    .unwrap_or_else(|e| {
-                        error!("Error setting torque feedforward: {:?}", e);
-                        loop_communication_error = true;
-                    });
+                actuator.set_torque_feedforward(torque_ff).unwrap_or_else(|e| {
+                    error!("Error setting torque feedforward: {:?}", e);
+                    loop_driver_communication_error = true;
+                });
             }
             MotionMode::Torque => {
                 let target = { SHARED_MEMORY.lock().await.get_target_torque() };
                 // set target torque
                 actuator.set_target_torque(target).unwrap_or_else(|e| {
                     error!("Error setting target torque: {:?}", e);
-                    loop_communication_error = true;
+                    loop_driver_communication_error = true;
                 });
             }
             MotionMode::Velocity => {
@@ -1278,7 +1278,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                 // set target velocity
                 actuator.set_target_velocity(target).unwrap_or_else(|e| {
                     error!("Error setting target velocity: {:?}", e);
-                    loop_communication_error = true;
+                    loop_driver_communication_error = true;
                 });
             }
             _ => {}
@@ -1287,7 +1287,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
         // set the target position (filtered or not)
         // actuator.set_target_position(target).unwrap_or_else(|e| {
         //     error!("Error setting target pos: {:?}", e);
-        //     loop_communication_error = true;
+        //     loop_driver_communication_error = true;
         // });
 
         // Update torque-flux limits
@@ -1298,7 +1298,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
             init_torquefluxlimit,                               // previous value
             init_torquefluxlimit_max,                           // previous value
             set_torque_flux_limit,                              // actuator setter
-            loop_communication_error,                           // error led flag
+            loop_driver_communication_error,                           // error led flag
             "Setting torquefluxlimit: {:?} => {:?} (max={:?})", // onchange log message
             "Error setting torque/flux limit: {:?}"             // error message
         );
@@ -1311,7 +1311,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
             init_velocitylimit,                               // previous value
             init_velocitylimit_max,                           // previous value
             set_velocity_limit,                               // actuator setter
-            loop_communication_error,                         // error led flag
+            loop_driver_communication_error,                         // error led flag
             "Setting velocitylimit: {:?} => {:?} (max={:?})", // onchange log message
             "Error setting velocity limit: {:?}"              // error message
         );
@@ -1328,7 +1328,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                 SHARED_MEMORY.lock().await.set_current_torque(torque);
             }
             Err(_e) => {
-                loop_communication_error = true;
+                loop_driver_communication_error = true;
                 error!("Torque error");
             }
         }
@@ -1342,25 +1342,35 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                 SHARED_MEMORY.lock().await.set_current_velocity(vel);
             }
             Err(_e) => {
-                loop_communication_error = true;
+                loop_driver_communication_error = true;
                 error!("Vel error");
             }
         }
 
         // read the axis sensors and set the shared memory
-        match actuator.get_axis_sensors() {
-            Ok(sensors) => {
-                if !sensors.iter().any(|s| s.is_nan()) {
-                    //FIXME: hope it the sensor reading will better work to remove this
-                    SHARED_MEMORY.lock().await.set_axis_sensor(sensors);
+        let mut sensor_vars = {SHARED_MEMORY.lock().await.get_axis_sensor()};
+        let axis_sensor_ret = actuator.get_axis_sensors();
+        axis_sensor_ret
+            .iter()
+            .enumerate()
+            .for_each(|(i, sensor)| {
+                match sensor {
+                    Ok(sensor) => {
+                        if !sensor.is_nan() {
+                            //FIXME: hope it the sensor reading will better work to remove this
+                            sensor_vars[i] = *sensor;
+                        }
+                    }
+                    Err(_e) => {
+                        loop_axis_sensors_communication_error[i] = true;
+                        error!("Axis sensor {} reading error: {:?}", i, _e);
+                    }
                 }
-            }
-            Err(_e) => {
-                // removed because of too much spamming
-                loop_communication_error = true;
-                error!("Axis sensors error");
-            }
-        }
+            });
+        // update the shared memory with the (possibly) new sensor values
+        {SHARED_MEMORY.lock().await.set_axis_sensor(sensor_vars)};
+
+        // read the dc bus current and
         // set the error led if there was an error
         if error_led != prev_error_led {
             SHARED_MEMORY.lock().await.set_error_led(error_led);
@@ -1394,7 +1404,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                 debug!("Bus voltage: {:?}", v);
             }
             Err(e) => {
-                loop_communication_error = true;
+                loop_driver_communication_error = true;
                 error!("Bus voltage reading error {:?}", e);
             }
         }
@@ -1417,7 +1427,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                         board_state.set_fault_state();
                         board_state.set_motor_error_flag(i, MotorErrorFlag::DriverFault);
 
-                        loop_communication_error = true;
+                        //loop_driver_communication_error = true;
                         error!("Driver state reading error {:?}", e);
                     }
                 }
@@ -1434,7 +1444,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                 init_fluxpid,                   // previous value
                 get_flux_pid_gains,             // shared memory getter
                 set_flux_pid_gains,             // actuator setter
-                loop_communication_error,       // error led flag
+                loop_driver_communication_error,       // error led flag
                 "Error setting flux pid: {:?}"  // error message
             );
             // update the torque pid gains
@@ -1443,7 +1453,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                 init_torquepid,                   // previous value
                 get_torque_pid_gains,             // shared memory getter
                 set_torque_pid_gains,             // actuator setter
-                loop_communication_error,         // error led flag
+                loop_driver_communication_error,         // error led flag
                 "Error setting torque pid: {:?}"  // error message
             );
             // update the velocity pid gains
@@ -1452,7 +1462,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                 init_velocitypid,                   // previous value
                 get_velocity_pid_gains,             // shared memory getter
                 set_velocity_pid_gains,             // actuator setter
-                loop_communication_error,           // error led flag
+                loop_driver_communication_error,           // error led flag
                 "Error setting velocity pid: {:?}"  // error message
             );
             // update the position pid gains
@@ -1461,7 +1471,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                 init_positionpid,                   // previous value
                 get_position_pid_gains,             // shared memory getter
                 set_position_pid_gains,             // actuator setter
-                loop_communication_error,           // error led flag
+                loop_driver_communication_error,           // error led flag
                 "Error setting position pid: {:?}"  // error message
             );
 
@@ -1471,7 +1481,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                 init_uqudlimit,                    // previous value
                 get_uq_ud_limit,                   // shared memory getter
                 set_uq_ud_limit,                   // actuator setter
-                loop_communication_error,          // error led flag
+                loop_driver_communication_error,          // error led flag
                 "Error setting uq/ud limit: {:?}"  // error message
             );
 
@@ -1489,7 +1499,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                     info!("Board temperature: {:?}", t);
                 }
                 Err(e) => {
-                    loop_communication_error = true;
+                    loop_driver_communication_error = true;
                     error!("Board temperature reading error {:?}", e);
                 }
             }
@@ -1547,22 +1557,48 @@ pub async fn control_loop(mut config: ActuatorConfig) {
             // verify that the communication is working
             // - check if the communication was down and how long it was down
             // - if it's down for more than max allowed time, stop the operation
-            if communication_down {
-                let communication_down_duration =
-                    last_communication_timestamp.elapsed().as_secs() as u32;
-                if (communication_down_duration > config::MAX_COMMUNICATION_DOWN_TIME) {
-                    board_state.set_fault_state();
-                    {
-                        SHARED_MEMORY.lock().await.set_poulpe_state(board_state)
-                    };
-                    board_state.set_homing_error_flag(HomingErrorFlag::LowLevelCommunicaiton);
-                    error!(
-                        "Communication error for {} secs ( max allowed {} secs), stopping operation!",
-                        communication_down_duration,
-                        config::MAX_COMMUNICATION_DOWN_TIME
-                    );
-                }
+            verify_communication_timeout!(
+                driver_communication_down,
+                last_driver_communication_timestamp, 
+                board_state,
+                MotorErrorFlag::None,
+                0,
+                HomingErrorFlag::LowLevelCommunicaiton,
+                "Driver"
+            );
+
+            for i in 0..config::N_AXIS {
+            // verify communication with axis sensors
+                verify_communication_timeout!(
+                    axis_sensors_communication_down[i],
+                    last_axis_sensors_communication_timestamp[i],
+                    board_state,
+                    MotorErrorFlag::AxisSensorCommunicationFail,
+                    i,
+                    HomingErrorFlag::None,
+                    "Axis sensor"
+                );
             }
+
+
+
+        
+        // if the low level comunication error is already set, check which driver it corresponds to
+        // and set the driver communication error only for that driver
+        if board_state.get_homing_error_flags().contains(&Some(HomingErrorFlag::LowLevelCommunicaiton)) {
+            let driver_is_communicating = actuator.check_driver_communication();
+            driver_is_communicating.iter().enumerate().for_each(|(i, is_communicating)| {
+                if !*is_communicating {
+                    // if the driver is not communicating, set the communication error flag for that driver
+                    board_state.set_motor_error_flag(i, MotorErrorFlag::DriverCommunicationFail);
+                    error!("Driver {} communication fail", i);
+                }
+            });
+        }
+        {
+            SHARED_MEMORY.lock().await.set_poulpe_state(board_state)
+        };
+
 
             // set the error led to active
             if board_state.is_fault() {
@@ -1589,10 +1625,19 @@ pub async fn control_loop(mut config: ActuatorConfig) {
 
         // verify if there was a communication problem in this loop
         notify_communication_status!(
-            loop_communication_error,
-            communication_down,
-            last_communication_timestamp
+            loop_driver_communication_error,
+            driver_communication_down,
+            last_driver_communication_timestamp
         );
+
+        for i in 0..config::N_AXIS {
+            // verify communication with axis sensors
+            notify_communication_status!(
+                loop_axis_sensors_communication_error[i],
+                axis_sensors_communication_down[i],
+                last_axis_sensors_communication_timestamp[i]
+            );
+        }
 
         #[cfg(feature = "debug_execution_time")]
         {

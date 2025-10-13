@@ -25,6 +25,8 @@ pub enum MotorErrorFlag {
     LowBusVoltage = 64,
     DriverFault = 128,
     TemperatureSensorMalfunctionWarning = 256,
+    AxisSensorCommunicationFail = 512,
+    DriverCommunicationFail = 1024,
 }
 
 // Error codes for the homing procedure
@@ -266,6 +268,8 @@ impl PoulpeState {
                 64 => Some(MotorErrorFlag::LowBusVoltage),
                 128 => Some(MotorErrorFlag::DriverFault),
                 256 => Some(MotorErrorFlag::TemperatureSensorMalfunctionWarning),
+                512 => Some(MotorErrorFlag::AxisSensorCommunicationFail),
+                1024 => Some(MotorErrorFlag::DriverCommunicationFail),
                 _ => None,
             };
         }

@@ -134,9 +134,9 @@ async fn main(_spawner: Spawner) {
         led_green.set_low();
         Timer::after_millis(500).await;
 
-        let angle_bot = as5047bot.read_angle().unwrap_or_default();
-        let angle_mid = as5047mid.read_angle().unwrap_or_default();
-        let angle_top = as5047top.read_angle().unwrap_or_default();
+        let angle_bot = as5047bot.read_angle();
+        let angle_mid = as5047mid.read_angle();
+        let angle_top = as5047top.read_angle();
         // display angles with 3 decimals
         info!(
             "Angles: bot: {}, mid: {}, top: {}",

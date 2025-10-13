@@ -116,7 +116,6 @@ async fn main(_spawner: Spawner) {
         led_green.set_low();
         Timer::after_millis(500).await;
 
-        let angle_ring_sensor = ring_sensor.read_angle().unwrap_or_default();
-        info!("Ring angle: {}", angle_ring_sensor[0]);
+        info!("Ring angle: {}", ring_sensor.read_angle());
     }
 }
