@@ -166,6 +166,8 @@ paste = "1.0.14"
 modular-bitfield = "0.11.2"
 biquad = "0.4.1"
 
+generic-array = "=0.14.7"
+
 [dev-dependencies]
 defmt = "0.3"
 defmt-rtt = "0.4"
