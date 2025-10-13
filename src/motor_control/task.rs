@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 
 use cortex_m::register::basepri::read;
-use defmt::{debug, error, info, warn};
+use defmt::{debug, error, info, trace, warn};
 use embassy_embedded_hal::shared_bus::blocking::{i2c::I2cDevice, spi::SpiDeviceWithConfig};
 use embassy_stm32::i2c::{Error, I2c};
 use embassy_stm32::time::Hertz;
@@ -196,8 +196,8 @@ macro_rules! verify_temperatures_and_update_state {
                         "Axis {} Temperature (motor: {}C, board: {}C) is back to normal!",
                         i, m, b
                     );
-                   
-                } 
+
+                }
                 if $board_state.check_motor_error_flag(i, MotorErrorFlag::TemperatureSensorMalfunctionWarning){
                     // if the motor or board temperature sensor is back to normal, clear the warning state
                     $board_state.clear_motor_error_flag(i, MotorErrorFlag::TemperatureSensorMalfunctionWarning);
@@ -205,7 +205,7 @@ macro_rules! verify_temperatures_and_update_state {
                         "Axis {} Temperature (motor: {}C, board: {}C) is back to normal!",
                         i, m, b
                     );
-                } 
+                }
             }
         }
     };
@@ -307,7 +307,7 @@ pub fn check_moved_sensors(moved_sensors: &[f32; 3], init_sensors: &[f32; 3]) ->
         }
 
         debug!("diff: {:?}", diff[i]);
-        
+
         if (diff[i] <= 0.0 && diff[i] > -0.08) || (diff[i] > 0.0 || diff[i].is_nan()) {
             error!(
                 "Axis sensor {:?} moved too little: {:?} Check sensor connection??",
@@ -352,21 +352,16 @@ pub fn check_moved_sensors(moved_sensors: &[f32; 2], init_sensors: &[f32; 2]) ->
             );
             moved_success[i] = false;
         }
-        
     }
     moved_success
 }
-
 
 pub async fn set_error_led() {
     SHARED_MEMORY.lock().await.set_error_led(true);
 }
 
-
 #[embassy_executor::task]
 pub async fn control_loop(mut config: ActuatorConfig) {
-
-
     let mut spi_config = spi::Config::default();
     spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
     spi_config.bit_order = spi::BitOrder::MsbFirst;
@@ -465,7 +460,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
     donut_spi_config.frequency = embassy_stm32::time::Hertz(SPI_FREQ);
     donut_spi_config.bit_order = spi::BitOrder::MsbFirst;
     donut_spi_config.mode = spi::MODE_1; // AD5047 uses MODE1
-    
+
     #[cfg(feature = "pvt")]
     {
         donut_spi_config.mode = spi::MODE_0;
@@ -622,8 +617,8 @@ pub async fn control_loop(mut config: ActuatorConfig) {
     );
 
     // get the hardware zeros and the board id
-    let hardware_zeros  = {SHARED_MEMORY.lock().await.get_hardware_zeros()};
-    let board_id = {SHARED_MEMORY.lock().await.get_board_id()};
+    let hardware_zeros = { SHARED_MEMORY.lock().await.get_hardware_zeros() };
+    let board_id = { SHARED_MEMORY.lock().await.get_board_id() };
 
     // set the hardware zeros
     actuator.set_hardware_zeros(hardware_zeros);
@@ -707,7 +702,6 @@ pub async fn control_loop(mut config: ActuatorConfig) {
             continue 'init_loop;
         }
 
-        
         // motor check - move the motors and check if the sensors are moving
         let res_check1 = actuator.check_motors_1().await;
 
@@ -901,7 +895,10 @@ pub async fn control_loop(mut config: ActuatorConfig) {
     SHARED_MEMORY.lock().await.init(&mut actuator);
 
     // rewrite the hardware zeros to the shared memory
-    SHARED_MEMORY.lock().await.set_hardware_zeros(hardware_zeros);
+    SHARED_MEMORY
+        .lock()
+        .await
+        .set_hardware_zeros(hardware_zeros);
     // rewrite the board id to the shared memory
     SHARED_MEMORY.lock().await.set_board_id(board_id);
 
@@ -932,8 +929,8 @@ pub async fn control_loop(mut config: ActuatorConfig) {
 
     // a variable used for the safe fault handling
     let emergency_stop_response_counter_max: usize = 7000; // 7secs (1000 loops at 1kHz)
-    let mut quick_stop_response_counter  = 0;
-    let mut fault_response_counter = 0; 
+    let mut quick_stop_response_counter = 0;
+    let mut fault_response_counter = 0;
 
     // actuator.set_torque([false,false]).unwrap();
     let mut error_led = false;
@@ -1040,10 +1037,14 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                     SHARED_MEMORY.lock().await.set_torque_on(torque_on)
                 };
             } else if board_state.is_fault_reaction_state() {
-
                 // set the control mode to stopped
                 // thic control mode will brake the motor producing a torque in the opposite direction of the velocity
-                {SHARED_MEMORY.lock().await.set_control_mode(MotionMode::Stopped);}
+                {
+                    SHARED_MEMORY
+                        .lock()
+                        .await
+                        .set_control_mode(MotionMode::Stopped);
+                }
                 // if mode change is not allowed, do it here directly
                 // otherwise, the control mode will be changed later in code
                 #[cfg(not(feature = "allow_mode_change"))]
@@ -1053,32 +1054,35 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                         loop_driver_communication_error = true;
                     });
                 }
-                
-                // get the latest velociyt and torque
-                let velocity = {SHARED_MEMORY.lock().await.get_current_velocity()};
-                let torque = {SHARED_MEMORY.lock().await.get_current_torque()};
 
+                // get the latest velociyt and torque
+                let velocity = { SHARED_MEMORY.lock().await.get_current_velocity() };
+                let torque = { SHARED_MEMORY.lock().await.get_current_torque() };
 
                 // update the fault response counter
-                fault_response_counter +=1;
+                fault_response_counter += 1;
                 if fault_response_counter % 500 == 0 {
-                    warn!("Fault reaction active, velocity: {:?}, torque {}, quick stop time {}", velocity, torque, fault_response_counter as f32 * 0.001);
+                    warn!(
+                        "Fault reaction active, velocity: {:?}, torque {}, quick stop time {}",
+                        velocity,
+                        torque,
+                        fault_response_counter as f32 * 0.001
+                    );
                 }
 
                 // if velocity is almost zero and the torque is almost zero, stop the operation
                 // dont stop if the fault response counter is not yet at the maximum
                 // and stop right away if the fault response counter is at the two times the maximum (emergency stop)
-                if (velocity.iter().all(|v| v.abs() < 0.05)) && 
-                    (torque.iter().all(|t| t.abs() < 100.0) && 
-                    (fault_response_counter >= emergency_stop_response_counter_max)) || 
-                    fault_response_counter >= 2*emergency_stop_response_counter_max {
+                if (velocity.iter().all(|v| v.abs() < 0.05))
+                    && (torque.iter().all(|t| t.abs() < 100.0)
+                        && (fault_response_counter >= emergency_stop_response_counter_max))
+                    || fault_response_counter >= 2 * emergency_stop_response_counter_max
+                {
                     torque_on = [false; config::N_AXIS];
                     {
                         SHARED_MEMORY.lock().await.set_torque_on(torque_on)
                     };
-                    warn!(
-                        "Fault response done, stopping operation",
-                    );
+                    warn!("Fault response done, stopping operation",);
                     // notify that the fault handling is done
                     // this will set the state to fault
                     board_state.notify_fault_reaction_done();
@@ -1090,10 +1094,14 @@ pub async fn control_loop(mut config: ActuatorConfig) {
         #[cfg(feature = "allow_quickstop")]
         {
             if board_state.is_quick_stop_active() {
-
                 // set the control mode to stopped
                 // thic control mode will brake the motor producing a torque in the opposite direction of the velocity
-                {SHARED_MEMORY.lock().await.set_control_mode(MotionMode::Stopped);}
+                {
+                    SHARED_MEMORY
+                        .lock()
+                        .await
+                        .set_control_mode(MotionMode::Stopped);
+                }
                 // if mode change is not allowed, do it here directly
                 // otherwise, the control mode will be changed later in code
                 #[cfg(not(feature = "allow_mode_change"))]
@@ -1103,24 +1111,30 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                         loop_driver_communication_error = true;
                     });
                 }
-                
+
                 // get the latest velociyt and torque
-                let velocity = {SHARED_MEMORY.lock().await.get_current_velocity()};
-                let torque = {SHARED_MEMORY.lock().await.get_current_torque()};
+                let velocity = { SHARED_MEMORY.lock().await.get_current_velocity() };
+                let torque = { SHARED_MEMORY.lock().await.get_current_torque() };
 
                 // update the counter
-                quick_stop_response_counter +=1;
+                quick_stop_response_counter += 1;
                 if quick_stop_response_counter % 500 == 0 {
-                    warn!("Quick stop active, velocity: {:?}, torque {}, quick stop time {}", velocity, torque, quick_stop_response_counter as f32 * 0.001);
+                    warn!(
+                        "Quick stop active, velocity: {:?}, torque {}, quick stop time {}",
+                        velocity,
+                        torque,
+                        quick_stop_response_counter as f32 * 0.001
+                    );
                 }
 
                 // if velocity is almost zero and the torque is almost zero, stop the operation
                 // dont stop if the fault response counter is not yet at the maximum
                 // and stop right away if the fault response counter is at the two times the maximum (emergency stop)
-                if (velocity.iter().all(|v| v.abs() < 0.05)) && 
-                    (torque.iter().all(|t| t.abs() < 100.0) && 
-                    (quick_stop_response_counter >= emergency_stop_response_counter_max)) ||
-                    quick_stop_response_counter >= 2*emergency_stop_response_counter_max {
+                if (velocity.iter().all(|v| v.abs() < 0.05))
+                    && (torque.iter().all(|t| t.abs() < 100.0)
+                        && (quick_stop_response_counter >= emergency_stop_response_counter_max))
+                    || quick_stop_response_counter >= 2 * emergency_stop_response_counter_max
+                {
                     torque_on = [false; config::N_AXIS];
                     {
                         SHARED_MEMORY.lock().await.set_torque_on(torque_on)
@@ -1134,9 +1148,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                             loop_driver_communication_error = true;
                         });
                     }
-                    warn!(
-                        "Quick stop done, stopping operation",
-                    );
+                    warn!("Quick stop done, stopping operation",);
                     // notify that the quick stop is done
                     // this will set the state to switched on disabled
                     board_state.notify_quick_stop_done();
@@ -1167,17 +1179,18 @@ pub async fn control_loop(mut config: ActuatorConfig) {
             }
         }
 
-        match actuator.get_control_mode(){
+        match actuator.get_control_mode() {
             Ok(mode) => {
-                { SHARED_MEMORY.lock().await.set_control_mode_display(mode[0]) };
+                {
+                    SHARED_MEMORY.lock().await.set_control_mode_display(mode[0])
+                };
                 control_mode = mode[0];
-            },
+            }
             Err(e) => {
                 error!("Error reading control mode: {:?}", e);
                 loop_driver_communication_error = true;
             }
         }
-
 
         match control_mode {
             MotionMode::Position => {
@@ -1246,7 +1259,6 @@ pub async fn control_loop(mut config: ActuatorConfig) {
                     loop_driver_communication_error = true;
                 });
 
-                
                 let torque_ff = { SHARED_MEMORY.lock().await.get_target_torque() };
                 actuator.set_torque_feedforward(torque_ff).unwrap_or_else(|e| {
                     error!("Error setting torque feedforward: {:?}", e);
@@ -1406,7 +1418,7 @@ pub async fn control_loop(mut config: ActuatorConfig) {
             .for_each(|(i, driver_state)| {
                 match driver_state {
                     Ok(driver_state) => {
-                        debug!("Driver state: OK");
+                        trace!("Driver state: OK");
                     }
                     Err(e) => {
                         // this is a catastrophic error
@@ -1630,10 +1642,14 @@ pub async fn control_loop(mut config: ActuatorConfig) {
         #[cfg(feature = "debug_execution_time")]
         {
             let elapsed = t_loop.elapsed().as_micros();
-            warn!("Motor control loop elapsed time: {}us \t time between loops: {}us",elapsed, t0.elapsed().as_micros());
+            warn!(
+                "Motor control loop elapsed time: {}us \t time between loops: {}us",
+                elapsed,
+                t0.elapsed().as_micros()
+            );
             t0 = Instant::now();
         }
-        
+
         // TODO do not remove this delay
         // it is necessary for thread sincronization
         // I dont understand why though
