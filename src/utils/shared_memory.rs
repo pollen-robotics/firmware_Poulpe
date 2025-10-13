@@ -392,7 +392,7 @@ impl<const N: usize> SharedMemory<N> {
             velocity_feedforward_timestamp: Some(Instant::now()),
             get_target_set_timestamp: Some(Instant::now()),
 
-            axis_sensor: actuator.get_axis_sensors().unwrap_or([f32::NAN; N]),
+            axis_sensor: [f32::NAN; N], //actuator.get_axis_sensors().unwrap_or([f32::NAN; N]),
             hardware_zeros: actuator.get_hardware_zeros().unwrap_or([f32::NAN; N]),
             board_id: 0,
 

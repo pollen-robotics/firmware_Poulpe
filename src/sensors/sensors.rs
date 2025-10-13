@@ -261,7 +261,7 @@ where
 
         Ok(())
     }
-    pub fn read_angle(&mut self) -> Result<[f32; 1], IOError> {
+    pub fn read_angle(&mut self) -> [Result<f32, IOError>; 1] {
         // RLS Aksim2
 
         #[cfg(feature = "pvt")]
@@ -271,7 +271,7 @@ where
         // block_for(Duration::from_micros(10000));
         let _ = SpiDevice::transfer_in_place(&mut self.spi, &mut data_read).map_err(|e| {
             error!("!!! Error SPI {:?}!!!", e);
-            IOError::SpiError
+            return [IOError::SpiError];
         });
 
         #[cfg(feature = "pvt")]
@@ -299,7 +299,7 @@ where
         let wanring: bool = ((encoder_data & 0x0000000000000100) >> 8) != 0x1; // 8th bit, active low
         if error {
             error!("Ring sensor in error state",);
-            return Err(IOError::InvalidState);
+            return [Err(IOError::InvalidState)];
         } else if wanring {
             warn!("Ring sensor in warning state",);
         }
@@ -310,15 +310,15 @@ where
 
         if calculated_crc != crc {
             error!("Ring sensor CRC error. crc: {:#02x} computed: {:#02x} data: {:#x} datapacket: {:#x}", crc, calculated_crc, encoder_data, datapacket);
-            Err(IOError::InvalidData)
+            [Err(IOError::InvalidData)]
         } else {
             let angle = ((encoder_position as f64 / 524288.0) * Self::ANGLE_RANGE) as f32;
             //Return result
-            Ok([angle])
+            [Ok(angle)]
         }
     }
 
-    pub fn get_axis_sensor(&mut self) -> Result<[f32; 1], IOError> {
+    pub fn get_axis_sensor(&mut self) -> [Result<f32, IOError>; 1] {
         self.read_angle()
     }
 }
@@ -369,7 +369,7 @@ where
     pub fn init(&mut self) -> Result<(), IOError> {
         Ok(())
     }
-    pub fn read_angle(&mut self) -> Result<[f32; 1], IOError> {
+    pub fn read_angle(&mut self) -> [Result<f32, IOError>; 1] {
         // Command: 16-bit frame with bit 15 as even parity, bit 14 as read(1)/write(0), [13-0] as data
         // Answer:  16-bit frame with bit 15 as even parity, bit 14 as error(1)/no_error(0), [13-0] as data
         //---- AD5047 commands ------------------------------------------------------------------------------
@@ -386,7 +386,7 @@ where
 
         let _ = SpiDevice::transfer_in_place(&mut self.spi, &mut data_write).map_err(|e| {
             error!("!!! Error SPI {:?}!!!", e);
-            IOError::SpiError
+            return [IOError::SpiError];
         });
 
         #[cfg(feature = "pvt")]
@@ -396,7 +396,7 @@ where
 
         let _ = SpiDevice::transfer_in_place(&mut self.spi, &mut data_read).map_err(|e| {
             error!("!!! Error SPI {:?}!!!", e);
-            IOError::SpiError
+            return [IOError::SpiError];
         });
 
         // Combine the two u8 values into a 16-bit integer
@@ -405,31 +405,31 @@ where
         #[cfg(not(feature = "pvt"))]
         let mut combined_value: u16 = ((data_read[0] as u16) << 8) | (data_read[1] as u16);
 
-        if combined_value == 0 {
-            //very very unlikely in normal conditions, but maybe if spi problems?
-            return Err(IOError::InvalidData);
+        if combined_value == 0 || combined_value == 0xFFFF {
+            // very very unlikely in normal conditions, but maybe if spi problems?
+            return [Err(IOError::InvalidData)];
         }
 
         // check if data has good parity
         if (combined_value.count_ones() % 2) != 0 {
             error!("Parity error reading Center sensor");
-            return Err(IOError::InvalidData);
+            return [Err(IOError::InvalidData)];
         }
         combined_value &= 0x3FFF;
 
         let angle = ((combined_value as f64 / 16383.0) * Self::ANGLE_RANGE) as f32;
         // debug!("Center Angle: {} degrees", angle);
 
-        Ok([angle])
+        [Ok(angle)]
     }
-    pub fn get_axis_sensor(&mut self) -> Result<[f32; 1], IOError> {
+    pub fn get_axis_sensor(&mut self) -> [Result<f32, IOError>; 1] {
         self.read_angle()
     }
 }
 
 impl<'d> RawSensorsIO<1> for SensorKind<'d> {
     /// Check if the motors are ON or OFF
-    fn get_axis_sensors(&mut self) -> Result<[f32; 1], IOError> {
+    fn get_axis_sensors(&mut self) -> [Result<f32, IOError>; 1] {
         match self {
             SensorKind::Ring(ring) => ring.get_axis_sensor(),
             SensorKind::Center(center) => center.get_axis_sensor(),
@@ -437,7 +437,7 @@ impl<'d> RawSensorsIO<1> for SensorKind<'d> {
             SensorKind::DonutMid(mid) => mid.get_axis_sensor(),
             SensorKind::DonutBot(bot) => bot.get_axis_sensor(),
 
-            SensorKind::DonutHall(hall) => Err(IOError::Unavailable),
+            SensorKind::DonutHall(hall) => [Err(IOError::Unavailable)],
         }
     }
     // fn get_index_sensors(&mut self) -> Result<[u16;1], IOError>

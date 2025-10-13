@@ -152,9 +152,9 @@ where
         }
     }
 
-    fn check_status(&mut self, _is_enabled: bool) -> Result<(), DriverError> {
+    fn check_status(&mut self, is_enabled: bool) -> Result<(), DriverError> {
         // if not gamma, then return Ok
-        #[cfg(any(feature = "gamma", feature = "pvt"))]
+        #[cfg(not(any(feature = "gamma", feature = "pvt")))]
         {
             return Ok(());
         }
@@ -162,7 +162,13 @@ where
         if self.status_pin.is_low() {
             return Ok(());
         } else {
-            return Err(DriverError::FaultState);
+            // only error if driver is enabled
+            if is_enabled {
+                return Err(DriverError::FaultState);
+            } else {
+                // if not enabled, then it is not an error
+                return Ok(());
+            }
         }
     }
 }
