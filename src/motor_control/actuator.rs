@@ -7,7 +7,6 @@ use super::motors_io::{Pid, RawMotorsIO};
 
 use crate::config::{self, BrushlessMotor};
 use crate::config::DonutHall;
-use crate::config::{self, BrushlessMotor};
 
 use super::ventouse::VentouseKind;
 use crate::sensors::{sensors::SensorKind, sensors_io::RawSensorsIO, sensors_io};
