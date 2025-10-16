@@ -72,8 +72,10 @@ pub fn adc_read_temperature<T: Instance, P: AdcPin<T> + Pin>(
     let r_t: f32 = r_div * ((3.3 / voltage) - 1.0);
     #[cfg(all(feature = "pvt", feature = "orbita3d"))]
     let r_25: f32 = 10000.0;
-    #[cfg(not(all(feature = "pvt", feature = "orbita3d")))]
+    #[cfg(not(all(feature = "pvt", feature = "orbita3d", feature = "ecx42")))]
     let r_25: f32 = 5000.0;
+    #[cfg(all(feature = "ecx42"))]
+    let r_25: f32 = 10000.0;
 
     let mut t: f32 = 1.0 / (((log((r_t / r_25) as f64) as f32) / beta) + room_temp_inv);
 

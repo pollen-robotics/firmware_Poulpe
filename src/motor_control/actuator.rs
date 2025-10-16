@@ -451,6 +451,8 @@ impl<'d, const N: usize> Actuator<'d, N> {
         let r = 1.0 / BrushlessMotor::ec45().axis_ratio();
         #[cfg(feature = "ec60")]
         let r = 1.0 / BrushlessMotor::ec60().axis_ratio();
+        #[cfg(feature = "ecx42")]
+        let r = 1.0 / BrushlessMotor::ecx42().axis_ratio();
 
         let axis_pos = [wrap_to_pi(axis[0]), wrap_to_pi(axis[1])];
 
@@ -469,6 +471,8 @@ impl<'d, const N: usize> Actuator<'d, N> {
         let r = 1.0 / BrushlessMotor::ec45().axis_ratio();
         #[cfg(feature = "ec60")]
         let r = 1.0 / BrushlessMotor::ec60().axis_ratio();
+        #[cfg(feature = "ecx42")]
+        let r = 1.0 / BrushlessMotor::ecx42().axis_ratio();
 
         let mut axis_pos = [0.0; N];
         // forward kinematics
