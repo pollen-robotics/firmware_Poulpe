@@ -118,9 +118,9 @@ impl BrushlessMotor {
             pid_position: Pid { p: 50, i: 0 },
 
             torque_flux_limit_max: 7310, // 7.31 amps
-            velocity_limit_max: 10,      // 410 rad/s
+            velocity_limit_max: 10, // motor nominal speed after gearbox=5.5rad/s, max=6.85rad/s
             // gearing ratios
-            gearbox_ratio: 6859.0 / 421875.0,
+            gearbox_ratio: 6859.0 / 421875.0, //~ 61.5
             axis_ratio: 20.0 / 38.0,
         }
     }
